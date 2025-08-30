@@ -1,11 +1,11 @@
 import { writable, derived } from 'svelte/store';
 import type { WordItem } from '$lib/types';
 
-export const dueItems = writable<WordItem[]>([]);
+export const wordList = writable<WordItem[]>([]);
 export const currentIdx = writable(0);
 
 export const current = derived(
-  [dueItems, currentIdx],
+  [wordList, currentIdx],
   ([$due, $idx]) => $due[$idx]
 );
 
@@ -15,6 +15,6 @@ export function nextQuestion() {
 }
 
 export function restartWithWrongs(wrongs: WordItem[]) {
-  dueItems.set(wrongs);
+  wordList.set(wrongs);
   currentIdx.set(0);
 }

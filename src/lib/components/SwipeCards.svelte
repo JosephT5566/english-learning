@@ -1,39 +1,10 @@
-<script lang="ts">
-  import { onMount } from "svelte";
+<svelte:options runes={true} />
 
-  type Card = { id: number; img: string; question?: string; answer?: string };
-  export let cards: Card[] = [
-    {
-      id: 1,
-      img: "https://placeimg.com/600/300/people",
-      question: "Question 1",
-      answer: "Answer 1",
-    },
-    {
-      id: 2,
-      img: "https://placeimg.com/600/300/animals",
-      question: "Question 2",
-      answer: "Answer 2",
-    },
-    {
-      id: 3,
-      img: "https://placeimg.com/600/300/nature",
-      question: "Demo 3",
-      answer: "This is a demo",
-    },
-    {
-      id: 4,
-      img: "https://placeimg.com/600/300/tech",
-      question: "Demo 4",
-      answer: "This is a demo",
-    },
-    {
-      id: 5,
-      img: "https://placeimg.com/600/300/arch",
-      question: "Demo 5",
-      answer: "This is a demo",
-    },
-  ];
+<script lang="ts">
+  import type { WordItem } from "$lib/types";
+
+  // 透過 runes 取得 props
+  let { wordList }: { wordList: WordItem[] } = $props();
 
   let root: HTMLDivElement; // .swipe
   let cardsWrap: HTMLDivElement; // .swipe--cards
@@ -52,16 +23,20 @@
   };
   const scratch = new WeakMap<HTMLElement, Scratch>();
 
-  // UI state
-  let swipeX = 0;
-  let isTopCardBack = false;
+  // UI state（runes）
+  let swipeX = $state(0);
+  let isTopCardBack = $state(false);
+  let isClickAndSwiping = $state(false);
+
   const THRESHOLD = 250; // fly-out decision
   const MOVE_OUT_MULT = 1.5;
 
-  $: yesOpacity = swipeX > 0 ? Math.min(Math.abs(swipeX) / THRESHOLD, 1) : 0;
-  $: noOpacity = swipeX < 0 ? Math.min(Math.abs(swipeX) / THRESHOLD, 1) : 0;
-
-  let isClickAndSwiping = false;
+  const yesOpacity = $derived(
+    swipeX > 0 ? Math.min(Math.abs(swipeX) / THRESHOLD, 1) : 0
+  );
+  const noOpacity = $derived(
+    swipeX < 0 ? Math.min(Math.abs(swipeX) / THRESHOLD, 1) : 0
+  );
 
   function topCardEl(): HTMLElement | null {
     // first non-removed card (highest z) is the last child
@@ -261,8 +236,11 @@
     }, 1000);
   }
 
-  onMount(() => {
-    // attach handlers to current cards
+  $effect(() => {
+    if (!cardsWrap) {
+      return;
+    }
+
     const els = Array.from(
       cardsWrap.querySelectorAll<HTMLElement>(".swipe--card")
     );
@@ -278,19 +256,17 @@
   </div>
 
   <div class="swipe--cards" bind:this={cardsWrap}>
-    {#each cards as c (c.id)}
+    {#each wordList as c, i (`${c.id ?? 'no-id'}-${i}`)}
       <div class="swipe--card">
         <!-- 3D flip container -->
         <div class="card-inner">
           <!-- FRONT -->
           <div class="card-face card-front">
-            <img src={c.img} alt="" />
-            {#if c.question}<h3 class="q">{c.question}</h3>{/if}
+            {#if c.content}<h3 class="q">{c.content}</h3>{/if}
           </div>
           <!-- BACK -->
           <div class="card-face card-back">
-            <img src={c.img} alt="" />
-            {#if c.answer}<p class="a">{c.answer}</p>{/if}
+            {#if c.chineseExplain}<p class="a">{c.chineseExplain}</p>{/if}
             <!-- You can add more back-side UI here -->
           </div>
         </div>
@@ -445,10 +421,20 @@
     margin: 0 8px;
     font-size: 32px;
     cursor: pointer;
-    &:disabled {
-      color: red;
-      opacity: 0.5;
-      cursor: not-allowed;
-    }
+  }
+  .swipe--buttons button:hover {
+    transform: translateY(-1px);
+  }
+  .swipe--buttons button:active {
+    transform: translateY(0);
+  }
+  .swipe--buttons button:focus-visible {
+    outline: 2px solid #0ea5e9; /* sky-500 */
+    outline-offset: 2px;
+  }
+
+  .swipe--buttons button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
   }
 </style>
