@@ -37,28 +37,31 @@
 
   let root: HTMLDivElement; // .swipe
   let cardsWrap: HTMLDivElement; // .swipe--cards
-  const scratch = new WeakMap<
-    HTMLElement,
-    {
-      x: number;
-      y: number;
-      rot: number;
-      down: boolean;
-      startX: number;
-      startY: number;
-      pointerId: number;
-      showAnswer: boolean;
-    }
-  >();
 
+  type Scratch = {
+    x: number;
+    y: number;
+    rot: number;
+    down: boolean;
+    startX: number;
+    startY: number;
+    pointerId: number;
+    showAnswer: boolean;
+    isBack: boolean; // ⇦ front/back state
+    moved: boolean; // ⇦ small movement guard to avoid click-after-drag flipping
+  };
+  const scratch = new WeakMap<HTMLElement, Scratch>();
+
+  // UI state
   let swipeX = 0;
+  let isTopCardBack = false;
+  const THRESHOLD = 250; // fly-out decision
+  const MOVE_OUT_MULT = 1.5;
+
   $: yesOpacity = swipeX > 0 ? Math.min(Math.abs(swipeX) / THRESHOLD, 1) : 0;
   $: noOpacity = swipeX < 0 ? Math.min(Math.abs(swipeX) / THRESHOLD, 1) : 0;
 
   let isClickAndSwiping = false;
-
-  const THRESHOLD = 250;
-  const MOVE_OUT_MULT = 1.5;
 
   function topCardEl(): HTMLElement | null {
     // first non-removed card (highest z) is the last child
@@ -77,7 +80,10 @@
       const translateY = -30 * i;
       const opacity = (10 - i) / 10;
       el.style.zIndex = String(els.length - i);
-      if (i === 0) return; // top card will be handled by drag transform
+      if (i === 0) {
+        return; // top card will be handled by drag transform
+      }
+
       el.style.transform = `scale(${scale}) translateY(${translateY}px)`;
       el.style.opacity = String(opacity);
     });
@@ -102,16 +108,23 @@
       startY: 0,
       pointerId: -1,
       showAnswer: false,
+      isBack: false, // start face-up (front)
+      moved: false,
     });
 
     function onDown(e: PointerEvent) {
       const s = scratch.get(el)!;
-      if (el !== topCardEl()) return;
+      // Only the top card AND only on back side can start dragging
+      if (el !== topCardEl() || !s.isBack || isClickAndSwiping) {
+        return;
+      }
+
       el.setPointerCapture(e.pointerId);
       s.down = true;
       s.pointerId = e.pointerId;
       s.startX = e.clientX - s.x;
       s.startY = e.clientY - s.y;
+      s.moved = false;
       el.classList.add("moving");
     }
 
@@ -121,7 +134,9 @@
       s.x = e.clientX - s.startX;
       s.y = e.clientY - s.startY;
       s.rot = s.x * 0.03 * (s.y / 80);
-      // apply transform imperatively
+      if (Math.abs(s.x) > 3 || Math.abs(s.y) > 3) s.moved = true;
+
+      // Only reflect swipe UI on the back side
       el.style.transform = `translate(${s.x}px, ${s.y}px) rotate(${s.rot}deg)`;
       swipeX = s.x;
       setBadge(s.x);
@@ -137,15 +152,13 @@
       const toY =
         y >= 0 ? Math.abs(y) * MOVE_OUT_MULT : -Math.abs(y) * MOVE_OUT_MULT;
 
-      // allow CSS transition
       el.classList.remove("moving");
-      el.style.transition = "transform 0.3s ease-in-out";
       el.style.transform = `translate(${toX}px, ${toY}px) rotate(${s.rot}deg)`;
       el.dataset.removed = "1";
       swipeX = 0;
+      isTopCardBack = false; // reset state
 
       setTimeout(() => {
-        el.style.transition = "";
         clearBadge();
         layoutStack();
       }, 320);
@@ -174,22 +187,46 @@
       Math.abs(s.x) < THRESHOLD ? snapBack() : flyOutAndRemove(s.x, s.y);
     }
 
+    // Click-to-flip (front<->back), but ignore if it was actually a drag
+    function onClick() {
+      const s = scratch.get(el)!;
+      if (s.down || s.moved) {
+        return; // was a drag, not a click
+      }
+
+      s.isBack = !s.isBack;
+      el.classList.toggle("is-back", s.isBack);
+      isTopCardBack = s.isBack;
+      // Reset swipe UI when flipping to front
+      if (!s.isBack) {
+        swipeX = 0;
+        clearBadge();
+      }
+    }
+
     el.addEventListener("pointerdown", onDown);
     el.addEventListener("pointermove", onMove);
     el.addEventListener("pointerup", onUp);
     el.addEventListener("pointercancel", onUp);
+    el.addEventListener("click", onClick);
   }
 
   function programmaticSwipe(isYes: boolean) {
     const el = topCardEl();
-    if (!el) {
+    if (!el || isClickAndSwiping) {
+      return;
+    }
+
+    const s = scratch.get(el);
+    // Only allow button swipe on back side
+    if (!s?.isBack) {
       return;
     }
 
     isClickAndSwiping = true;
+    el.classList.add("click-and-swiping");
 
-    // mark as removed and fly out
-    const s = scratch.get(el) || {
+    const st = s || {
       x: 0,
       y: 0,
       rot: isYes ? -0.3 : 0.3,
@@ -198,24 +235,25 @@
       startY: 0,
       pointerId: -1,
       showAnswer: false,
+      isBack: true,
+      moved: false,
     };
-    scratch.set(el, s);
-    s.x = isYes ? 200 : -200;
-    s.y = -80;
-    el.classList.add("moving");
+    scratch.set(el, st);
+    st.x = isYes ? 200 : -200;
+    st.y = -80;
+    isTopCardBack = false; // reset state
 
-    // small delay to ensure transition applies consistently
     requestAnimationFrame(() => {
-      el.classList.remove("moving");
       const moveOutWidth = document.body.clientWidth * 1.2 * (isYes ? 1 : -1);
-      el.style.transform = `translate(${moveOutWidth}px, -120px) rotate(${s.rot}deg)`;
+      el.style.transform = `translate(${moveOutWidth}px, -120px) rotate(${st.rot}deg)`;
       el.dataset.removed = "1";
 
       setTimeout(() => {
+        el.classList.remove("click-and-swiping"); // clean up
         el.style.transition = "";
         clearBadge();
         layoutStack();
-      }, 280);
+      }, 300);
     });
 
     setTimeout(() => {
@@ -241,10 +279,21 @@
 
   <div class="swipe--cards" bind:this={cardsWrap}>
     {#each cards as c (c.id)}
-      <div class="swipe--card {isClickAndSwiping ? 'click-and-swiping' : ''}">
-        <img src={c.img} alt="" />
-        {#if c.question}<h3 class="q">{c.question}</h3>{/if}
-        {#if c.answer}<p class="a">{c.answer}</p>{/if}
+      <div class="swipe--card">
+        <!-- 3D flip container -->
+        <div class="card-inner">
+          <!-- FRONT -->
+          <div class="card-face card-front">
+            <img src={c.img} alt="" />
+            {#if c.question}<h3 class="q">{c.question}</h3>{/if}
+          </div>
+          <!-- BACK -->
+          <div class="card-face card-back">
+            <img src={c.img} alt="" />
+            {#if c.answer}<p class="a">{c.answer}</p>{/if}
+            <!-- You can add more back-side UI here -->
+          </div>
+        </div>
       </div>
     {/each}
   </div>
@@ -253,13 +302,13 @@
     <button
       id="no"
       on:click={() => programmaticSwipe(false)}
-      disabled={isClickAndSwiping}
+      disabled={isClickAndSwiping || !isTopCardBack}
       aria-label="No">✖</button
     >
     <button
       id="yes"
       on:click={() => programmaticSwipe(true)}
-      disabled={isClickAndSwiping}
+      disabled={isClickAndSwiping || !isTopCardBack}
       aria-label="Yes">♥</button
     >
   </div>
@@ -300,15 +349,7 @@
     transform: scale(0.3);
     transition: all 0.2s;
     width: 100px;
-    left: 50%;
   }
-  .swipe.swipe_yes .icon.yes {
-    transform: scale(1);
-  }
-  .swipe.swipe_no .icon.no {
-    transform: scale(1);
-  }
-
   .swipe--cards {
     flex-grow: 1;
     padding-top: 40px;
@@ -316,53 +357,77 @@
     justify-content: center;
     align-items: flex-end;
   }
+
   .swipe--card {
     display: inline-block;
     width: 90vw;
     max-width: 400px;
     height: 70vh;
-    background: #fff;
-    padding-bottom: 40px;
+    position: absolute;
     border-radius: 8px;
     overflow: hidden;
-    position: absolute;
     will-change: transform;
-    &.click-and-swiping {
-      transition: all 0.3s ease-in-out;
-    }
+    touch-action: none;
+    backface-visibility: hidden;
+    contain: layout paint;
   }
-  .swipe--card.moving {
-    transition: none;
-    cursor: grabbing;
+  /* 3D flip scaffolding */
+  .swipe--card .card-inner {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    transform-style: preserve-3d;
+    transition: transform 0.35s ease;
+    will-change: transform;
   }
-  .swipe--card img {
+  :global(.swipe--card.is-back) {
+    border: solid 2px #888;
+  }
+  :global(.swipe--card.is-back) .card-inner {
+    transform: rotateY(180deg);
+  }
+
+  .card-face {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    backface-visibility: hidden;
+    background: #fff;
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .card-front img,
+  .card-back img {
     max-width: 100%;
     display: block;
     pointer-events: none;
   }
-  .swipe--card .q {
-    margin-top: 32px;
-    font-size: 32px;
+
+  .card-front .q {
+    margin-top: 24px;
+    font-size: 28px;
     padding: 0 16px;
     pointer-events: none;
-    transition:
-      font-size 0.2s,
-      opacity 0.2s;
   }
-  .swipe--card .a {
+  .card-back .a {
     margin-top: 24px;
     font-size: 20px;
     padding: 0 16px;
     pointer-events: none;
-    opacity: 0;
-    transition: opacity 0.2s;
   }
-  .swipe--card.show-answer .q {
-    font-size: 22px;
-    opacity: 0.8;
+
+  .card-back {
+    transform: rotateY(180deg);
   }
-  .swipe--card.show-answer .a {
-    opacity: 1;
+
+  :global(.swipe--card.moving) {
+    transition: none;
+    cursor: grabbing;
+  }
+  :global(.swipe--card.click-and-swiping) {
+    transition: transform 0.3s ease-in-out;
   }
 
   .swipe--buttons {
@@ -380,5 +445,10 @@
     margin: 0 8px;
     font-size: 32px;
     cursor: pointer;
+    &:disabled {
+      color: red;
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
   }
 </style>
