@@ -18,7 +18,7 @@ const config = {
 		}),
 		paths: {
 			// GH Pages 子路徑，請改成你的 repo 名稱
-			base: dev ? '' : '/my-vocab'
+			base: dev ? '' : process.env.BASE_PATH
 		},
 		// SPA：不預先產生各 route 的靜態檔，只輸出 index.html 作為 fallback
 		// prerender: { entries: [] }

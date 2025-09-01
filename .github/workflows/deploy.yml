@@ -15,7 +15,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build:
+  build_site:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -33,6 +33,7 @@ jobs:
       - name: Build
         env:
           PUBLIC_APP_SCRIPT_URL: ${{ vars.PUBLIC_APP_SCRIPT_URL }}
+          BASE_PATH: '/${{ github.event.repository.name }}'
         run: npm run build
 
       - name: Add .nojekyll
@@ -47,7 +48,7 @@ jobs:
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
-    needs: build
+    needs: build_site
     runs-on: ubuntu-latest
     steps:
       - name: Deploy
