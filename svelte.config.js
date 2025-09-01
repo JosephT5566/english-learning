@@ -14,7 +14,7 @@ const config = {
 			assets: 'build',
 			precompress: false,
 			strict: true,
-			fallback: 'index.html'
+			fallback: '404.html'
 		}),
 		paths: {
 			// GH Pages 子路徑，請改成你的 repo 名稱
