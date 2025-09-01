@@ -2,6 +2,7 @@
 
 <script lang="ts">
   import type { WordItem, StudyDirection } from "$lib/types";
+  import Icon from "@iconify/svelte";
 
   // 透過 runes 取得 props
   let {
@@ -309,8 +310,18 @@
 
 <div class="swipe" bind:this={root}>
   <div class="swipe--status">
-    <span class="icon no" style="opacity:{noOpacity}">✖</span>
-    <span class="icon yes" style="opacity:{yesOpacity}">♥</span>
+    <span class="icon no" style="opacity:{noOpacity}">
+      <Icon
+        icon="solar:close-square-outline"
+        class={noOpacity === 1 ? "text-rose-500" : ""}
+      />
+    </span>
+    <span class="icon yes" style="opacity:{yesOpacity}">
+      <Icon
+        icon="solar:check-square-outline"
+        class={yesOpacity === 1 ? "text-emerald-500" : ""}
+      />
+    </span>
   </div>
 
   <div class="swipe--cards" bind:this={cardsWrap}>
@@ -370,13 +381,15 @@
       id="no"
       on:click={() => programmaticSwipe(false)}
       disabled={isClickAndSwiping || !isTopCardBack}
-      aria-label="No">✖</button
+      aria-label="No"
+      ><Icon icon="solar:close-square-bold" class="text-rose-700" /></button
     >
     <button
       id="yes"
       on:click={() => programmaticSwipe(true)}
       disabled={isClickAndSwiping || !isTopCardBack}
-      aria-label="Yes">♥</button
+      aria-label="Yes"
+      ><Icon icon="solar:check-square-bold" class="text-emerald-500" /></button
     >
   </div>
 </div>
@@ -412,10 +425,9 @@
     pointer-events: none;
   }
   .swipe--status .icon {
-    font-size: 100px;
+    font-size: 150px;
     transform: scale(0.3);
     transition: all 0.2s;
-    width: 100px;
   }
   .swipe--cards {
     flex-grow: 1;
@@ -561,19 +573,13 @@
   }
 
   .swipe--buttons {
-    flex: 0 0 100px;
-    text-align: center;
+    display: flex;
+    justify-content: center;
+    gap: 8px;
     padding-top: 20px;
   }
   .swipe--buttons button {
-    border-radius: 50%;
-    line-height: 60px;
-    width: 60px;
-    border: 0;
-    background: #fff;
-    display: inline-block;
-    margin: 0 8px;
-    font-size: 32px;
+    font-size: 64px;
     cursor: pointer;
   }
   .swipe--buttons button:hover {
