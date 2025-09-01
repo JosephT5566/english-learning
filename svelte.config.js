@@ -1,24 +1,27 @@
-import adapter from '@sveltejs/adapter-auto';
+import adapter from '@sveltejs/adapter-static';
 import { vitePreprocess } from '@sveltejs/vite-plugin-svelte';
 
 const dev = process.argv.includes('dev');
 
 /** @type {import('@sveltejs/kit').Config} */
 const config = {
-	// Consult https://svelte.dev/docs/kit/integrations
-	// for more information about preprocessors
 	preprocess: vitePreprocess(),
 
 	kit: {
-		// adapter-auto only supports some environments, see https://svelte.dev/docs/kit/adapter-auto for a list.
-		// If your environment is not supported, or you settled on a specific environment, switch out the adapter.
-		// See https://svelte.dev/docs/kit/adapters for more information about adapters.
-		adapter: adapter(),
+		adapter: adapter({
+			// SPA 模式需要 fallback
+			pages: 'build',
+			assets: 'build',
+			precompress: false,
+			strict: true,
+			fallback: 'index.html'
+		}),
 		paths: {
-			// GH Pages 若用子路徑 <user>.github.io/<repo>，把下面 base 改成 '/<repo>'
+			// GH Pages 子路徑，請改成你的 repo 名稱
 			base: dev ? '' : '/my-vocab'
 		},
-		prerender: { entries: [] } // SPA 模式，全部走前端
+		// SPA：不預先產生各 route 的靜態檔，只輸出 index.html 作為 fallback
+		// prerender: { entries: [] }
 	}
 };
 
