@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/state';
+	import { resolve } from '$app/paths';
 	import logo from '$lib/images/svelte-logo.svg';
 	import github from '$lib/images/github.svg';
 </script>
@@ -10,11 +11,11 @@
 			<path d="M0,0 L1,2 C1.5,3 1.5,3 2,3 L2,0 Z" />
 		</svg>
 		<ul>
-			<li aria-current={page.url.pathname === '/' ? 'page' : undefined}>
-				<a href="/">Home</a>
+			<li aria-current={page.url.pathname === `${resolve}/` ? 'page' : undefined}>
+				<a href={resolve('/')}>Home</a>
 			</li>
-			<li aria-current={page.url.pathname === '/review' ? 'page' : undefined}>
-				<a href="/review">Review</a>
+			<li aria-current={page.url.pathname === `${resolve}/review` ? 'page' : undefined}>
+				<a href={resolve('/review')}>Review</a>
 			</li>
 		</ul>
 		<svg viewBox="0 0 2 3" aria-hidden="true">

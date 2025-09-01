@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { resolve } from "$app/paths";
   import QuestionCard from "$lib/components/QuestionCard.svelte";
   import QWordToMeaning from "$lib/components/QWordToMeaning.svelte";
   import SwipeCards from "$lib/components/SwipeCards.svelte";
@@ -29,7 +30,7 @@
     <SwipeCards wordList={$wordList} />
   {:else}
     <QuestionCard title="完成！" subtitle="今天的到期單字都複習完了 🎉">
-      <a class="underline" href="/">回首頁</a>
+      <a class="underline" href={resolve('/')}>回首頁</a>
     </QuestionCard>
   {/if}
 </div>

@@ -1,600 +1,584 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
-  import type { WordItem, StudyDirection } from "$lib/types";
-  import Icon from "@iconify/svelte";
+	import type { WordItem, StudyDirection } from '$lib/types';
+	import Icon from '@iconify/svelte';
 
-  // 透過 runes 取得 props
-  let {
-    wordList,
-    studyDirection = "EN_ZH",
-  }: { wordList: WordItem[]; studyDirection?: StudyDirection } = $props();
+	// 透過 runes 取得 props
+	let {
+		wordList,
+		studyDirection = 'EN_ZH',
+	}: { wordList: WordItem[]; studyDirection?: StudyDirection } = $props();
 
-  let root: HTMLDivElement; // .swipe
-  let cardsWrap: HTMLDivElement; // .swipe--cards
+	let root: HTMLDivElement; // .swipe
+	let cardsWrap: HTMLDivElement; // .swipe--cards
 
-  type Scratch = {
-    x: number;
-    y: number;
-    rot: number;
-    down: boolean;
-    startX: number;
-    startY: number;
-    pointerId: number;
-    showAnswer: boolean;
-    isBack: boolean; // ⇦ front/back state
-    moved: boolean; // ⇦ small movement guard to avoid click-after-drag flipping
-  };
-  const scratch = new WeakMap<HTMLElement, Scratch>();
+	type Scratch = {
+		x: number;
+		y: number;
+		rot: number;
+		down: boolean;
+		startX: number;
+		startY: number;
+		pointerId: number;
+		showAnswer: boolean;
+		isBack: boolean; // ⇦ front/back state
+		moved: boolean; // ⇦ small movement guard to avoid click-after-drag flipping
+	};
+	const scratch = new WeakMap<HTMLElement, Scratch>();
 
-  // UI state（runes）
-  let swipeX = $state(0);
-  let isTopCardBack = $state(false);
-  let isClickAndSwiping = $state(false);
+	// UI state（runes）
+	let swipeX = $state(0);
+	let isTopCardBack = $state(false);
+	let isClickAndSwiping = $state(false);
 
-  const THRESHOLD = 250; // fly-out decision
-  const MOVE_OUT_MULT = 1.5;
+	const THRESHOLD = 250; // fly-out decision
+	const MOVE_OUT_MULT = 1.5;
 
-  const yesOpacity = $derived(
-    swipeX > 0 ? Math.min(Math.abs(swipeX) / THRESHOLD, 1) : 0
-  );
-  const noOpacity = $derived(
-    swipeX < 0 ? Math.min(Math.abs(swipeX) / THRESHOLD, 1) : 0
-  );
+	const yesOpacity = $derived(swipeX > 0 ? Math.min(Math.abs(swipeX) / THRESHOLD, 1) : 0);
+	const noOpacity = $derived(swipeX < 0 ? Math.min(Math.abs(swipeX) / THRESHOLD, 1) : 0);
 
-  function topCardEl(): HTMLElement | null {
-    // first non-removed card (highest z) is the last child
-    const els = Array.from(
-      cardsWrap.querySelectorAll<HTMLElement>(".swipe--card")
-    );
-    return els.find((el) => !el.dataset.removed) || null;
-  }
+	function topCardEl(): HTMLElement | null {
+		// first non-removed card (highest z) is the last child
+		const els = Array.from(cardsWrap.querySelectorAll<HTMLElement>('.swipe--card'));
+		return els.find((el) => !el.dataset.removed) || null;
+	}
 
-  function updateLayoutStack() {
-    const els = Array.from(
-      cardsWrap.querySelectorAll<HTMLElement>(".swipe--card")
-    ).filter((el) => !el.dataset.removed);
+	function updateLayoutStack() {
+		const els = Array.from(cardsWrap.querySelectorAll<HTMLElement>('.swipe--card')).filter(
+			(el) => !el.dataset.removed
+		);
 
-    els.forEach((el, i) => {
-      const scale = (20 - i) / 20;
-      const translateY = -30 * i;
-      const opacity = (10 - i) / 10;
-      el.style.opacity = String(opacity);
-      el.style.zIndex = String(els.length - i);
-      el.style.transform = `scale(${scale}) translateY(${translateY}px)`;
-    });
-  }
+		els.forEach((el, i) => {
+			const scale = (20 - i) / 20;
+			const translateY = -30 * i;
+			const opacity = (10 - i) / 10;
+			el.style.opacity = String(opacity);
+			el.style.zIndex = String(els.length - i);
+			el.style.transform = `scale(${scale}) translateY(${translateY}px)`;
+		});
+	}
 
-  function setBadge(x: number) {
-    root.classList.toggle("swipe_yes", x > 10);
-    root.classList.toggle("swipe_no", x < -10);
-  }
+	function setBadge(x: number) {
+		root.classList.toggle('swipe_yes', x > 10);
+		root.classList.toggle('swipe_no', x < -10);
+	}
 
-  function clearBadge() {
-    root.classList.remove("swipe_yes", "swipe_no");
-  }
+	function clearBadge() {
+		root.classList.remove('swipe_yes', 'swipe_no');
+	}
 
-  function attachDrag(el: HTMLElement) {
-    scratch.set(el, {
-      x: 0,
-      y: 0,
-      rot: 0,
-      down: false,
-      startX: 0,
-      startY: 0,
-      pointerId: -1,
-      showAnswer: false,
-      isBack: false, // start face-up (front)
-      moved: false,
-    });
+	function attachDrag(el: HTMLElement) {
+		scratch.set(el, {
+			x: 0,
+			y: 0,
+			rot: 0,
+			down: false,
+			startX: 0,
+			startY: 0,
+			pointerId: -1,
+			showAnswer: false,
+			isBack: false, // start face-up (front)
+			moved: false,
+		});
 
-    function onDown(e: PointerEvent) {
-      const s = scratch.get(el)!;
-      // Only the top card AND only on back side can start dragging
-      if (el !== topCardEl() || !s.isBack || isClickAndSwiping) {
-        return;
-      }
+		function onDown(e: PointerEvent) {
+			const s = scratch.get(el)!;
+			// Only the top card AND only on back side can start dragging
+			if (el !== topCardEl() || !s.isBack || isClickAndSwiping) {
+				return;
+			}
 
-      el.setPointerCapture(e.pointerId);
-      s.down = true;
-      s.pointerId = e.pointerId;
-      s.startX = e.clientX - s.x;
-      s.startY = e.clientY - s.y;
-      s.moved = false;
-      el.classList.add("moving");
-    }
+			el.setPointerCapture(e.pointerId);
+			s.down = true;
+			s.pointerId = e.pointerId;
+			s.startX = e.clientX - s.x;
+			s.startY = e.clientY - s.y;
+			s.moved = false;
+			el.classList.add('moving');
+		}
 
-    function onMove(e: PointerEvent) {
-      const s = scratch.get(el)!;
-      if (!s.down || s.pointerId !== e.pointerId) return;
-      s.x = e.clientX - s.startX;
-      s.y = e.clientY - s.startY;
-      s.rot = s.x * 0.03 * (s.y / 80);
-      if (Math.abs(s.x) > 3 || Math.abs(s.y) > 3) s.moved = true;
+		function onMove(e: PointerEvent) {
+			const s = scratch.get(el)!;
+			if (!s.down || s.pointerId !== e.pointerId) return;
+			s.x = e.clientX - s.startX;
+			s.y = e.clientY - s.startY;
+			s.rot = s.x * 0.03 * (s.y / 80);
+			if (Math.abs(s.x) > 3 || Math.abs(s.y) > 3) s.moved = true;
 
-      // Only reflect swipe UI on the back side
-      el.style.transform = `translate(${s.x}px, ${s.y}px) rotate(${s.rot}deg)`;
-      swipeX = s.x;
-      setBadge(s.x);
-    }
+			// Only reflect swipe UI on the back side
+			el.style.transform = `translate(${s.x}px, ${s.y}px) rotate(${s.rot}deg)`;
+			swipeX = s.x;
+			setBadge(s.x);
+		}
 
-    function flyOutAndRemove(directionX: number, y: number) {
-      const s = scratch.get(el)!;
-      const moveOutWidth = document.body.clientWidth * 1.2;
-      const toX =
-        directionX > 0
-          ? Math.max(Math.abs(s.x), moveOutWidth)
-          : -Math.max(Math.abs(s.x), moveOutWidth);
-      const toY =
-        y >= 0 ? Math.abs(y) * MOVE_OUT_MULT : -Math.abs(y) * MOVE_OUT_MULT;
+		function flyOutAndRemove(directionX: number, y: number) {
+			const s = scratch.get(el)!;
+			const moveOutWidth = document.body.clientWidth * 1.2;
+			const toX =
+				directionX > 0
+					? Math.max(Math.abs(s.x), moveOutWidth)
+					: -Math.max(Math.abs(s.x), moveOutWidth);
+			const toY = y >= 0 ? Math.abs(y) * MOVE_OUT_MULT : -Math.abs(y) * MOVE_OUT_MULT;
 
-      el.classList.remove("moving");
-      el.style.transform = `translate(${toX}px, ${toY}px) rotate(${s.rot}deg)`;
-      el.dataset.removed = "1";
-      swipeX = 0;
-      isTopCardBack = false; // reset state
+			el.classList.remove('moving');
+			el.style.transform = `translate(${toX}px, ${toY}px) rotate(${s.rot}deg)`;
+			el.dataset.removed = '1';
+			swipeX = 0;
+			isTopCardBack = false; // reset state
 
-      setTimeout(() => {
-        clearBadge();
-        updateLayoutStack();
-      }, 200);
-    }
+			setTimeout(() => {
+				clearBadge();
+				updateLayoutStack();
+			}, 200);
+		}
 
-    function snapBack() {
-      el.classList.remove("moving");
-      el.style.transition = "transform 0.25s ease";
-      el.style.transform = "";
-      setTimeout(() => {
-        el.style.transition = "";
-        clearBadge();
-      }, 260);
-      const s = scratch.get(el)!;
-      s.x = 0;
-      s.y = 0;
-      s.rot = 0;
-      swipeX = 0;
-    }
+		function snapBack() {
+			el.classList.remove('moving');
+			el.style.transition = 'transform 0.25s ease';
+			el.style.transform = '';
+			setTimeout(() => {
+				el.style.transition = '';
+				clearBadge();
+			}, 260);
+			const s = scratch.get(el)!;
+			s.x = 0;
+			s.y = 0;
+			s.rot = 0;
+			swipeX = 0;
+		}
 
-    function onUp(e: PointerEvent) {
-      const s = scratch.get(el)!;
-      if (!s.down || s.pointerId !== e.pointerId) return;
-      s.down = false;
-      // decide
-      Math.abs(s.x) < THRESHOLD ? snapBack() : flyOutAndRemove(s.x, s.y);
-    }
+		function onUp(e: PointerEvent) {
+			const s = scratch.get(el)!;
+			if (!s.down || s.pointerId !== e.pointerId) return;
+			s.down = false;
+			// decide
+			Math.abs(s.x) < THRESHOLD ? snapBack() : flyOutAndRemove(s.x, s.y);
+		}
 
-    // Click-to-flip (front<->back), but ignore if it was actually a drag
-    function onClick() {
-      const s = scratch.get(el)!;
-      if (s.down || s.moved) {
-        return; // was a drag, not a click
-      }
+		// Click-to-flip (front<->back), but ignore if it was actually a drag
+		function onClick() {
+			const s = scratch.get(el)!;
+			if (s.down || s.moved) {
+				return; // was a drag, not a click
+			}
 
-      s.isBack = !s.isBack;
-      el.classList.toggle("is-back", s.isBack);
-      isTopCardBack = s.isBack;
-      // Reset swipe UI when flipping to front
-      if (!s.isBack) {
-        swipeX = 0;
-        clearBadge();
-      }
-    }
+			s.isBack = !s.isBack;
+			el.classList.toggle('is-back', s.isBack);
+			isTopCardBack = s.isBack;
+			// Reset swipe UI when flipping to front
+			if (!s.isBack) {
+				swipeX = 0;
+				clearBadge();
+			}
+		}
 
-    el.addEventListener("pointerdown", onDown);
-    el.addEventListener("pointermove", onMove);
-    el.addEventListener("pointerup", onUp);
-    el.addEventListener("pointercancel", onUp);
-    el.addEventListener("click", onClick);
-  }
+		el.addEventListener('pointerdown', onDown);
+		el.addEventListener('pointermove', onMove);
+		el.addEventListener('pointerup', onUp);
+		el.addEventListener('pointercancel', onUp);
+		el.addEventListener('click', onClick);
+	}
 
-  function programmaticSwipe(isYes: boolean) {
-    const el = topCardEl();
-    if (!el || isClickAndSwiping) {
-      return;
-    }
+	function programmaticSwipe(isYes: boolean) {
+		const el = topCardEl();
+		if (!el || isClickAndSwiping) {
+			return;
+		}
 
-    const s = scratch.get(el);
-    // Only allow button swipe on back side
-    if (!s?.isBack) {
-      return;
-    }
+		const s = scratch.get(el);
+		// Only allow button swipe on back side
+		if (!s?.isBack) {
+			return;
+		}
 
-    isClickAndSwiping = true;
-    el.classList.add("click-and-swiping");
+		isClickAndSwiping = true;
+		el.classList.add('click-and-swiping');
 
-    const st = s || {
-      x: 0,
-      y: 0,
-      rot: isYes ? -0.3 : 0.3,
-      down: false,
-      startX: 0,
-      startY: 0,
-      pointerId: -1,
-      showAnswer: false,
-      isBack: true,
-      moved: false,
-    };
-    scratch.set(el, st);
-    st.x = isYes ? 200 : -200;
-    st.y = -80;
-    isTopCardBack = false; // reset state
+		const st = s || {
+			x: 0,
+			y: 0,
+			rot: isYes ? -0.3 : 0.3,
+			down: false,
+			startX: 0,
+			startY: 0,
+			pointerId: -1,
+			showAnswer: false,
+			isBack: true,
+			moved: false,
+		};
+		scratch.set(el, st);
+		st.x = isYes ? 200 : -200;
+		st.y = -80;
+		isTopCardBack = false; // reset state
 
-    requestAnimationFrame(() => {
-      const moveOutWidth = document.body.clientWidth * 1.2 * (isYes ? 1 : -1);
-      el.style.transform = `translate(${moveOutWidth}px, -120px) rotate(${st.rot}deg)`;
-      el.dataset.removed = "1";
+		requestAnimationFrame(() => {
+			const moveOutWidth = document.body.clientWidth * 1.2 * (isYes ? 1 : -1);
+			el.style.transform = `translate(${moveOutWidth}px, -120px) rotate(${st.rot}deg)`;
+			el.dataset.removed = '1';
 
-      setTimeout(() => {
-        el.classList.remove("click-and-swiping"); // clean up
-        el.style.transition = "";
-        clearBadge();
-        updateLayoutStack();
-      }, 300);
-    });
+			setTimeout(() => {
+				el.classList.remove('click-and-swiping'); // clean up
+				el.style.transition = '';
+				clearBadge();
+				updateLayoutStack();
+			}, 300);
+		});
 
-    setTimeout(() => {
-      isClickAndSwiping = false;
-    }, 1000);
-  }
+		setTimeout(() => {
+			isClickAndSwiping = false;
+		}, 1000);
+	}
 
-  type FrontFace = {
-    title: string;
-    lessonDate: string | null;
-    chips: string[];
-    phonics?: string;
-  };
-  type BackFace = {
-    title: string;
-    subtitle?: string;
-    head?: string;
-    lessonDate: string | null;
-    example: string | null;
-    syns: string[];
-    ants: string[];
-  };
+	type FrontFace = {
+		title: string;
+		lessonDate: string | null;
+		chips: string[];
+		phonics?: string;
+	};
+	type BackFace = {
+		title: string;
+		subtitle?: string;
+		head?: string;
+		lessonDate: string | null;
+		example: string | null;
+		syns: string[];
+		ants: string[];
+	};
 
-  // Compute what to show on each face from a Card + direction + mode
-  function faceFront(c: WordItem, dir: StudyDirection): FrontFace {
-    const mode = "learn"; // hardcode for now
-    if (dir === "EN_ZH") {
-      return {
-        title: c.content,
-        lessonDate: new Date(c.lessonDate).toLocaleDateString("zh-TW"),
-        chips: [c.type, c.note].filter(Boolean) as string[],
-        phonics: c.phonics,
-      };
-    } else {
-      return {
-        title: c.chineseExplain || "—",
-        lessonDate: new Date(c.lessonDate).toLocaleDateString("zh-TW"),
-        chips: [c.type, c.note].filter(Boolean) as string[],
-        phonics: undefined,
-      };
-    }
-  }
+	// Compute what to show on each face from a Card + direction + mode
+	function faceFront(c: WordItem, dir: StudyDirection): FrontFace {
+		const mode = 'learn'; // hardcode for now
+		if (dir === 'EN_ZH') {
+			return {
+				title: c.content,
+				lessonDate: new Date(c.lessonDate).toLocaleDateString('zh-TW'),
+				chips: [c.type, c.note].filter(Boolean) as string[],
+				phonics: c.phonics,
+			};
+		} else {
+			return {
+				title: c.chineseExplain || '—',
+				lessonDate: new Date(c.lessonDate).toLocaleDateString('zh-TW'),
+				chips: [c.type, c.note].filter(Boolean) as string[],
+				phonics: undefined,
+			};
+		}
+	}
 
-  function faceBack(c: WordItem, dir: StudyDirection): BackFace {
-    if (dir === "EN_ZH") {
-      return {
-        title: c.chineseExplain || "—",
-        lessonDate: new Date(c.lessonDate).toLocaleDateString("zh-TW"),
-        example: c.example || null,
-        syns: c.synonyms?.split(", ") || [],
-        ants: c.antonyms?.split(", ") || [],
-      };
-    } else {
-      return {
-        title: c.content,
-        subtitle: c.engExplain,
-        head: c.phonics,
-        lessonDate: new Date(c.lessonDate).toLocaleDateString("zh-TW"),
-        example: c.example || null,
-        syns: c.synonyms?.split(", ") || [],
-        ants: c.antonyms?.split(", ") || [],
-      };
-    }
-  }
+	function faceBack(c: WordItem, dir: StudyDirection): BackFace {
+		if (dir === 'EN_ZH') {
+			return {
+				title: c.chineseExplain || '—',
+				lessonDate: new Date(c.lessonDate).toLocaleDateString('zh-TW'),
+				example: c.example || null,
+				syns: c.synonyms?.split(', ') || [],
+				ants: c.antonyms?.split(', ') || [],
+			};
+		} else {
+			return {
+				title: c.content,
+				subtitle: c.engExplain,
+				head: c.phonics,
+				lessonDate: new Date(c.lessonDate).toLocaleDateString('zh-TW'),
+				example: c.example || null,
+				syns: c.synonyms?.split(', ') || [],
+				ants: c.antonyms?.split(', ') || [],
+			};
+		}
+	}
 
-  $effect(() => {
-    if (!cardsWrap) {
-      return;
-    }
+	$effect(() => {
+		if (!cardsWrap) {
+			return;
+		}
 
-    const els = Array.from(
-      cardsWrap.querySelectorAll<HTMLElement>(".swipe--card")
-    );
-    els.forEach(attachDrag);
-    updateLayoutStack();
-  });
+		const els = Array.from(cardsWrap.querySelectorAll<HTMLElement>('.swipe--card'));
+		els.forEach(attachDrag);
+		updateLayoutStack();
+	});
 </script>
 
 <div class="swipe" bind:this={root}>
-  <div class="swipe--status">
-    <span class="icon no" style="opacity:{noOpacity}">
-      <Icon
-        icon="solar:close-square-outline"
-        class={noOpacity === 1 ? "text-rose-500" : ""}
-      />
-    </span>
-    <span class="icon yes" style="opacity:{yesOpacity}">
-      <Icon
-        icon="solar:check-square-outline"
-        class={yesOpacity === 1 ? "text-emerald-500" : ""}
-      />
-    </span>
-  </div>
+	<div class="swipe--status">
+		<span class="icon no" style="opacity:{noOpacity}">
+			<Icon
+				icon="solar:close-square-outline"
+				class={noOpacity === 1 ? 'text-rose-500' : ''}
+			/>
+		</span>
+		<span class="icon yes" style="opacity:{yesOpacity}">
+			<Icon
+				icon="solar:check-square-outline"
+				class={yesOpacity === 1 ? 'text-emerald-500' : ''}
+			/>
+		</span>
+	</div>
 
-  <div class="swipe--cards" bind:this={cardsWrap}>
-    {#each wordList as c, i (`${c.id ?? "no-id"}-${i}`)}
-      {@const f = faceFront(c, studyDirection) as FrontFace}
-      {@const b = faceBack(c, studyDirection) as BackFace}
-      <div class="swipe--card">
-        <!-- 3D flip container -->
-        <div class="card-inner">
-          <!-- FRONT -->
-          <div class="card-face card-front py-10 px-4 bg-white">
-            <h2 class="headline">{f.title}</h2>
-            {#if f.phonics}<div class="hint">{f.phonics}</div>{/if}
-            {#if f.lessonDate}
-              <div class="lesson-date chip">{f.lessonDate}</div>
-            {/if}
-            {#if f.chips?.length}
-              <div class="chips">
-                {#each f.chips as chip}<span class="chip">{chip}</span>{/each}
-              </div>
-            {/if}
-          </div>
+	<div class="swipe--cards" bind:this={cardsWrap}>
+		{#each wordList as c, i (`${c.id ?? 'no-id'}-${i}`)}
+			{@const f = faceFront(c, studyDirection) as FrontFace}
+			{@const b = faceBack(c, studyDirection) as BackFace}
+			<div class="swipe--card">
+				<!-- 3D flip container -->
+				<div class="card-inner">
+					<!-- FRONT -->
+					<div class="card-face card-front py-10 px-4 bg-white">
+						<h2 class="headline">{f.title}</h2>
+						{#if f.phonics}<div class="hint">{f.phonics}</div>{/if}
+						{#if f.lessonDate}
+							<div class="lesson-date chip">{f.lessonDate}</div>
+						{/if}
+						{#if f.chips?.length}
+							<div class="chips">
+								{#each f.chips as chip}<span class="chip">{chip}</span>{/each}
+							</div>
+						{/if}
+					</div>
 
-          <!-- BACK -->
-          <div class="card-face card-back py-10 px-4 bg-stone-200">
-            <h2 class="headline">{b.title}</h2>
-            {#if b.head}<div class="ipa">{b.head}</div>{/if}
-            {#if b.subtitle}<div class="subtitle">{b.subtitle}</div>{/if}
-            {#if f.lessonDate}
-              <div class="lesson-date chip">{f.lessonDate}</div>
-            {/if}
-            {#if b.example}<p class="example">{b.example}</p>{/if}
-            <div class="rows">
-              {#if b.syns.length}
-                <div class="row">
-                  <label>Syn</label>{#each b.syns as s}<span class="pill"
-                      >{s}</span
-                    >{/each}
-                </div>
-              {/if}
-              {#if b.ants.length}
-                <div class="row">
-                  <label>Ant</label>{#each b.ants as a}<span class="pill"
-                      >{a}</span
-                    >{/each}
-                </div>
-              {/if}
-            </div>
-          </div>
-        </div>
-      </div>
-    {/each}
-  </div>
+					<!-- BACK -->
+					<div class="card-face card-back py-10 px-4 bg-slate-300">
+						<h2 class="headline">{b.title}</h2>
+						{#if b.head}<div class="ipa">{b.head}</div>{/if}
+						{#if b.subtitle}<div class="subtitle">{b.subtitle}</div>{/if}
+						{#if f.lessonDate}
+							<div class="lesson-date chip">{f.lessonDate}</div>
+						{/if}
+						{#if b.example}<p class="example">{b.example}</p>{/if}
+						<div class="rows">
+							{#if b.syns.length}
+								<div class="row">
+									<label>Syn</label>{#each b.syns as s}<span class="pill"
+											>{s}</span
+										>{/each}
+								</div>
+							{/if}
+							{#if b.ants.length}
+								<div class="row">
+									<label>Ant</label>{#each b.ants as a}<span class="pill"
+											>{a}</span
+										>{/each}
+								</div>
+							{/if}
+						</div>
+					</div>
+				</div>
+			</div>
+		{/each}
+	</div>
 
-  <div class="swipe--buttons">
-    <button
-      id="no"
-      on:click={() => programmaticSwipe(false)}
-      disabled={isClickAndSwiping || !isTopCardBack}
-      aria-label="No"
-      ><Icon icon="solar:close-square-bold" class="text-rose-700" /></button
-    >
-    <button
-      id="yes"
-      on:click={() => programmaticSwipe(true)}
-      disabled={isClickAndSwiping || !isTopCardBack}
-      aria-label="Yes"
-      ><Icon icon="solar:check-square-bold" class="text-emerald-500" /></button
-    >
-  </div>
+	<div class="swipe--buttons">
+		<button
+			id="no"
+			onclick={() => programmaticSwipe(false)}
+			disabled={isClickAndSwiping || !isTopCardBack}
+			aria-label="No"><Icon icon="solar:close-square-bold" class="text-rose-700" /></button
+		>
+		<button
+			id="yes"
+			onclick={() => programmaticSwipe(true)}
+			disabled={isClickAndSwiping || !isTopCardBack}
+			aria-label="Yes"
+			><Icon icon="solar:check-square-bold" class="text-emerald-500" /></button
+		>
+	</div>
 </div>
 
 <style>
-  *,
-  *::before,
-  *::after {
-    box-sizing: border-box;
-  }
-  :global(body) {
-    background: oklch(97% 0.001 106.424);
-    overflow: hidden;
-    font-family: sans-serif;
-  }
+	*,
+	*::before,
+	*::after {
+		box-sizing: border-box;
+	}
+	.swipe {
+		width: 100vw;
+		height: 85vh;
+		display: flex;
+		flex-direction: column;
+		position: relative;
+	}
+	.swipe--status {
+		position: absolute;
+		top: 50%;
+		display: flex;
+		justify-content: space-around;
+		margin-top: -30px;
+		z-index: 100;
+		width: 100%;
+		text-align: center;
+		pointer-events: none;
+	}
+	.swipe--status .icon {
+		font-size: 150px;
+		transform: scale(0.3);
+		transition: all 0.2s;
+	}
+	.swipe--cards {
+		flex-grow: 1;
+		padding-top: 40px;
+		display: flex;
+		justify-content: center;
+		align-items: flex-end;
+	}
 
-  .swipe {
-    width: 100vw;
-    height: 85vh;
-    display: flex;
-    flex-direction: column;
-    position: relative;
-  }
-  .swipe--status {
-    position: absolute;
-    top: 50%;
-    display: flex;
-    justify-content: space-around;
-    margin-top: -30px;
-    z-index: 100;
-    width: 100%;
-    text-align: center;
-    pointer-events: none;
-  }
-  .swipe--status .icon {
-    font-size: 150px;
-    transform: scale(0.3);
-    transition: all 0.2s;
-  }
-  .swipe--cards {
-    flex-grow: 1;
-    padding-top: 40px;
-    display: flex;
-    justify-content: center;
-    align-items: flex-end;
-  }
+	.swipe--card {
+		display: inline-block;
+		width: 90vw;
+		max-width: 400px;
+		height: 70vh;
+		position: absolute;
+		border-radius: 8px;
+		overflow: hidden;
+		will-change: transform;
+		touch-action: none;
+		backface-visibility: hidden;
+		contain: layout paint;
+	}
+	/* 3D flip scaffolding */
+	.swipe--card .card-inner {
+		position: relative;
+		width: 100%;
+		height: 100%;
+		transform-style: preserve-3d;
+		transition: transform 0.35s ease;
+		will-change: transform;
+	}
+	:global(.swipe--card.is-back) .card-inner {
+		transform: rotateY(180deg);
+	}
 
-  .swipe--card {
-    display: inline-block;
-    width: 90vw;
-    max-width: 400px;
-    height: 70vh;
-    position: absolute;
-    border-radius: 8px;
-    overflow: hidden;
-    will-change: transform;
-    touch-action: none;
-    backface-visibility: hidden;
-    contain: layout paint;
-  }
-  /* 3D flip scaffolding */
-  .swipe--card .card-inner {
-    position: relative;
-    width: 100%;
-    height: 100%;
-    transform-style: preserve-3d;
-    transition: transform 0.35s ease;
-    will-change: transform;
-  }
-  :global(.swipe--card.is-back) .card-inner {
-    transform: rotateY(180deg);
-  }
+	.card-face {
+		position: absolute;
+		inset: 0;
+		display: flex;
+		gap: 8px;
+		flex-direction: column;
+		align-items: center;
+		backface-visibility: hidden;
+		border-radius: 8px;
+		overflow: hidden;
+	}
 
-  .card-face {
-    position: absolute;
-    inset: 0;
-    display: flex;
-    gap: 8px;
-    flex-direction: column;
-    align-items: center;
-    backface-visibility: hidden;
-    border-radius: 8px;
-    overflow: hidden;
-  }
+	.card-front .q {
+		margin-top: 24px;
+		font-size: 28px;
+		padding: 0 16px;
+		pointer-events: none;
+	}
+	.card-back .a {
+		margin-top: 24px;
+		font-size: 20px;
+		padding: 0 16px;
+		pointer-events: none;
+	}
 
-  .card-front .q {
-    margin-top: 24px;
-    font-size: 28px;
-    padding: 0 16px;
-    pointer-events: none;
-  }
-  .card-back .a {
-    margin-top: 24px;
-    font-size: 20px;
-    padding: 0 16px;
-    pointer-events: none;
-  }
+	.card-back {
+		transform: rotateY(180deg);
+	}
 
-  .card-back {
-    transform: rotateY(180deg);
-  }
+	.headline {
+		margin-top: 16px;
+		font-size: 28px;
+		text-align: center;
+	}
+	.subtitle {
+		margin-top: 6px;
+		font-size: 15px;
+		opacity: 0.7;
+		text-align: center;
+	}
+	.hint {
+		margin-top: 10px;
+		font-size: 16px;
+		opacity: 0.8;
+		text-align: center;
+	}
+	.lesson-date {
+		position: absolute;
+		bottom: 10px;
+		left: 10px;
+		display: flex;
+		gap: 6px;
+		flex-wrap: wrap;
+	}
+	.chips {
+		position: absolute;
+		top: 10px;
+		left: 10px;
+		display: flex;
+		gap: 6px;
+		flex-wrap: wrap;
+	}
+	.chip {
+		font-size: 12px;
+		padding: 2px 6px;
+		border-radius: 999px;
+		background: #eef;
+	}
+	.ipa {
+		margin-top: 8px;
+		font-size: 16px;
+		opacity: 0.9;
+		text-align: center;
+	}
+	.example {
+		margin: 14px 16px;
+		font-size: 16px;
+		line-height: 1.4;
+	}
+	.rows {
+		margin: 10px 12px;
+		display: flex;
+		flex-direction: column;
+		gap: 10px;
+	}
+	.row {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+	}
+	.row label {
+		font-size: 12px;
+		opacity: 0.6;
+	}
+	.pill {
+		font-size: 12px;
+		padding: 2px 6px;
+		border-radius: 999px;
+		background: #f3f4f6;
+	}
 
-  .headline {
-    margin-top: 16px;
-    font-size: 28px;
-    text-align: center;
-  }
-  .subtitle {
-    margin-top: 6px;
-    font-size: 15px;
-    opacity: 0.7;
-    text-align: center;
-  }
-  .hint {
-    margin-top: 10px;
-    font-size: 16px;
-    opacity: 0.8;
-    text-align: center;
-  }
-  .lesson-date {
-    position: absolute;
-    bottom: 10px;
-    left: 10px;
-    display: flex;
-    gap: 6px;
-    flex-wrap: wrap;
-  }
-  .chips {
-    position: absolute;
-    top: 10px;
-    left: 10px;
-    display: flex;
-    gap: 6px;
-    flex-wrap: wrap;
-  }
-  .chip {
-    font-size: 12px;
-    padding: 2px 6px;
-    border-radius: 999px;
-    background: #eef;
-  }
-  .ipa {
-    margin-top: 8px;
-    font-size: 16px;
-    opacity: 0.9;
-    text-align: center;
-  }
-  .example {
-    margin: 14px 16px;
-    font-size: 16px;
-    line-height: 1.4;
-  }
-  .rows {
-    margin: 10px 12px;
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-  }
-  .row {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-  }
-  .row label {
-    font-size: 12px;
-    opacity: 0.6;
-  }
-  .pill {
-    font-size: 12px;
-    padding: 2px 6px;
-    border-radius: 999px;
-    background: #f3f4f6;
-  }
+	:global(.swipe--card.moving) {
+		transition: none;
+		cursor: grabbing;
+	}
+	:global(.swipe--card.click-and-swiping) {
+		transition: transform 0.3s ease-in-out;
+	}
 
-  :global(.swipe--card.moving) {
-    transition: none;
-    cursor: grabbing;
-  }
-  :global(.swipe--card.click-and-swiping) {
-    transition: transform 0.3s ease-in-out;
-  }
+	.swipe--buttons {
+		display: flex;
+		justify-content: center;
+		gap: 8px;
+		padding-top: 20px;
+	}
+	.swipe--buttons button {
+		font-size: 64px;
+		cursor: pointer;
+	}
+	.swipe--buttons button:hover {
+		transform: translateY(-1px);
+	}
+	.swipe--buttons button:active {
+		transform: translateY(0);
+	}
+	.swipe--buttons button:focus-visible {
+		outline: 2px solid #0ea5e9; /* sky-500 */
+		outline-offset: 2px;
+	}
 
-  .swipe--buttons {
-    display: flex;
-    justify-content: center;
-    gap: 8px;
-    padding-top: 20px;
-  }
-  .swipe--buttons button {
-    font-size: 64px;
-    cursor: pointer;
-  }
-  .swipe--buttons button:hover {
-    transform: translateY(-1px);
-  }
-  .swipe--buttons button:active {
-    transform: translateY(0);
-  }
-  .swipe--buttons button:focus-visible {
-    outline: 2px solid #0ea5e9; /* sky-500 */
-    outline-offset: 2px;
-  }
-
-  .swipe--buttons button:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
+	.swipe--buttons button:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
+	}
 </style>

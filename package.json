@@ -40,6 +40,8 @@
 	},
 	"dependencies": {
 		"@iconify-json/solar": "^1.2.4",
-		"@iconify/svelte": "^5.0.1"
+		"@iconify/svelte": "^5.0.1",
+		"@sveltejs/adapter-static": "^3.0.9",
+		"classnames": "^2.5.1"
 	}
 }
