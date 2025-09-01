@@ -1,3 +1,5 @@
+export type StudyDirection = 'EN_ZH' | 'ZH_EN';
+
 export type ReviewStage = 1|2|3|4|5;
 
 export interface WordItem {
