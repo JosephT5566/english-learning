@@ -39,10 +39,12 @@
 		"vite-plugin-devtools-json": "^1.0.0"
 	},
 	"dependencies": {
+		"@iconify-json/logos": "^1.2.9",
 		"@iconify-json/solar": "^1.2.4",
 		"@iconify-json/svg-spinners": "^1.2.4",
 		"@iconify/svelte": "^5.0.1",
 		"@sveltejs/adapter-static": "^3.0.9",
+		"@types/google.accounts": "^0.0.17",
 		"@types/lodash": "^4.17.20",
 		"classnames": "^2.5.1",
 		"lodash": "^4.17.21"

@@ -2,16 +2,22 @@
 	import { onMount } from 'svelte';
 	import { resolve } from '$app/paths';
 	import classnames from 'classnames';
+	import Icon from '@iconify/svelte';
+	import { getIsSignedIn, signIn } from '$lib/auth';
 
 	let todayStr = $state('');
 	let testedToday = $state(false);
 	let pageTitle = $derived(`${todayStr}\n Welcome back Joseph! Ready for today's learning?`);
+
+	let isSignedIn = $state(false);
 
 	onMount(() => {
 		const d = new Date();
 		const mm = String(d.getMonth() + 1).padStart(2, '0');
 		const dd = String(d.getDate()).padStart(2, '0');
 		todayStr = `${mm}/${dd}`;
+
+		isSignedIn = getIsSignedIn();
 
 		try {
 			const v = localStorage.getItem('isTestedToday');
@@ -36,26 +42,66 @@
 			: "You haven't done your review yet today.\n Let's start it!"}
 	</h2>
 
-	<button
-		class={classnames(
-			'font-[Contrail_One]',
-			'start-btn',
-			'px-5',
-			'py-4',
-			'mt-10',
-			'text-xl',
-			'text-neutral-100',
-			'decoration-0',
-			'rounded-lg',
-			'bg-emerald-500',
-			'hover:bg-emerald-600',
-			'cursor-pointer',
-			'transition'
-		)}
-		onclick={() => (window.location.href = resolve('/review'))}
-	>
-		Start
-	</button>
+	{#if isSignedIn}
+		<button
+			class={classnames(
+				'font-[Contrail_One]',
+				'start-btn',
+				'px-5',
+				'py-4',
+				'mt-10',
+				'text-xl',
+				'text-neutral-100',
+				'decoration-0',
+				'rounded-lg',
+				'bg-emerald-500',
+				'hover:bg-emerald-600',
+				'cursor-pointer',
+				'transition'
+			)}
+			onclick={() => (window.location.href = resolve('/review'))}
+		>
+			Start
+		</button>
+	{:else}
+		<!-- google login button -->
+		<button
+			class={classnames(
+				'font-[Contrail_One]',
+				'start-btn',
+				'px-5',
+				'py-4',
+				'mt-10',
+				'text-xl',
+				'text-neutral-800',
+				'border-3',
+				'border-slate-500',
+				'decoration-0',
+				'rounded-lg',
+				'bg-slate-100',
+				'hover:bg-slate-200',
+				'cursor-pointer',
+				'transition'
+			)}
+			onclick={() => {
+				signIn()
+					.then(() => {
+						isSignedIn = true;
+					})
+					.catch((e) => {
+						alert(e.message);
+					});
+			}}
+		>
+			<Icon
+				icon="logos:google-icon"
+				width="24px"
+				height="24px"
+				class="inline-block mr-2 -mt-1"
+			/>
+			Login with Google
+		</button>
+	{/if}
 </section>
 
 <style>
