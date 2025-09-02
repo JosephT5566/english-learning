@@ -2,6 +2,9 @@
 
 <script lang="ts">
 	import type { WordItem, StudyDirection } from '$lib/types';
+	import { calNewEaseFactor } from '$lib/utils';
+	import { setNewField, newFields } from '$lib/stores/review';
+	import _clamp from 'lodash/clamp';
 	import Icon from '@iconify/svelte';
 
 	// 透過 runes 取得 props
@@ -31,6 +34,8 @@
 	let swipeX = $state(0);
 	let isTopCardBack = $state(false);
 	let isClickAndSwiping = $state(false);
+	let currentWordIndex = $state(0);
+	let currentWord = $derived(wordList[0] || null);
 
 	const THRESHOLD = 250; // fly-out decision
 	const MOVE_OUT_MULT = 1.5;
@@ -38,10 +43,28 @@
 	const yesOpacity = $derived(swipeX > 0 ? Math.min(Math.abs(swipeX) / THRESHOLD, 1) : 0);
 	const noOpacity = $derived(swipeX < 0 ? Math.min(Math.abs(swipeX) / THRESHOLD, 1) : 0);
 
+	$effect(() => {
+		// update currentWord when currentWordIndex changes
+		currentWord = wordList[currentWordIndex];
+	});
+
+	// $effect(() => {
+	//     console.log('Current word', currentWord);
+	// });
+
+	// $effect(() => {
+	// 	console.log('new Fields', $newFields);
+	// });
+
+	// Warning: this function is called when the card flips or is swiped away, make sure related logic is correct.
 	function topCardEl(): HTMLElement | null {
 		// first non-removed card (highest z) is the last child
 		const els = Array.from(cardsWrap.querySelectorAll<HTMLElement>('.swipe--card'));
-		return els.find((el) => !el.dataset.removed) || null;
+		const topCard = els.find((el) => !el.dataset.removed) || null;
+		const topCardIndex = els.findIndex((el) => !el.dataset.removed) || 0;
+		currentWordIndex = topCardIndex;
+
+		return topCard;
 	}
 
 	function updateLayoutStack() {
@@ -127,6 +150,10 @@
 			swipeX = 0;
 			isTopCardBack = false; // reset state
 
+			const quality = directionX > 0 ? 5 : 0;
+
+            updateFinishedCardToStore(quality, directionX > 0);
+
 			setTimeout(() => {
 				clearBadge();
 				updateLayoutStack();
@@ -180,7 +207,7 @@
 		el.addEventListener('click', onClick);
 	}
 
-	function programmaticSwipe(isYes: boolean) {
+	function programmaticSwipe(isYes: boolean, quality: number) {
 		const el = topCardEl();
 		if (!el || isClickAndSwiping) {
 			return;
@@ -212,6 +239,8 @@
 		st.y = -80;
 		isTopCardBack = false; // reset state
 
+        updateFinishedCardToStore(quality, isYes);
+
 		requestAnimationFrame(() => {
 			const moveOutWidth = document.body.clientWidth * 1.2 * (isYes ? 1 : -1);
 			el.style.transform = `translate(${moveOutWidth}px, -120px) rotate(${st.rot}deg)`;
@@ -228,6 +257,12 @@
 		setTimeout(() => {
 			isClickAndSwiping = false;
 		}, 1000);
+	}
+
+	function updateFinishedCardToStore(quality: number, isYes: boolean) {
+		const newEaseFactor = calNewEaseFactor(currentWord?.easeFactor, quality);
+		const newStage = isYes ? currentWord.reviewStage + 1 : currentWord.reviewStage - 1;
+		setNewField(Number(currentWord?.id), _clamp(newStage, 1, 5), newEaseFactor);
 	}
 
 	type FrontFace = {
@@ -370,17 +405,45 @@
 	<div class="swipe--buttons">
 		<button
 			id="no"
-			onclick={() => programmaticSwipe(false)}
+			onclick={() => programmaticSwipe(false, 0)}
 			disabled={isClickAndSwiping || !isTopCardBack}
-			aria-label="No"><Icon icon="solar:close-square-bold" class="text-rose-700" /></button
+			aria-label="No"
 		>
+			<Icon icon="solar:close-square-bold" class="text-rose-700" width="60px" height="60px" />
+		</button>
+		<button
+			id="no-a-bit"
+			class="ml-5 text-rose-700"
+			onclick={() => programmaticSwipe(false, 2)}
+			disabled={isClickAndSwiping || !isTopCardBack}
+			aria-label="No A Bit"
+		>
+			<Icon icon="solar:close-square-outline" width="40px" height="40px" />
+			<span>a bit</span>
+		</button>
+		<button
+			id="yes-a-bit"
+			class="mr-5 text-emerald-500"
+			onclick={() => programmaticSwipe(true, 3)}
+			disabled={isClickAndSwiping || !isTopCardBack}
+			aria-label="Yes A Bit"
+		>
+			<Icon icon="solar:check-square-outline" width="40px" height="40px" />
+			<span>a bit</span>
+		</button>
 		<button
 			id="yes"
-			onclick={() => programmaticSwipe(true)}
+			onclick={() => programmaticSwipe(true, 5)}
 			disabled={isClickAndSwiping || !isTopCardBack}
 			aria-label="Yes"
-			><Icon icon="solar:check-square-bold" class="text-emerald-500" /></button
 		>
+			<Icon
+				icon="solar:check-square-bold"
+				class="text-emerald-500"
+				width="60px"
+				height="60px"
+			/>
+		</button>
 	</div>
 </div>
 
@@ -563,7 +626,6 @@
 		padding-top: 20px;
 	}
 	.swipe--buttons button {
-		font-size: 64px;
 		cursor: pointer;
 	}
 	.swipe--buttons button:hover {
