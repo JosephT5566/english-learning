@@ -33,6 +33,7 @@ jobs:
       - name: Build
         env:
           PUBLIC_APP_SCRIPT_URL: ${{ vars.PUBLIC_APP_SCRIPT_URL }}
+          PUBLIC_APP_SCRIPT_TOKEN: ${{ secrets.APPS_SCRIPT_SECRET }}
           BASE_PATH: '/${{ github.event.repository.name }}'
         run: npm run build
 
