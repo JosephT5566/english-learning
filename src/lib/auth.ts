@@ -149,9 +149,9 @@ export function signIn(): Promise<{ token: string; payload: JwtPayload }> {
 
 // 在需要時（頁面載入或提交前）確保有有效 token；沒有就彈登入
 export async function getValidTokenOrPrompt() {
-	const existing = getTokenIfValid();
-	if (existing) {
-		return { token: existing, payload: decodeJwt(existing) };
+	const token = getTokenIfValid();
+	if (token) {
+		return { token: token, payload: decodeJwt(token) };
 	}
 	// 沒有或快過期 → 重新登入（回傳 Promise）
 	return await signIn();

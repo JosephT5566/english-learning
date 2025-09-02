@@ -1,6 +1,7 @@
 import type { UpdateFields, WordItem, WordListResponse } from '$lib/types';
-import { PUBLIC_APP_SCRIPT_URL, PUBLIC_APP_SCRIPT_TOKEN } from '$env/static/public';
+import { PUBLIC_APP_SCRIPT_URL } from '$env/static/public';
 import { mockWordItems } from './mock';
+import { getValidTokenOrPrompt } from '$lib/auth';
 
 const ENDPOINT = PUBLIC_APP_SCRIPT_URL; // .env 讀
 
@@ -40,12 +41,17 @@ export async function getWordList(): Promise<WordItem[]> {
 // }
 
 export async function updateReview(updateFields: UpdateFields) {
+  const idToken = await getValidTokenOrPrompt();
+  if (!idToken) {
+    throw new Error('No valid token for updateReview');
+  }
+
 	const res = await fetch(ENDPOINT, {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify({
 			op: 'updateReview',
-			token: PUBLIC_APP_SCRIPT_TOKEN,
+			token: idToken,
 			fields: updateFields,
 		}),
 	});

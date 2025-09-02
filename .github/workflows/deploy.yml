@@ -35,7 +35,6 @@ jobs:
           PUBLIC_APP_SCRIPT_URL: ${{ vars.PUBLIC_APP_SCRIPT_URL }}
           PUBLIC_GOOGLE_AUTH_CLIENT_ID: ${{ vars.PUBLIC_GOOGLE_AUTH_CLIENT_ID }}
           PUBLIC_EMAIL_WHITE_LIST: ${{ vars.PUBLIC_EMAIL_WHITE_LIST }}
-          PUBLIC_APP_SCRIPT_TOKEN: ${{ secrets.APPS_SCRIPT_SECRET }}
           BASE_PATH: '/${{ github.event.repository.name }}'
         run: npm run build
 
