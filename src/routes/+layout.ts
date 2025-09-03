@@ -7,7 +7,7 @@ import { base } from '$app/paths'; // using the paths.base set in svelte.config.
 export const load: LayoutLoad = async ({ url }) => {
     // 僅在瀏覽器端檢查（localStorage 僅存在於瀏覽器）
     if (browser) {
-        const isHome = url.pathname === '/';
+        const isHome = url.pathname === `${base}/`;
         if (!isHome && !getIsSignedIn()) {
             throw redirect(307, `${base}/`);
         }
