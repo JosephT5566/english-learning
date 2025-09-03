@@ -26,24 +26,44 @@
 
 	let isLoading = $state(false);
 	let showDone = $state(false);
+	let showFail = $state(false);
 	let didFinish = $state(false);
 	let doneTimer: ReturnType<typeof setTimeout> | undefined;
+	let failTimer: ReturnType<typeof setTimeout> | undefined;
 
 	onDestroy(() => {
 		if (doneTimer) {
 			clearTimeout(doneTimer);
 		}
+		if (failTimer) {
+			clearTimeout(failTimer);
+		}
 	});
 
 	async function handleClick() {
-		if (isLoading || disabled || !onRun) return;
+		if (isLoading || disabled || !onRun) {
+			return;
+		}
 		isLoading = true;
+		showFail = false;
+
 		try {
 			await onRun();
 			didFinish = true;
 			showDone = true;
+
+			if (doneTimer) clearTimeout(doneTimer);
 			doneTimer = setTimeout(() => {
 				showDone = false;
+			}, 1000);
+		} catch (err) {
+			const message = err instanceof Error ? err.message : String(err);
+			alert(`[AsyncButton] onRun error: ${message}`);
+			showFail = true;
+
+			if (failTimer) clearTimeout(failTimer);
+			failTimer = setTimeout(() => {
+				showFail = false;
 			}, 1000);
 		} finally {
 			isLoading = false;
@@ -59,15 +79,15 @@
 	disabled={disabled || isLoading || (disableAfterFinish && didFinish)}
 	onclick={handleClick}
 >
-	<span class:opacity-0={isLoading || showDone}>
+	<span class:opacity-0={isLoading || showDone || showFail}>
 		{@render children()}
 	</span>
 
-    {#if showDone}
-        <span class="btn-overlay text-rose-300" aria-hidden="true">
-            Done
-        </span>
-    {/if}
+	{#if showDone}
+		<span class="btn-overlay text-rose-300" aria-hidden="true"> Done </span>
+	{:else if showFail}
+		<span class="btn-overlay text-red-300" aria-hidden="true"> Fail </span>
+	{/if}
 
 	{#if isLoading}
 		<span class="btn-overlay text-amber-100" aria-hidden="true">

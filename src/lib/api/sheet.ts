@@ -1,4 +1,10 @@
-import type { UpdateFields, WordItem, WordListResponse } from '$lib/types';
+import {
+	isFailure,
+	type AppScriptResponse,
+	type UpdateFields,
+	type WordItem,
+	type WordListResponse,
+} from '$lib/types';
 import { PUBLIC_APP_SCRIPT_URL } from '$env/static/public';
 import { mockWordItems } from './mock';
 import { getValidTokenOrPrompt } from '$lib/auth';
@@ -15,18 +21,18 @@ export async function getMockWordItems(): Promise<WordItem[]> {
 }
 
 export async function getWordListFromSheet(): Promise<WordItem[]> {
-	// const res = await fetch(`${ENDPOINT}?action=getList`);
-	// const data = (await res.json()) as WordListResponse;
-	const data = await getMockWordItems().then((items) => ({
-		ok: true,
-		result: items,
-	}));
+	const res = await fetch(`${ENDPOINT}?action=getList`);
+	const data = (await res.json()) as WordListResponse;
+	// const data = await getMockWordItems().then((items) => ({
+	// 	ok: true,
+	// 	result: items,
+	// }));
 
-	if (!data.ok) {
+	if (isFailure(data)) {
 		throw new Error('getWordList failed');
 	}
 
-	console.log('Fetched word list:', data);
+	// console.log('Fetched word list:', data);
 
 	return data.result;
 }
@@ -40,11 +46,11 @@ export async function getWordListFromSheet(): Promise<WordItem[]> {
 //   return res.json();
 // }
 
-export async function updateReviewToSheet(updateFields: UpdateFields) {
-  const idToken = await getValidTokenOrPrompt();
-  if (!idToken) {
-    throw new Error('No valid token for updateReview');
-  }
+export async function updateReviewToSheet(updateFields: UpdateFields): Promise<void> {
+	const idToken = await getValidTokenOrPrompt();
+	if (!idToken) {
+		throw new Error('No valid token for updateReview');
+	}
 
 	const res = await fetch(ENDPOINT, {
 		method: 'POST',
@@ -55,5 +61,13 @@ export async function updateReviewToSheet(updateFields: UpdateFields) {
 			fields: updateFields,
 		}),
 	});
-	return res.json();
+
+	const data = (await res.json()) as AppScriptResponse<unknown>;
+
+	if (isFailure(data)) {
+		throw new Error(data.error || 'updateReview failed');
+	}
+
+	// 成功情況下不需要回傳內容（避免二次 res.json()）
+	return;
 }

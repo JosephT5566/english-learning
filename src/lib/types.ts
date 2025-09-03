@@ -25,12 +25,23 @@ export interface WordItem {
 	createdDate?: string; // ISO
 }
 
-export interface WordListResponse {
-	ok: true;
-	result: WordItem[];
-}
-
 export type UpdateFields = Record<
 	string,
 	{ reviewStage: number; lastReview: Date; nextReview: Date; easeFactor: number }
 >;
+
+// 可重用的 App Script 回應型別
+export type AppScriptResponse<T, E = string> = { ok: true; result: T } | { ok: false; error?: E };
+
+export type SuccessResponse<T> = Extract<AppScriptResponse<T>, { ok: true }>;
+export type FailureResponse<E = string> = Extract<AppScriptResponse<never, E>, { ok: false }>;
+
+// type guard
+export const isSuccess = <T, E = string>(r: AppScriptResponse<T, E>): r is SuccessResponse<T> =>
+	r.ok;
+export const isFailure = <T, E = string>(r: AppScriptResponse<T, E>): r is FailureResponse<E> =>
+	!r.ok;
+
+// 以泛型回應取代原本的特定回應
+export type WordListResponse = AppScriptResponse<WordItem[]>;
+export type ErrorResponse = FailureResponse;
