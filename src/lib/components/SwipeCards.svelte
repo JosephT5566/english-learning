@@ -4,8 +4,10 @@
 	import type { WordItem, StudyDirection } from '$lib/types';
 	import { calNewEaseFactor } from '$lib/utils';
 	import { setNewField, newFields } from '$lib/stores/review';
+	import { updateReviewToSheet } from '$lib/api/sheet';
 	import _clamp from 'lodash/clamp';
 	import Icon from '@iconify/svelte';
+	import AsyncButton from '$lib/components/AsyncButton.svelte';
 
 	// 透過 runes 取得 props
 	let {
@@ -36,8 +38,9 @@
 	let isClickAndSwiping = $state(false);
 	let currentWordIndex = $state(0);
 	let currentWord = $derived(wordList[0] || null);
+	let isEnded = $derived(currentWordIndex >= wordList.length);
 
-	const THRESHOLD = 250; // fly-out decision
+	const THRESHOLD = 200; // fly-out decision
 	const MOVE_OUT_MULT = 1.5;
 
 	const yesOpacity = $derived(swipeX > 0 ? Math.min(Math.abs(swipeX) / THRESHOLD, 1) : 0);
@@ -49,7 +52,10 @@
 	});
 
 	// $effect(() => {
-	//     console.log('Current word', currentWord);
+	// 	console.log('isEnded', isEnded);
+	// });
+	// $effect(() => {
+	// 	console.log('Current word index', currentWordIndex);
 	// });
 
 	// $effect(() => {
@@ -61,8 +67,6 @@
 		// first non-removed card (highest z) is the last child
 		const els = Array.from(cardsWrap.querySelectorAll<HTMLElement>('.swipe--card'));
 		const topCard = els.find((el) => !el.dataset.removed) || null;
-		const topCardIndex = els.findIndex((el) => !el.dataset.removed) || 0;
-		currentWordIndex = topCardIndex;
 
 		return topCard;
 	}
@@ -152,7 +156,7 @@
 
 			const quality = directionX > 0 ? 5 : 0;
 
-            updateFinishedCardToStore(quality, directionX > 0);
+			updateFinishedCardToStore(quality, directionX > 0);
 
 			setTimeout(() => {
 				clearBadge();
@@ -239,7 +243,7 @@
 		st.y = -80;
 		isTopCardBack = false; // reset state
 
-        updateFinishedCardToStore(quality, isYes);
+		updateFinishedCardToStore(quality, isYes);
 
 		requestAnimationFrame(() => {
 			const moveOutWidth = document.body.clientWidth * 1.2 * (isYes ? 1 : -1);
@@ -263,6 +267,7 @@
 		const newEaseFactor = calNewEaseFactor(currentWord?.easeFactor, quality);
 		const newStage = isYes ? currentWord.reviewStage + 1 : currentWord.reviewStage - 1;
 		setNewField(Number(currentWord?.id), _clamp(newStage, 1, 5), newEaseFactor);
+		currentWordIndex += 1; // move to next card
 	}
 
 	type FrontFace = {
@@ -335,72 +340,93 @@
 </script>
 
 <div class="swipe" bind:this={root}>
-	<div class="swipe--status">
-		<span class="icon no" style="opacity:{noOpacity}">
+	{#if isEnded}
+		<div class="flex flex-col items-center gap-3 mt-10">
 			<Icon
-				icon="solar:close-square-outline"
-				class={noOpacity === 1 ? 'text-rose-500' : ''}
+				icon="solar:confetti-bold-duotone"
+				width="120px"
+				height="120px"
+				class="text-slate-400"
 			/>
-		</span>
-		<span class="icon yes" style="opacity:{yesOpacity}">
-			<Icon
-				icon="solar:check-square-outline"
-				class={yesOpacity === 1 ? 'text-emerald-500' : ''}
-			/>
-		</span>
-	</div>
+			<span class="ml-2 font-[Contrail_One] text-3xl text-center text-slate-500"
+				>You've completed today's review!</span
+			>
+			<AsyncButton
+				class="mt-6 px-6 py-3 font-[Contrail_One] bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 cursor-pointer transition"
+				onRun={() => updateReviewToSheet($newFields)}
+				aria-label="Submit Results"
+			>
+				Submit Results
+			</AsyncButton>
+		</div>
+	{:else}
+		<div class="swipe--status">
+			<span class="icon no" style="opacity:{noOpacity}">
+				<Icon
+					icon="solar:close-square-outline"
+					class={noOpacity === 1 ? 'text-rose-500' : ''}
+				/>
+			</span>
+			<span class="icon yes" style="opacity:{yesOpacity}">
+				<Icon
+					icon="solar:check-square-outline"
+					class={yesOpacity === 1 ? 'text-emerald-500' : ''}
+				/>
+			</span>
+		</div>
 
-	<div class="swipe--cards" bind:this={cardsWrap}>
-		{#each wordList as c, i (`${c.id ?? 'no-id'}-${i}`)}
-			{@const f = faceFront(c, studyDirection) as FrontFace}
-			{@const b = faceBack(c, studyDirection) as BackFace}
-			<div class="swipe--card">
-				<!-- 3D flip container -->
-				<div class="card-inner">
-					<!-- FRONT -->
-					<div class="card-face card-front py-10 px-4 bg-white">
-						<h2 class="headline">{f.title}</h2>
-						{#if f.phonics}<div class="hint">{f.phonics}</div>{/if}
-						{#if f.lessonDate}
-							<div class="lesson-date chip">{f.lessonDate}</div>
-						{/if}
-						{#if f.chips?.length}
-							<div class="chips">
-								{#each f.chips as chip}<span class="chip">{chip}</span>{/each}
-							</div>
-						{/if}
-					</div>
-
-					<!-- BACK -->
-					<div class="card-face card-back py-10 px-4 bg-slate-300">
-						<h2 class="headline">{b.title}</h2>
-						{#if b.head}<div class="ipa">{b.head}</div>{/if}
-						{#if b.subtitle}<div class="subtitle">{b.subtitle}</div>{/if}
-						{#if f.lessonDate}
-							<div class="lesson-date chip">{f.lessonDate}</div>
-						{/if}
-						{#if b.example}<p class="example">{b.example}</p>{/if}
-						<div class="rows">
-							{#if b.syns.length}
-								<div class="row">
-									<label>Syn</label>{#each b.syns as s}<span class="pill"
-											>{s}</span
-										>{/each}
-								</div>
+		<div class="swipe--cards" bind:this={cardsWrap}>
+			{#each wordList as c, i (`${c.id ?? 'no-id'}-${i}`)}
+				{@const f = faceFront(c, studyDirection) as FrontFace}
+				{@const b = faceBack(c, studyDirection) as BackFace}
+				<div class="swipe--card">
+					<!-- 3D flip container -->
+					<div class="card-inner">
+						<!-- FRONT -->
+						<div class="card-face card-front py-10 px-4 bg-white">
+							<h2 class="headline">{f.title}</h2>
+							{#if f.phonics}<div class="hint">{f.phonics}</div>{/if}
+							{#if f.lessonDate}
+								<div class="lesson-date chip">{f.lessonDate}</div>
 							{/if}
-							{#if b.ants.length}
-								<div class="row">
-									<label>Ant</label>{#each b.ants as a}<span class="pill"
-											>{a}</span
-										>{/each}
+							{#if f.chips?.length}
+								<div class="chips">
+									{#each f.chips as chip}<span class="chip">{chip}</span>{/each}
 								</div>
 							{/if}
 						</div>
+
+						<!-- BACK -->
+						<div class="card-face card-back py-10 px-4 bg-slate-300">
+							<h2 class="headline">{b.title}</h2>
+							{#if b.head}<div class="ipa">{b.head}</div>{/if}
+							{#if b.subtitle}<div class="subtitle">{b.subtitle}</div>{/if}
+							{#if f.lessonDate}
+								<div class="lesson-date chip">{f.lessonDate}</div>
+							{/if}
+							{#if b.example}<p class="example">{b.example}</p>{/if}
+							<div class="rows">
+								{#if b.syns.length}
+									<div class="row">
+										<label>Syn</label>{#each b.syns as s}<span class="pill"
+												>{s}</span
+											>{/each}
+									</div>
+								{/if}
+								{#if b.ants.length}
+									<div class="row">
+										<label>Ant</label>{#each b.ants as a}<span class="pill"
+												>{a}</span
+											>{/each}
+									</div>
+								{/if}
+							</div>
+						</div>
 					</div>
 				</div>
-			</div>
-		{/each}
-	</div>
+			{/each}
+		</div>
+	{/if}
 
 	<div class="swipe--buttons">
 		<button

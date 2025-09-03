@@ -14,7 +14,7 @@ export async function getMockWordItems(): Promise<WordItem[]> {
 	});
 }
 
-export async function getWordList(): Promise<WordItem[]> {
+export async function getWordListFromSheet(): Promise<WordItem[]> {
 	// const res = await fetch(`${ENDPOINT}?action=getList`);
 	// const data = (await res.json()) as WordListResponse;
 	const data = await getMockWordItems().then((items) => ({
@@ -40,7 +40,7 @@ export async function getWordList(): Promise<WordItem[]> {
 //   return res.json();
 // }
 
-export async function updateReview(updateFields: UpdateFields) {
+export async function updateReviewToSheet(updateFields: UpdateFields) {
   const idToken = await getValidTokenOrPrompt();
   if (!idToken) {
     throw new Error('No valid token for updateReview');

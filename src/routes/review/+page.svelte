@@ -1,14 +1,14 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import SwipeCards from '$lib/components/SwipeCards.svelte';
-	import { getWordList } from '$lib/api/sheet';
+	import { getWordListFromSheet } from '$lib/api/sheet';
 	import { wordList, current } from '$lib/stores/review';
 	import Icon from '@iconify/svelte';
 
 	let progress = { total: 0, current: 0 };
 
 	onMount(async () => {
-		const items = await getWordList();
+		const items = await getWordListFromSheet();
 		wordList.set(items.sort(() => Math.random() - 0.5)); // 打散
 		progress.total = items.length;
 	});
