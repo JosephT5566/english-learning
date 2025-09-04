@@ -54,10 +54,9 @@ export async function updateReviewToSheet(updateFields: UpdateFields): Promise<v
 
 	const res = await fetch(ENDPOINT, {
 		method: 'POST',
-		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify({
-			op: 'updateReview',
-			token: idToken,
+			op: 'updateRows',
+		  id_token: idToken.token,
 			fields: updateFields,
 		}),
 	});
