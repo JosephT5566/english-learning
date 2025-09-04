@@ -1,7 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
-	import { type Snippet, onDestroy } from 'svelte';
+	import { type Snippet } from 'svelte';
 	import Icon from '@iconify/svelte';
 
 	interface Props {
@@ -28,17 +28,6 @@
 	let showDone = $state(false);
 	let showFail = $state(false);
 	let didFinish = $state(false);
-	let doneTimer: ReturnType<typeof setTimeout> | undefined;
-	let failTimer: ReturnType<typeof setTimeout> | undefined;
-
-	onDestroy(() => {
-		if (doneTimer) {
-			clearTimeout(doneTimer);
-		}
-		if (failTimer) {
-			clearTimeout(failTimer);
-		}
-	});
 
 	async function handleClick() {
 		if (isLoading || disabled || !onRun) {
@@ -51,20 +40,10 @@
 			await onRun();
 			didFinish = true;
 			showDone = true;
-
-			if (doneTimer) clearTimeout(doneTimer);
-			doneTimer = setTimeout(() => {
-				showDone = false;
-			}, 1000);
 		} catch (err) {
 			const message = err instanceof Error ? err.message : String(err);
 			alert(`[AsyncButton] onRun error: ${message}`);
 			showFail = true;
-
-			if (failTimer) clearTimeout(failTimer);
-			failTimer = setTimeout(() => {
-				showFail = false;
-			}, 1000);
 		} finally {
 			isLoading = false;
 		}
@@ -74,7 +53,7 @@
 <button
 	{type}
 	{...restProps}
-	class={`relative ${className}`}
+	class={`relative ${className} disabled:opacity-50 disabled:cursor-not-allowed`}
 	aria-busy={isLoading}
 	disabled={disabled || isLoading || (disableAfterFinish && didFinish)}
 	onclick={handleClick}
@@ -84,7 +63,7 @@
 	</span>
 
 	{#if showDone}
-		<span class="btn-overlay text-rose-300" aria-hidden="true"> Done </span>
+		<span class="btn-overlay text-rose-300" aria-hidden="true"> Submitted </span>
 	{:else if showFail}
 		<span class="btn-overlay text-red-300" aria-hidden="true"> Fail </span>
 	{/if}
