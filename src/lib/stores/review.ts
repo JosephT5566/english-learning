@@ -1,12 +1,10 @@
-import { writable, derived } from 'svelte/store';
+import { writable } from 'svelte/store';
 import type { WordItem, UpdateFields } from '$lib/types';
 import { STAGE_INTERVALS } from '$lib/utils';
 
-export const wordList = writable<WordItem[]>([]);
+export const wordList = writable<WordItem[]>(undefined);
 export const currentIdx = writable(0);
 export const newFields = writable<UpdateFields>({});
-
-export const current = derived([wordList, currentIdx], ([$due, $idx]) => $due[$idx]);
 
 // export function nextQuestion(loopWrongAgain = true) {
 export function nextQuestion() {

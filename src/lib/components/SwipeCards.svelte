@@ -11,9 +11,9 @@
 
 	// 透過 runes 取得 props
 	let {
-		wordList,
+		wordList = [],
 		studyDirection = 'EN_ZH',
-	}: { wordList: WordItem[]; studyDirection?: StudyDirection } = $props();
+	}: { wordList?: WordItem[]; studyDirection?: StudyDirection } = $props();
 
 	let root: HTMLDivElement; // .swipe
 	let cardsWrap: HTMLDivElement; // .swipe--cards
@@ -39,6 +39,7 @@
 	let currentWordIndex = $state(0);
 	let currentWord = $derived(wordList[0] || null);
 	let isEnded = $derived(currentWordIndex >= wordList.length);
+	const hasCards = $derived(wordList.length > 0);
 
 	const THRESHOLD = 200; // fly-out decision
 	const MOVE_OUT_MULT = 1.5;
@@ -47,8 +48,8 @@
 	const noOpacity = $derived(swipeX < 0 ? Math.min(Math.abs(swipeX) / THRESHOLD, 1) : 0);
 
 	$effect(() => {
-		// update currentWord when currentWordIndex changes
-		currentWord = wordList[currentWordIndex];
+		// update currentWord when currentWordIndex or wordList changes
+		currentWord = wordList[currentWordIndex] ?? null;
 	});
 
 	// $effect(() => {
@@ -264,9 +265,12 @@
 	}
 
 	function updateFinishedCardToStore(quality: number, isYes: boolean) {
-		const newEaseFactor = calNewEaseFactor(currentWord?.easeFactor, quality);
+		if (!currentWord) {
+			return; // safety guard
+		}
+		const newEaseFactor = calNewEaseFactor(currentWord.easeFactor, quality);
 		const newStage = isYes ? currentWord.reviewStage + 1 : currentWord.reviewStage - 1;
-		setNewField(Number(currentWord?.id), _clamp(newStage, 1, 5), newEaseFactor);
+		setNewField(Number(currentWord.id), _clamp(newStage, 1, 5), newEaseFactor);
 		currentWordIndex += 1; // move to next card
 	}
 
@@ -334,13 +338,29 @@
 		}
 
 		const els = Array.from(cardsWrap.querySelectorAll<HTMLElement>('.swipe--card'));
-		els.forEach(attachDrag);
+		els.forEach((el) => {
+			if (!scratch.has(el)) {
+				attachDrag(el); // 避免重複綁定事件
+			}
+		});
 		updateLayoutStack();
 	});
 </script>
 
 <div class="swipe" bind:this={root}>
-	{#if isEnded}
+	{#if !hasCards}
+		<div class="flex flex-col items-center gap-3 mt-10">
+			<Icon
+				icon="solar:cat-bold-duotone"
+				width="120px"
+				height="120px"
+				class="text-slate-400"
+			/>
+			<span class="ml-2 font-[Contrail_One] text-3xl text-center text-slate-500">
+				We don't have any cards for you today.
+			</span>
+		</div>
+	{:else if isEnded}
 		<div class="flex flex-col items-center gap-3 mt-10">
 			<Icon
 				icon="solar:confetti-bold-duotone"
@@ -428,49 +448,56 @@
 		</div>
 	{/if}
 
-	<div class="swipe--buttons">
-		<button
-			id="no"
-			onclick={() => programmaticSwipe(false, 0)}
-			disabled={isClickAndSwiping || !isTopCardBack}
-			aria-label="No"
-		>
-			<Icon icon="solar:close-square-bold" class="text-rose-700" width="60px" height="60px" />
-		</button>
-		<button
-			id="no-a-bit"
-			class="ml-5 text-rose-700"
-			onclick={() => programmaticSwipe(false, 2)}
-			disabled={isClickAndSwiping || !isTopCardBack}
-			aria-label="No A Bit"
-		>
-			<Icon icon="solar:close-square-outline" width="40px" height="40px" />
-			<span>a bit</span>
-		</button>
-		<button
-			id="yes-a-bit"
-			class="mr-5 text-emerald-500"
-			onclick={() => programmaticSwipe(true, 3)}
-			disabled={isClickAndSwiping || !isTopCardBack}
-			aria-label="Yes A Bit"
-		>
-			<Icon icon="solar:check-square-outline" width="40px" height="40px" />
-			<span>a bit</span>
-		</button>
-		<button
-			id="yes"
-			onclick={() => programmaticSwipe(true, 5)}
-			disabled={isClickAndSwiping || !isTopCardBack}
-			aria-label="Yes"
-		>
-			<Icon
-				icon="solar:check-square-bold"
-				class="text-emerald-500"
-				width="60px"
-				height="60px"
-			/>
-		</button>
-	</div>
+	{#if hasCards && !isEnded}
+		<div class="swipe--buttons">
+			<button
+				id="no"
+				onclick={() => programmaticSwipe(false, 0)}
+				disabled={isClickAndSwiping || !isTopCardBack}
+				aria-label="No"
+			>
+				<Icon
+					icon="solar:close-square-bold"
+					class="text-rose-700"
+					width="60px"
+					height="60px"
+				/>
+			</button>
+			<button
+				id="no-a-bit"
+				class="ml-5 text-rose-700"
+				onclick={() => programmaticSwipe(false, 2)}
+				disabled={isClickAndSwiping || !isTopCardBack}
+				aria-label="No A Bit"
+			>
+				<Icon icon="solar:close-square-outline" width="40px" height="40px" />
+				<span>a bit</span>
+			</button>
+			<button
+				id="yes-a-bit"
+				class="mr-5 text-emerald-500"
+				onclick={() => programmaticSwipe(true, 3)}
+				disabled={isClickAndSwiping || !isTopCardBack}
+				aria-label="Yes A Bit"
+			>
+				<Icon icon="solar:check-square-outline" width="40px" height="40px" />
+				<span>a bit</span>
+			</button>
+			<button
+				id="yes"
+				onclick={() => programmaticSwipe(true, 5)}
+				disabled={isClickAndSwiping || !isTopCardBack}
+				aria-label="Yes"
+			>
+				<Icon
+					icon="solar:check-square-bold"
+					class="text-emerald-500"
+					width="60px"
+					height="60px"
+				/>
+			</button>
+		</div>
+	{/if}
 </div>
 
 <style>

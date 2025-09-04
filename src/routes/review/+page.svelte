@@ -2,20 +2,21 @@
 	import { onMount } from 'svelte';
 	import SwipeCards from '$lib/components/SwipeCards.svelte';
 	import { getWordListFromSheet } from '$lib/api/sheet';
-	import { wordList, current } from '$lib/stores/review';
+	import { wordList } from '$lib/stores/review';
 	import Icon from '@iconify/svelte';
 
 	let progress = { total: 0, current: 0 };
 
 	onMount(async () => {
 		const items = await getWordListFromSheet();
+    console.log('items:', items);
 		wordList.set(items.sort(() => Math.random() - 0.5)); // 打散
 		progress.total = items.length;
 	});
 </script>
 
 <div class="review-page-container h-[90vh] bg-[var(--bg)] flex items-center justify-center">
-	{#if $current}
+	{#if $wordList}
 		<SwipeCards wordList={$wordList} />
 	{:else}
 		<div class="flex flex-col items-center gap-3">
