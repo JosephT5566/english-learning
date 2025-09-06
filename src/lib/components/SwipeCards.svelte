@@ -8,6 +8,7 @@
 	import _clamp from 'lodash/clamp';
 	import Icon from '@iconify/svelte';
 	import AsyncButton from '$lib/components/AsyncButton.svelte';
+	import classNames from 'classnames';
 
 	// 透過 runes 取得 props
 	let {
@@ -29,6 +30,7 @@
 		showAnswer: boolean;
 		isBack: boolean; // ⇦ front/back state
 		moved: boolean; // ⇦ small movement guard to avoid click-after-drag flipping
+		moveHist: { x: number; y: number; t: number }[]; // 近期移動歷史，用於估算速度
 	};
 	const scratch = new WeakMap<HTMLElement, Scratch>();
 
@@ -43,6 +45,7 @@
 
 	const THRESHOLD = 200; // fly-out decision
 	const MOVE_OUT_MULT = 1.5;
+	const VELOCITY_THRESHOLD = 0.6; // px/ms ≈ 600px/s，超過視為快速滑動（fling）
 
 	const yesOpacity = $derived(swipeX > 0 ? Math.min(Math.abs(swipeX) / THRESHOLD, 1) : 0);
 	const noOpacity = $derived(swipeX < 0 ? Math.min(Math.abs(swipeX) / THRESHOLD, 1) : 0);
@@ -108,7 +111,20 @@
 			showAnswer: false,
 			isBack: false, // start face-up (front)
 			moved: false,
+			moveHist: [],
 		});
+
+		// 以最近 120ms 的軌跡估算速度（px/ms）
+		function velocityOf(hist: { x: number; y: number; t: number }[]) {
+			if (hist.length < 2) {
+				return { vx: 0, vy: 0 };
+			}
+
+			const first = hist[0];
+			const last = hist[hist.length - 1];
+			const dt = Math.max(1, last.t - first.t);
+			return { vx: (last.x - first.x) / dt, vy: (last.y - first.y) / dt };
+		}
 
 		function onDown(e: PointerEvent) {
 			const s = scratch.get(el)!;
@@ -124,6 +140,7 @@
 			s.startY = e.clientY - s.y;
 			s.moved = false;
 			el.classList.add('moving');
+			s.moveHist = [{ x: s.x, y: s.y, t: performance.now() }];
 		}
 
 		function onMove(e: PointerEvent) {
@@ -134,13 +151,20 @@
 			s.rot = s.x * 0.03 * (s.y / 80);
 			if (Math.abs(s.x) > 3 || Math.abs(s.y) > 3) s.moved = true;
 
+			// 記錄移動歷史（僅保留最近 ~120ms）
+			const now = performance.now();
+			s.moveHist.push({ x: s.x, y: s.y, t: now });
+			while (s.moveHist.length > 2 && s.moveHist[0].t < now - 120) {
+				s.moveHist.shift();
+			}
+
 			// Only reflect swipe UI on the back side
 			el.style.transform = `translate(${s.x}px, ${s.y}px) rotate(${s.rot}deg)`;
 			swipeX = s.x;
 			setBadge(s.x);
 		}
 
-		function flyOutAndRemove(directionX: number, y: number) {
+		function flyOutAndRemove(directionX: number, y: number, speedX?: number) {
 			const s = scratch.get(el)!;
 			const moveOutWidth = document.body.clientWidth * 1.2;
 			const toX =
@@ -150,6 +174,10 @@
 			const toY = y >= 0 ? Math.abs(y) * MOVE_OUT_MULT : -Math.abs(y) * MOVE_OUT_MULT;
 
 			el.classList.remove('moving');
+			// 速度越快，時間越短（180~380ms）
+			const absV = Math.abs(speedX ?? 0);
+			const duration = speedX ? _clamp(Math.round(280 / absV), 180, 380) : 250;
+			el.style.transition = `transform ${duration}ms ease-out`;
 			el.style.transform = `translate(${toX}px, ${toY}px) rotate(${s.rot}deg)`;
 			el.dataset.removed = '1';
 			swipeX = 0;
@@ -160,9 +188,10 @@
 			updateFinishedCardToStore(quality, directionX > 0);
 
 			setTimeout(() => {
+				el.style.transition = '';
 				clearBadge();
 				updateLayoutStack();
-			}, 200);
+			}, duration);
 		}
 
 		function snapBack() {
@@ -184,8 +213,14 @@
 			const s = scratch.get(el)!;
 			if (!s.down || s.pointerId !== e.pointerId) return;
 			s.down = false;
-			// decide
-			Math.abs(s.x) < THRESHOLD ? snapBack() : flyOutAndRemove(s.x, s.y);
+			// decide: 距離或速度達門檻就飛出
+			const { vx } = velocityOf(s.moveHist);
+			const fast = Math.abs(vx) > VELOCITY_THRESHOLD;
+			if (Math.abs(s.x) >= THRESHOLD || fast) {
+				flyOutAndRemove(fast ? vx : s.x, s.y, fast ? vx : undefined);
+			} else {
+				snapBack();
+			}
 		}
 
 		// Click-to-flip (front<->back), but ignore if it was actually a drag
@@ -297,14 +332,14 @@
 			return {
 				title: c.content,
 				lessonDate: new Date(c.lessonDate).toLocaleDateString('zh-TW'),
-				chips: [c.type, c.note].filter(Boolean) as string[],
+				chips: [c.type, ...(c.note?.split(', ') ?? [])].filter(Boolean) as string[],
 				phonics: c.phonics,
 			};
 		} else {
 			return {
 				title: c.chineseExplain || '—',
 				lessonDate: new Date(c.lessonDate).toLocaleDateString('zh-TW'),
-				chips: [c.type, c.note].filter(Boolean) as string[],
+				chips: [c.type, ...(c.note?.split(', ') ?? [])].filter(Boolean) as string[],
 				phonics: undefined,
 			};
 		}
@@ -407,11 +442,18 @@
 							<h2 class="headline">{f.title}</h2>
 							{#if f.phonics}<div class="hint">{f.phonics}</div>{/if}
 							{#if f.lessonDate}
-								<div class="lesson-date chip">{f.lessonDate}</div>
+								<div class="lesson-date chip bg-gray-100">{f.lessonDate}</div>
 							{/if}
 							{#if f.chips?.length}
 								<div class="chips">
-									{#each f.chips as chip}<span class="chip">{chip}</span>{/each}
+									{#each f.chips as chip, idx}
+										<span
+											class={classNames(
+												'chip',
+												idx === 0 ? 'bg-orange-200' : 'bg-gray-100'
+											)}>{chip}</span
+										>
+									{/each}
 								</div>
 							{/if}
 						</div>
@@ -422,7 +464,7 @@
 							{#if b.head}<div class="ipa">{b.head}</div>{/if}
 							{#if b.subtitle}<div class="subtitle">{b.subtitle}</div>{/if}
 							{#if f.lessonDate}
-								<div class="lesson-date chip">{f.lessonDate}</div>
+								<div class="lesson-date chip bg-gray-100">{f.lessonDate}</div>
 							{/if}
 							{#if b.example}<p class="example">{b.example}</p>{/if}
 							<div class="rows">
@@ -509,11 +551,11 @@
 	.swipe {
 		width: 100vw;
 		height: 100%;
-        padding-block: 40px;
+		padding-block: 40px;
 		display: flex;
 		flex-direction: column;
 		position: relative;
-        overflow: hidden;
+		overflow: hidden;
 	}
 	.swipe--status {
 		position: absolute;
@@ -545,7 +587,7 @@
 		width: 90vw;
 		max-width: 400px;
 		height: 90%;
-        max-height: 600px;
+		max-height: 600px;
 		position: absolute;
 		border-radius: 8px;
 		overflow: hidden;
@@ -633,7 +675,6 @@
 		font-size: 12px;
 		padding: 2px 6px;
 		border-radius: 999px;
-		background: #eef;
 	}
 	.ipa {
 		margin-top: 8px;
@@ -645,7 +686,7 @@
 		margin: 14px 16px;
 		font-size: 16px;
 		line-height: 1.4;
-        white-space: pre-line;
+		white-space: pre-line;
 	}
 	.rows {
 		margin: 10px 12px;
