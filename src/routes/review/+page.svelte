@@ -15,7 +15,7 @@
 	});
 </script>
 
-<div class="review-page-container h-[90vh] bg-[var(--bg)] flex items-center justify-center">
+<div class="review-page-container h-dvh bg-[var(--bg)] flex items-center justify-center">
 	{#if $wordList}
 		<SwipeCards wordList={$wordList} />
 	{:else}

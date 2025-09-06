@@ -34,7 +34,7 @@
 	<meta name="description" content="Joseph's Daily English learning" />
 </svelte:head>
 
-<section class="gap-8">
+<section class="homepage-container gap-8">
 	<h1 class="font-[Bodoni_Moda] font-medium text-3xl">{pageTitle}</h1>
 	<h2 class="font-[Contrail_One] text-xl text-slate-500">
 		{testedToday
@@ -111,6 +111,7 @@
 		flex-direction: column;
 		justify-content: center;
 		align-items: center;
+		padding: 25px;
 	}
 	h1 {
 		text-align: center;

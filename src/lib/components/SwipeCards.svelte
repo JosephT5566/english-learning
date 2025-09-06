@@ -508,10 +508,12 @@
 	}
 	.swipe {
 		width: 100vw;
-		height: 85vh;
+		height: 100%;
+        padding-block: 40px;
 		display: flex;
 		flex-direction: column;
 		position: relative;
+        overflow: hidden;
 	}
 	.swipe--status {
 		position: absolute;
@@ -533,6 +535,7 @@
 		flex-grow: 1;
 		padding-top: 40px;
 		display: flex;
+		position: relative;
 		justify-content: center;
 		align-items: flex-end;
 	}
@@ -541,7 +544,8 @@
 		display: inline-block;
 		width: 90vw;
 		max-width: 400px;
-		height: 70vh;
+		height: 90%;
+        max-height: 600px;
 		position: absolute;
 		border-radius: 8px;
 		overflow: hidden;
@@ -641,6 +645,7 @@
 		margin: 14px 16px;
 		font-size: 16px;
 		line-height: 1.4;
+        white-space: pre-line;
 	}
 	.rows {
 		margin: 10px 12px;
