@@ -2,14 +2,13 @@
 	import { onMount } from 'svelte';
 	import { resolve } from '$app/paths';
 	import classnames from 'classnames';
-	import Icon from '@iconify/svelte';
-	import { getIsSignedIn, signIn } from '$lib/auth';
+	import { renderGoogleButton, initGsiOnce } from '$lib/auth';
+	import { isSignedIn } from '$lib/stores/auth';
 
 	let todayStr = $state('');
 	let testedToday = $state(false);
 	let pageTitle = $derived(`${todayStr}\n Welcome back Joseph! Ready for today's learning?`);
-
-	let isSignedIn = $state(false);
+	let gsiBtnEl: HTMLDivElement | undefined = $state(undefined); // 用來放官方 Google 按鈕的容器
 
 	onMount(() => {
 		const d = new Date();
@@ -17,14 +16,20 @@
 		const dd = String(d.getDate()).padStart(2, '0');
 		todayStr = `${mm}/${dd}`;
 
-		isSignedIn = getIsSignedIn();
-
 		try {
 			const v = localStorage.getItem('isTestedToday');
 			// 建議在完成測驗時寫入：localStorage.setItem('isTestedToday', todayStr)
 			testedToday = v === todayStr;
 		} catch {
 			testedToday = false;
+		}
+
+		// 初始化只做一次（不放在點擊事件裡）
+		if (!$isSignedIn && gsiBtnEl) {
+			initGsiOnce((e) => console.error(e));
+
+			// 直接渲染官方按鈕；使用者可重複點擊重試
+			renderGoogleButton(gsiBtnEl);
 		}
 	});
 </script>
@@ -42,7 +47,7 @@
 			: "You haven't done your review yet today.\n Let's start it!"}
 	</h2>
 
-	{#if isSignedIn}
+	{#if $isSignedIn}
 		<button
 			class={classnames(
 				'font-[Contrail_One]',
@@ -65,42 +70,9 @@
 		</button>
 	{:else}
 		<!-- google login button -->
-		<button
-			class={classnames(
-				'font-[Contrail_One]',
-				'start-btn',
-				'px-5',
-				'py-4',
-				'mt-10',
-				'text-xl',
-				'text-neutral-800',
-				'border-3',
-				'border-slate-500',
-				'decoration-0',
-				'rounded-lg',
-				'bg-slate-100',
-				'hover:bg-slate-200',
-				'cursor-pointer',
-				'transition'
-			)}
-			onclick={() => {
-				signIn()
-					.then(() => {
-						isSignedIn = true;
-					})
-					.catch((e) => {
-						alert(e.message);
-					});
-			}}
-		>
-			<Icon
-				icon="logos:google-icon"
-				width="24px"
-				height="24px"
-				class="inline-block mr-2 -mt-1"
-			/>
-			Login with Google
-		</button>
+		<div class="google-signin-container mt-5">
+			<div bind:this={gsiBtnEl}></div>
+		</div>
 	{/if}
 </section>
 

@@ -7,7 +7,7 @@ import {
 } from '$lib/types';
 import { PUBLIC_APP_SCRIPT_URL } from '$env/static/public';
 import { mockWordItems } from './mock';
-import { getValidTokenOrPrompt } from '$lib/auth';
+import { getTokenIfValid } from '$lib/auth';
 
 const ENDPOINT = PUBLIC_APP_SCRIPT_URL; // .env 讀
 
@@ -47,7 +47,7 @@ export async function getWordListFromSheet(): Promise<WordItem[]> {
 // }
 
 export async function updateReviewToSheet(updateFields: UpdateFields): Promise<void> {
-	const idToken = await getValidTokenOrPrompt();
+	const idToken = getTokenIfValid();
 	if (!idToken) {
 		throw new Error('No valid token for updateReview');
 	}
@@ -56,7 +56,7 @@ export async function updateReviewToSheet(updateFields: UpdateFields): Promise<v
 		method: 'POST',
 		body: JSON.stringify({
 			op: 'updateRows',
-		  id_token: idToken.token,
+		  id_token: idToken,
 			fields: updateFields,
 		}),
 	});

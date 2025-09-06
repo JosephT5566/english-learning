@@ -1,10 +1,15 @@
 import { PUBLIC_GOOGLE_AUTH_CLIENT_ID, PUBLIC_EMAIL_WHITE_LIST } from '$env/static/public';
+import { browser } from '$app/environment';
+import { setSignIn } from './stores/auth';
 
 // ======== 設定 ========
 const STORAGE_TOKEN = 'gid_id_token';
 const STORAGE_EXP = 'gid_exp'; // 秒級 UNIX time
 const SAFETY_BUFFER_SEC = 60; // 快過期前 60 秒就視為無效
 const MAX_SKEW_SEC = 60; // 允許裝置時間偏差（保守）
+
+let buttonRendered = false;
+let gsiInitialized = false;
 
 // ======== 公用工具 ========
 type JwtPayload = {
@@ -84,77 +89,70 @@ export function getTokenIfValid(): string | null {
 
 // ======== 登入流程（按鈕/自動） ========
 
-// 按鈕觸發：顯式登入（改為回傳 Promise）
-export function signIn(): Promise<{ token: string; payload: JwtPayload }> {
-	return new Promise((resolve, reject) => {
-		try {
-			const EMAIL_WHITE_LIST: string[] = PUBLIC_EMAIL_WHITE_LIST.split(',');
-			const gis = window?.google?.accounts?.id;
-			if (!gis) {
-				reject(new Error('Google Identity Services has not been loaded'));
-				return;
-			}
+export function initGsiOnce(onError?: (e: Error) => void) {
+	if (!browser) {
+		return;
+	}
 
-			gis.initialize({
-				client_id: PUBLIC_GOOGLE_AUTH_CLIENT_ID,
-				callback: (res) => {
-					try {
-						const idToken = res?.credential as string | undefined;
-						if (!idToken) {
-							reject(new Error('Did not receive Google ID token'));
-							return;
-						}
-						const payload = decodeJwt(idToken);
+	const gis = window?.google?.accounts?.id;
+	if (!gis) {
+		throw new Error('Google Identity Services 未載入');
+	}
 
-						if (!payload.email || !payload.email_verified) {
-							reject(new Error('Google login failed: Email not verified'));
-							return;
-						}
-						if (!EMAIL_WHITE_LIST.includes(payload.email)) {
-							reject(new Error('Google login failed: Email not in whitelist'));
-							return;
-						}
-						if (!payload.exp) {
-							reject(new Error('Google login failed: No exp in token'));
-							return;
-						}
-
-						saveToken(idToken, payload.exp);
-						resolve({ token: idToken, payload });
-					} catch (e) {
-						reject(e instanceof Error ? e : new Error('Google login failed'));
-					}
-				},
-			});
-
-			// 顯示 One Tap；若未顯示或被略過，回傳 reject 方便外部處理
-			gis.prompt?.((notification) => {
-				try {
-					if (notification?.isNotDisplayed?.()) {
-						const reason = notification?.getNotDisplayedReason?.() ?? 'unknown';
-						reject(new Error(`Google login not displayed: ${reason}`));
-					} else if (notification?.isSkippedMoment?.()) {
-						const reason = notification?.getSkippedReason?.() ?? 'unknown';
-						reject(new Error(`Google login skipped: ${reason}`));
-					}
-				} catch {
-					// 忽略 prompt 回呼中的例外
+	const EMAIL_WHITE_LIST: string[] = PUBLIC_EMAIL_WHITE_LIST.split(',');
+	if (gsiInitialized) {
+		return;
+	}
+	gis.initialize({
+		client_id: PUBLIC_GOOGLE_AUTH_CLIENT_ID,
+		cancel_on_tap_outside: false,
+		use_fedcm_for_prompt: true,
+		callback: (res: { credential?: string }) => {
+			try {
+				const idToken = res?.credential;
+				if (!idToken) {
+					throw new Error('Did not receive Google ID token');
 				}
-			});
-		} catch (err) {
-			reject(err instanceof Error ? err : new Error('Google login failed'));
-		}
+				const payload = decodeJwt(idToken) as JwtPayload;
+
+				if (!payload.email || !payload.email_verified) {
+					throw new Error('Google login failed: Email not verified');
+				}
+				const email = String(payload.email).toLowerCase();
+				if (!EMAIL_WHITE_LIST.includes(email)) {
+					throw new Error('Google login failed: Email not in whitelist');
+				}
+
+				if (!payload.exp) {
+					throw new Error('Google login failed: No exp in token');
+				}
+				saveToken(idToken, payload.exp);
+				setSignIn();
+			} catch (e) {
+				onError?.(e instanceof Error ? e : new Error('Google login failed'));
+			}
+		},
 	});
+	gsiInitialized = true;
 }
 
-// 在需要時（頁面載入或提交前）確保有有效 token；沒有就彈登入
-export async function getValidTokenOrPrompt() {
-	const token = getTokenIfValid();
-	if (token) {
-		return { token: token, payload: decodeJwt(token) };
+export function renderGoogleButton(container: HTMLElement) {
+	if (!container || buttonRendered) {
+		return;
 	}
-	// 沒有或快過期 → 重新登入（回傳 Promise）
-	return await signIn();
+
+	const gis = window.google.accounts.id;
+	container.innerHTML = '';
+	gis.renderButton(container, {
+		type: 'standard',
+		theme: 'outline',
+		size: 'large',
+		text: 'signin_with',
+		shape: 'pill',
+		logo_alignment: 'left',
+		width: 320,
+	});
+	buttonRendered = true;
 }
 
 // ======== 登出 ========
