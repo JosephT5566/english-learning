@@ -36,7 +36,7 @@ export const mockWordItems: WordItem[] = [
     antonyms: "weakness",
     tags: "food,skills",
     note: "common",
-    supplementary: "speciality coffee (特色咖啡); to specialize in something",
+    supplementary: "speciality coffee (特色咖啡)\n to specialize in something",
     example:
       "A: I’m a chef.\nB: What’s your speciality?\nA: I make a good risotto.",
     status: "active",

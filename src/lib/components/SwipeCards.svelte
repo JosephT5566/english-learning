@@ -9,6 +9,7 @@
 	import Icon from '@iconify/svelte';
 	import AsyncButton from '$lib/components/AsyncButton.svelte';
 	import classNames from 'classnames';
+	import Modal from '$lib/components/Modal.svelte';
 
 	// 透過 runes 取得 props
 	let {
@@ -42,6 +43,8 @@
 	let currentWord = $derived(wordList[0] || null);
 	let isEnded = $derived(currentWordIndex >= wordList.length);
 	const hasCards = $derived(wordList.length > 0);
+	let modalOpen = $state(false);
+	let modalContent = $state('');
 
 	const THRESHOLD = 200; // fly-out decision
 	const MOVE_OUT_MULT = 1.5;
@@ -323,6 +326,7 @@
 		example: string | null;
 		syns: string[];
 		ants: string[];
+		supplementary?: string;
 	};
 
 	// Compute what to show on each face from a Card + direction + mode
@@ -353,6 +357,7 @@
 				example: c.example || null,
 				syns: c.synonyms?.split(', ') || [],
 				ants: c.antonyms?.split(', ') || [],
+				supplementary: c.supplementary,
 			};
 		} else {
 			return {
@@ -363,8 +368,24 @@
 				example: c.example || null,
 				syns: c.synonyms?.split(', ') || [],
 				ants: c.antonyms?.split(', ') || [],
+				supplementary: c.supplementary,
 			};
 		}
+	}
+
+	// https://github.com/sveltejs/svelte/issues/15975
+	function listen(node: Node, { name, handler }: { name: string; handler: EventListener }) {
+		node.addEventListener(name, handler);
+		return { destroy: () => node.removeEventListener(name, handler) };
+	}
+
+	function openInfoModal(b: BackFace) {
+		if (!b.supplementary) {
+			return;
+		}
+
+		modalContent = b.supplementary;
+		modalOpen = true;
 	}
 
 	$effect(() => {
@@ -434,7 +455,7 @@
 			{#each wordList as c, i (`${c.id ?? 'no-id'}-${i}`)}
 				{@const f = faceFront(c, studyDirection) as FrontFace}
 				{@const b = faceBack(c, studyDirection) as BackFace}
-				<div class="swipe--card">
+				<div class="swipe--card rounded-2xl">
 					<!-- 3D flip container -->
 					<div class="card-inner">
 						<!-- FRONT -->
@@ -460,6 +481,43 @@
 
 						<!-- BACK -->
 						<div class="card-face card-back py-10 px-4 bg-slate-300">
+							{#if b.supplementary}
+								<button
+									class={classNames(
+										'info-btn',
+										'absolute',
+										'top-2',
+										'right-2',
+										'cursor-pointer',
+										'p-2',
+										'rounded-full',
+                                        'text-amber-700',
+										'hover:bg-slate-400/50',
+										'active:bg-slate-400/70',
+										'transition'
+									)}
+									title="More info"
+									use:listen={{
+										name: 'click',
+										handler: (e) => {
+											e.stopPropagation();
+											openInfoModal(b);
+										},
+									}}
+									use:listen={{
+										name: 'pointerdown',
+										handler: (e) => e.stopPropagation(),
+									}}
+									aria-label="Open supplementary info"
+								>
+									<Icon
+										icon="solar:info-circle-bold"
+										width="25px"
+										height="25px"
+									/>
+								</button>
+							{/if}
+
 							<h2 class="headline">{b.title}</h2>
 							{#if b.head}<div class="ipa">{b.head}</div>{/if}
 							{#if b.subtitle}<div class="subtitle">{b.subtitle}</div>{/if}
@@ -470,16 +528,14 @@
 							<div class="rows">
 								{#if b.syns.length}
 									<div class="row">
-										<label>Syn</label>{#each b.syns as s}<span class="pill"
-												>{s}</span
-											>{/each}
+										<label>Syn</label>
+										{#each b.syns as s}<span class="pill">{s}</span>{/each}
 									</div>
 								{/if}
 								{#if b.ants.length}
 									<div class="row">
-										<label>Ant</label>{#each b.ants as a}<span class="pill"
-												>{a}</span
-											>{/each}
+										<label>Ant</label>
+										{#each b.ants as a}<span class="pill">{a}</span>{/each}
 									</div>
 								{/if}
 							</div>
@@ -542,6 +598,14 @@
 	{/if}
 </div>
 
+<Modal open={modalOpen} title={'More Info'} handleClose={() => (modalOpen = false)}>
+	{#snippet ModalBody()}
+		<div class="whitespace-pre-wrap text-sm leading-relaxed">
+			{modalContent}
+		</div>
+	{/snippet}
+</Modal>
+
 <style>
 	*,
 	*::before,
@@ -589,7 +653,6 @@
 		height: 90%;
 		max-height: 600px;
 		position: absolute;
-		border-radius: 8px;
 		overflow: hidden;
 		will-change: transform;
 		touch-action: none;
