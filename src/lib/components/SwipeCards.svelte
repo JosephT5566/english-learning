@@ -337,6 +337,7 @@
 				title: c.content,
 				lessonDate: new Date(c.lessonDate).toLocaleDateString('zh-TW'),
 				chips: [c.type, ...(c.note?.split(', ') ?? [])].filter(Boolean) as string[],
+				tags: [c.tags?.split(', ') ?? []].filter(Boolean) as string[],
 				phonics: c.phonics,
 			};
 		} else {
@@ -344,6 +345,7 @@
 				title: c.chineseExplain || '—',
 				lessonDate: new Date(c.lessonDate).toLocaleDateString('zh-TW'),
 				chips: [c.type, ...(c.note?.split(', ') ?? [])].filter(Boolean) as string[],
+				tags: [c.tags?.split(', ') ?? []].filter(Boolean) as string[],
 				phonics: undefined,
 			};
 		}
@@ -459,12 +461,7 @@
 					<!-- 3D flip container -->
 					<div class="card-inner">
 						<!-- FRONT -->
-						<div class="card-face card-front py-10 px-4 bg-white">
-							<h2 class="headline">{f.title}</h2>
-							{#if f.phonics}<div class="hint">{f.phonics}</div>{/if}
-							{#if f.lessonDate}
-								<div class="lesson-date chip bg-gray-100">{f.lessonDate}</div>
-							{/if}
+						<div class="card-face card-front p-2 pb-10 bg-white">
 							{#if f.chips?.length}
 								<div class="chips">
 									{#each f.chips as chip, idx}
@@ -476,6 +473,20 @@
 										>
 									{/each}
 								</div>
+							{/if}
+							{#if f.tags?.length}
+								<div class="chips mt-2">
+									{#each f.tags as tag}
+										<span
+											class={classNames('chip')}>{tag}</span
+										>
+									{/each}
+								</div>
+							{/if}
+							<h2 class="headline">{f.title}</h2>
+							{#if f.phonics}<div class="hint">{f.phonics}</div>{/if}
+							{#if f.lessonDate}
+								<div class="lesson-date chip bg-gray-100">{f.lessonDate}</div>
 							{/if}
 						</div>
 
@@ -727,12 +738,10 @@
 		flex-wrap: wrap;
 	}
 	.chips {
-		position: absolute;
-		top: 10px;
-		left: 10px;
 		display: flex;
 		gap: 6px;
 		flex-wrap: wrap;
+		align-self: flex-start;
 	}
 	.chip {
 		font-size: 12px;
