@@ -21,7 +21,7 @@ export async function getMockWordItems(): Promise<WordItem[]> {
 }
 
 export async function getWordListFromSheet(): Promise<WordItem[]> {
-	const res = await fetch(`${ENDPOINT}?action=getList`);
+	const res = await fetch(`${ENDPOINT}?action=getList&count=10`);
 	const data = (await res.json()) as WordListResponse;
 	// const data = await getMockWordItems().then((items) => ({
 	// 	ok: true,
