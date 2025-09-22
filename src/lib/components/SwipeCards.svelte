@@ -336,16 +336,16 @@
 			return {
 				title: c.content,
 				lessonDate: new Date(c.lessonDate).toLocaleDateString('zh-TW'),
-				chips: [c.type, ...(c.note?.split(', ') ?? [])].filter(Boolean) as string[],
-				tags: [c.tags?.split(', ') ?? []].filter(Boolean) as string[],
+				chips: [c.type, ...(c.note?.split(/,\s*/g) ?? [])].filter(Boolean) as string[],
+				tags: [c.tags?.split(/,\s*/g) ?? []].filter(Boolean) as string[],
 				phonics: c.phonics,
 			};
 		} else {
 			return {
 				title: c.chineseExplain || '—',
 				lessonDate: new Date(c.lessonDate).toLocaleDateString('zh-TW'),
-				chips: [c.type, ...(c.note?.split(', ') ?? [])].filter(Boolean) as string[],
-				tags: [c.tags?.split(', ') ?? []].filter(Boolean) as string[],
+				chips: [c.type, ...(c.note?.split(/,\s*/g) ?? [])].filter(Boolean) as string[],
+				tags: [c.tags?.split(/,\s*/g) ?? []].filter(Boolean) as string[], // Splits on "," followed by any amount of whitespace
 				phonics: undefined,
 			};
 		}
@@ -478,7 +478,7 @@
 								<div class="chips mt-2">
 									{#each f.tags as tag}
 										<span
-											class={classNames('chip')}>{tag}</span
+											class={classNames('chip', 'bg-gray-100')}>{tag}</span
 										>
 									{/each}
 								</div>
