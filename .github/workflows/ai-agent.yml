@@ -1,0 +1,24 @@
+name: AI Agent
+
+on:
+  issues:
+    types: [opened]
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        required: true
+        type: string
+      repo:
+        required: true
+        type: string
+
+jobs:
+  run-agent:
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.issue.labels.*.name, 'ai-ready')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run AI agent
+        run: |
+          echo "Handle issue #${{ github.event.issue.number || inputs.issue_number }}"
