@@ -2,7 +2,7 @@ name: AI Agent
 
 on:
   issues:
-    types: [opened]
+    types: [opened, labeled]
   workflow_dispatch:
     inputs:
       issue_number:
