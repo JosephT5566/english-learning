@@ -2,23 +2,138 @@ name: AI Agent
 
 on:
   issues:
-    types: [opened, labeled]
+    types: [labeled]
   workflow_dispatch:
     inputs:
       issue_number:
+        description: "Issue number to run the agent on"
         required: true
         type: string
-      repo:
-        required: true
-        type: string
+
+concurrency:
+  group: ai-agent-${{ github.event.issue.number || inputs.issue_number }}
+  cancel-in-progress: false
 
 jobs:
   run-agent:
-    if: github.event_name == 'workflow_dispatch' || contains(github.event.issue.labels.*.name, 'ai-ready')
+    if: github.event_name == 'workflow_dispatch' || github.event.label.name == 'ai-ready'
     runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
 
-      - name: Run AI agent
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Load issue context
+        id: issue
+        uses: actions/github-script@v7
+        env:
+          ISSUE_NUMBER_INPUT: ${{ inputs.issue_number }}
+        with:
+          script: |
+            const issueNumberFromEvent = context.payload.issue?.number;
+            const issueNumberFromInput = Number(process.env.ISSUE_NUMBER_INPUT);
+            const issue_number = issueNumberFromEvent ?? issueNumberFromInput;
+
+            if (!issue_number || Number.isNaN(issue_number)) {
+              core.setFailed("Missing or invalid issue_number.");
+              return;
+            }
+
+            const { owner, repo } = context.repo;
+
+            const { data: issue } = await github.rest.issues.get({
+              owner,
+              repo,
+              issue_number,
+            });
+
+            core.setOutput("issue_number", String(issue.number));
+            core.setOutput("issue_title", issue.title);
+            core.setOutput("issue_body", issue.body ?? "");
+
+      - name: Run Codex
+        id: run_codex
+        uses: openai/codex-action@v1
+        with:
+          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          sandbox: workspace-write
+          safety-strategy: drop-sudo
+          prompt: |
+            You are working in ${{ github.repository }}.
+
+            Read the repository content, understand the existing patterns, and implement the following GitHub issue end to end.
+
+            Issue #${{ steps.issue.outputs.issue_number }}: ${{ steps.issue.outputs.issue_title }}
+
+            ${{ steps.issue.outputs.issue_body }}
+
+            Requirements:
+            - Keep changes focused on the issue.
+            - Follow the repo's existing style and tooling.
+            - Run relevant checks when practical.
+            - Do not modify files under .github/workflows/.
+            - Do not access, print, or expose secrets.
+            - Leave the working tree with the completed code changes only.
+
+      - name: Block workflow file changes
         run: |
-          echo "Handle issue #${{ github.event.issue.number || inputs.issue_number }}"
+          if git status --porcelain -- .github/workflows | grep .; then
+            echo "Codex attempted to modify .github/workflows. Blocking this run."
+            exit 1
+          fi
+
+      - name: Create pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ steps.issue.outputs.issue_number }}
+          ISSUE_TITLE: ${{ steps.issue.outputs.issue_title }}
+          CODEX_FINAL_MESSAGE: ${{ steps.run_codex.outputs.final-message }}
+          BASE_BRANCH: ${{ github.event.repository.default_branch || 'main' }}
+        run: |
+          if [ -z "$(git status --porcelain)" ]; then
+            echo "Codex did not produce any file changes."
+            exit 0
+          fi
+
+          SAFE_ISSUE_TITLE="$(printf '%s' "$ISSUE_TITLE" | tr '\r\n' ' ' | cut -c 1-120)"
+          branch="ai-agent/issue-${ISSUE_NUMBER}-${GITHUB_RUN_ID}"
+
+          git switch -c "$branch"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add -A
+          git commit -m "Resolve issue #${ISSUE_NUMBER} with Codex"
+
+          git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git push --set-upstream origin "$branch"
+
+          {
+            echo "Closes #${ISSUE_NUMBER}"
+            echo
+            echo "Automated Codex changes for #${ISSUE_NUMBER}."
+            echo
+            echo "Codex final message:"
+            echo
+            printf '%s\n' "$CODEX_FINAL_MESSAGE"
+          } > /tmp/codex-pr-body.md
+
+          gh pr create \
+            --title "Resolve #${ISSUE_NUMBER}: ${SAFE_ISSUE_TITLE}" \
+            --body-file /tmp/codex-pr-body.md \
+            --base "$BASE_BRANCH" \
+            --head "$branch"
