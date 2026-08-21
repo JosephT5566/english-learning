@@ -1,0 +1,7 @@
+interface:
+  display_name: "Full-Stack Training Coach"
+  short_description: "Guide evidence-driven backend training"
+  default_prompt: "Use $full-stack-training-coach to guide my next training milestone in this repository."
+
+policy:
+  allow_implicit_invocation: true

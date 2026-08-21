@@ -2,6 +2,10 @@
 
 Everything you need to build a Svelte project, powered by [`sv`](https://github.com/sveltejs/cli).
 
+## Full-stack training
+
+This application is being evolved into a multilingual full-stack product with a Python backend and PostgreSQL. See the [training documentation](doc/training/README.md) for the roadmap, current project memory, weekly logs, architecture decisions, and verified engineering evidence.
+
 ## Creating a project
 
 If you're seeing this, you've probably already done this step. Congrats!
@@ -38,5 +42,6 @@ You can preview the production build with `npm run preview`.
 > To deploy your app, you may need to install an [adapter](https://svelte.dev/docs/kit/adapters) for your target environment.
 
 ## GitHub Page
+
 We can refer to the guide for the setting.
 https://svelte.dev/docs/kit/adapter-static#GitHub-Pages
