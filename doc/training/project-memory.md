@@ -1,6 +1,6 @@
 # English Learning Project Memory
 
-Last updated: 2026-08-21
+Last updated: 2026-08-28
 
 ## Purpose
 
@@ -47,6 +47,11 @@ This is project evidence, not professional production-service experience.
 
 Week 0 — baseline and design.
 
+Issue #4 current-state trace is documented in
+[`current-state-flow-trace.md`](current-state-flow-trace.md). It includes the three request flows,
+trust boundaries, Apps Script and Sheet contracts, a current-state diagram, actual local command
+results, and a sanitized synthetic fixture.
+
 GitHub tracking:
 
 - [Weeks 0–3 roadmap issue](https://github.com/JosephT5566/english-learning/issues/12)
@@ -72,10 +77,32 @@ Required outputs:
 - Whether initial AI generation meets synchronous latency requirements
 - Exact migration rollback window and handling of source-row deletions
 
+## Current-state findings
+
+- `getList` is unauthenticated. The Apps Script deployment is available to `Everyone` and executes
+  as the script owner.
+- `getList` mutates Sheet row order and contains zero-based/one-based index mismatches: intended
+  `lastReview` and `reviewStage` sorts operate on `intervalDays` and `status`; the final
+  `overdueDays` sort is correct.
+- Review submission authenticates the allowlisted caller but trusts client-selected card IDs and
+  client-calculated stage, ease factor, and dates.
+- Review rows are written one at a time, formula updates run separately, and the success response
+  is only `{ "ok": true }`; partial outcomes cannot be reconciled by the frontend.
+- No Sheet data-validation or uniqueness rules were identified. `overdueDays` is derived as
+  `TODAY() - nextReview`, while stored `intervalDays` is not updated by the current review payload.
+- The most important persistence-migration risk is carrying client-controlled state transitions
+  into PostgreSQL. The new backend must enforce ownership and derive and persist transitions
+  transactionally.
+
 ## Current blockers
 
-None. The next work is design and baseline documentation, not backend scaffolding.
+None. Remaining issue #4 uncertainties are documented rather than hidden: blank sort behavior,
+the exact Apps Script exception envelope, concurrency/locking outside the inspected function, and
+the absence of a repeated signed-in end-to-end update during the documentation session.
 
 ## Next action
 
-Start [issue #4: Trace the current auth, vocabulary, and review flows](https://github.com/JosephT5566/english-learning/issues/4). Complete and explain that evidence before beginning the Week 0 design ticket or adding FastAPI.
+Review and close
+[issue #4: Trace the current auth, vocabulary, and review flows](https://github.com/JosephT5566/english-learning/issues/4)
+if its recorded uncertainties are acceptable. Then begin the next Week 0 design ticket before adding
+FastAPI.
