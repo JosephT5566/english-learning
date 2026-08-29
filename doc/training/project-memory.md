@@ -1,6 +1,6 @@
 # English Learning Project Memory
 
-Last updated: 2026-08-28
+Last updated: 2026-08-29
 
 ## Purpose
 
@@ -52,6 +52,13 @@ Issue #4 current-state trace is documented in
 trust boundaries, Apps Script and Sheet contracts, a current-state diagram, actual local command
 results, and a sanitized synthetic fixture.
 
+Issue #5 multilingual product/API/schema design is complete locally. Its
+[`issues/issue-5/`](issues/issue-5/README.md) index and linked artifacts cover invariants, ownership,
+all 21 Sheet-field mappings, MVP API contracts,
+failure/recovery, schema constraints/indexes, request/trust-boundary diagrams, a safe future AI draft
+lifecycle, rejected alternatives, tradeoffs, and unresolved implementation choices. Joseph completed
+the design-defense check. No backend code or migration exists yet.
+
 GitHub tracking:
 
 - [Weeks 0–3 roadmap issue](https://github.com/JosephT5566/english-learning/issues/12)
@@ -69,8 +76,9 @@ Required outputs:
 
 ## Open decisions
 
-- Exact card schema for meanings, readings, pronunciation, examples, and language codes
-- Review scheduling algorithm and compatibility with existing Sheet fields
+- Exact Unicode normalization/case-fold implementation and test vectors
+- Canonical idempotency request serialization and scheduling algorithm version/test vectors
+- Per-category repair policy for malformed imported scheduling rows
 - Python dependency and packaging tool
 - Production API host and managed PostgreSQL provider
 - AI provider and model
@@ -102,7 +110,6 @@ the absence of a repeated signed-in end-to-end update during the documentation s
 
 ## Next action
 
-Review and close
-[issue #4: Trace the current auth, vocabulary, and review flows](https://github.com/JosephT5566/english-learning/issues/4)
-if its recorded uncertainties are acceptable. Then begin the next Week 0 design ticket before adding
-FastAPI.
+Verify formal GitHub status for issues #4 and #5, route Issue #5 implementation-area unresolved
+choices into the appropriate later ticket acceptance criteria, then continue the next Week 0 ticket.
+Do not add FastAPI until that ticket's prerequisites are satisfied.
