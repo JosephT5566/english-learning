@@ -1,6 +1,6 @@
 # English Learning Project Memory
 
-Last updated: 2026-08-29
+Last updated: 2026-08-31
 
 ## Purpose
 
@@ -45,7 +45,7 @@ This is project evidence, not professional production-service experience.
 
 ## Active milestone
 
-Week 0 — baseline and design.
+Week 1 — backend foundation, Issue #6.
 
 Issue #4 current-state trace is documented in
 [`current-state-flow-trace.md`](current-state-flow-trace.md). It includes the three request flows,
@@ -58,6 +58,16 @@ all 21 Sheet-field mappings, MVP API contracts,
 failure/recovery, schema constraints/indexes, request/trust-boundary diagrams, a safe future AI draft
 lifecycle, rejected alternatives, tradeoffs, and unresolved implementation choices. Joseph completed
 the design-defense check. No backend code or migration exists yet.
+
+Issue #6 backend-foundation design is in progress. The initial decisions are recorded in
+[`issues/issue-6/README.md`](issues/issue-6/README.md): use `uv`, place the independent Python package
+under `apps/api/`, use typed secret-safe configuration with disposable local PostgreSQL defaults,
+keep liveness independent of PostgreSQL, return safe database-aware readiness results, and manage the
+database engine through FastAPI lifespan startup and shutdown. No backend code or verification exists
+yet. The initial dependency set is FastAPI, Pydantic, pydantic-settings, synchronous SQLAlchemy,
+Psycopg 3, and Uvicorn, with pytest, HTTPX, and Ruff for development. The accepted minimal package
+separates application creation, configuration, database lifecycle, health routing, unit tests, and
+PostgreSQL integration tests without adding empty future domain packages.
 
 GitHub tracking:
 
@@ -79,7 +89,6 @@ Required outputs:
 - Exact Unicode normalization/case-fold implementation and test vectors
 - Canonical idempotency request serialization and scheduling algorithm version/test vectors
 - Per-category repair policy for malformed imported scheduling rows
-- Python dependency and packaging tool
 - Production API host and managed PostgreSQL provider
 - AI provider and model
 - Whether initial AI generation meets synchronous latency requirements
@@ -110,6 +119,7 @@ the absence of a repeated signed-in end-to-end update during the documentation s
 
 ## Next action
 
-Verify formal GitHub status for issues #4 and #5, route Issue #5 implementation-area unresolved
-choices into the appropriate later ticket acceptance criteria, then continue the next Week 0 ticket.
-Do not add FastAPI until that ticket's prerequisites are satisfied.
+Scaffold the accepted Issue #6 `apps/api/` boundary and verify the independently runnable liveness
+endpoint before adding database-aware readiness. Keep domain tables, authentication, card/review
+endpoints, and production deployment out of scope. Formal GitHub status for issues #4 and #5 remains
+unverified.
