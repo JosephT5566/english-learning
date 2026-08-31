@@ -24,6 +24,57 @@ Use `uv` for Python dependency management, virtual environments, locking, and pr
 This choice is a design decision until the project files exist and a clean install/build has been
 verified.
 
+### Planned `uv` commands
+
+Run the initial project setup from the repository root. `--bare` avoids generating starter source
+files that conflict with the accepted `app/` package layout.
+
+```bash
+uv init --bare --name english-learning-api --python 3.12 apps/api
+cd apps/api
+uv python pin 3.12
+```
+
+Add the accepted runtime and development dependencies from `apps/api/`. Quote extras so shells such
+as Zsh do not interpret the square brackets as a filename pattern.
+
+```bash
+uv add fastapi pydantic pydantic-settings sqlalchemy \
+  'psycopg[binary]' 'uvicorn[standard]'
+uv add --dev pytest httpx ruff
+```
+
+Synchronize the environment and confirm the selected interpreter:
+
+```bash
+uv sync
+uv run python --version
+```
+
+After the application and tests exist, use these development and verification commands:
+
+```bash
+uv run uvicorn app.main:create_app --factory --reload
+uv run pytest
+uv run ruff check .
+uv run ruff format --check .
+```
+
+Common dependency and lockfile maintenance commands are:
+
+```bash
+uv lock
+uv sync --locked
+uv add PACKAGE
+uv add --dev PACKAGE
+uv remove PACKAGE
+uv tree
+uv run COMMAND
+```
+
+Commit both `apps/api/pyproject.toml` and `apps/api/uv.lock`. These commands remain planned rather
+than verified until they have been run successfully in the repository.
+
 ## Dependency set
 
 Initial runtime dependencies:
