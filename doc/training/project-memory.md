@@ -1,6 +1,6 @@
 # English Learning Project Memory
 
-Last updated: 2026-08-31
+Last updated: 2026-09-01
 
 ## Purpose
 
@@ -68,8 +68,13 @@ and the first liveness vertical slice is implemented through an application fact
 router, explicit response model, and HTTP-level unit test. The unit test, Ruff lint, Ruff formatting,
 Uvicorn factory startup/shutdown, and a real `200` liveness request passed locally. Pytest currently
 emits one upstream FastAPI `TestClient`/`httpx` deprecation warning. `apps/api/README.md` is the
-canonical reference for verified API commands. Typed configuration, database lifecycle, Compose,
-readiness, and PostgreSQL integration tests do not exist yet.
+canonical reference for verified API commands. Typed, frozen configuration now loads during FastAPI
+lifespan without import-time side effects. It validates supported environments and log levels, keeps
+the database URL secret, bounds connection timeout to 1-10 seconds, requires the Psycopg driver,
+rejects the disposable local URL in production, and translates raw validation failures into safe
+startup errors. The full unit suite passes with eleven tests; normal Uvicorn startup and deliberate
+secret-safe startup failure were both verified. Database lifecycle, Compose, readiness, and
+PostgreSQL integration tests do not exist yet.
 
 GitHub tracking:
 
@@ -121,8 +126,8 @@ the absence of a repeated signed-in end-to-end update during the documentation s
 
 ## Next action
 
-Implement the Issue #6 typed configuration boundary and unit tests. Reject the disposable local
-database URL in production and prove that invalid configuration cannot expose a recognizable fake
-password before adding database lifecycle or readiness behavior. Keep domain tables, authentication,
-card/review endpoints, and production deployment out of scope. Formal GitHub status for issues #4
-and #5 remains unverified.
+Implement `apps/api/app/database.py` with SQLAlchemy engine construction and disposal, then wire it
+into FastAPI lifespan without connecting during startup. Verify engine options and disposal with
+controlled unit substitutes before adding Compose or database-aware readiness. Keep domain tables,
+authentication, card/review endpoints, and production deployment out of scope. Formal GitHub status
+for issues #4 and #5 remains unverified.

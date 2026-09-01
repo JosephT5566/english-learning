@@ -1,6 +1,6 @@
 # Decisions And Known Issues
 
-Last updated: 2026-08-02
+Last updated: 2026-09-01
 
 ## Durable Decisions
 
@@ -9,6 +9,9 @@ Last updated: 2026-08-02
 - Use Google Identity Services ID tokens for client sign-in and authenticated sheet updates.
 - Keep review state client-side during a session, then submit batched updates at the end of the review.
 - Use a five-stage spaced-repetition model with stage intervals from `STAGE_INTERVALS`.
+- Keep the initial Python backend as an independently runnable `uv` project under `apps/api/`.
+- Load typed server configuration during FastAPI lifespan rather than at module import. Treat the
+  database URL as a secret, reject disposable defaults in production, and sanitize startup errors.
 
 ## Known Follow-Up Areas
 
@@ -22,3 +25,5 @@ Last updated: 2026-08-02
 ## Change Log
 
 - 2026-08-02: Created repo memory docs and root agent instructions.
+- 2026-09-01: Added the initial FastAPI liveness and typed configuration boundaries; the frontend
+  remains on Google Apps Script while backend migration work continues.

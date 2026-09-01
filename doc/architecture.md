@@ -1,6 +1,6 @@
 # Architecture Memory
 
-Last updated: 2026-08-02
+Last updated: 2026-09-01
 
 ## Stack
 
@@ -11,6 +11,7 @@ Last updated: 2026-08-02
 - Static adapter (`@sveltejs/adapter-static`) configured for static hosting/GitHub Pages-style base paths.
 - Google Identity Services for sign-in.
 - Google Apps Script endpoint as the Google Sheet API facade.
+- Independently runnable FastAPI foundation under `apps/api/`; it is not yet used by the frontend.
 
 ## Source Map
 
@@ -28,6 +29,23 @@ Last updated: 2026-08-02
 - `src/lib/components/SwipeCards.svelte`: main review card interaction.
 - `src/lib/components/AsyncButton.svelte`, `Modal.svelte`, `QuestionCard.svelte`, `QWordToMeaning.svelte`: reusable or older UI pieces.
 - `src/app.css`: global CSS, Tailwind import, and base layout styling.
+- `apps/api/app/main.py`: FastAPI application factory, lifespan boundary, and router composition.
+- `apps/api/app/config.py`: typed, secret-safe environment configuration loaded during lifespan.
+- `apps/api/app/health.py`: database-independent liveness contract.
+- `apps/api/tests/unit/`: API configuration and HTTP contract tests.
+
+## Backend Foundation Flow
+
+1. Uvicorn imports `app.main` and calls `create_app()` through its factory mode.
+2. FastAPI lifespan calls `load_settings()` during startup; configuration is not read at module
+   import or application construction time.
+3. Invalid configuration stops startup through a sanitized `ConfigurationError` without exposing
+   raw values or database credentials.
+4. Valid settings are stored in `app.state.settings` for later database lifecycle construction.
+5. `GET /health/live` remains independent of configuration consumers and PostgreSQL connectivity.
+
+The frontend still uses Google Apps Script at runtime. No frontend request currently targets this
+FastAPI service.
 
 ## Data Contracts
 

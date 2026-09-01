@@ -138,6 +138,33 @@ Configuration rules:
 - An automated test must use a recognizable fake password and prove that configuration failure
   output does not expose it.
 
+### Configuration implementation and verification - 2026-09-01
+
+- `app/config.py` defines frozen typed settings for the environment, log level, secret database URL,
+  and a database connection timeout bounded from 1 through 10 seconds.
+- Database URLs are parsed without connecting and must select the `postgresql+psycopg` driver.
+- `load_settings()` translates Pydantic validation failures into `ConfigurationError` messages that
+  contain safe environment-variable names but omit rejected input and exception chaining.
+- Production rejects the disposable local database URL even though it remains a convenient default
+  for local and test environments.
+- FastAPI lifespan loads settings into `app.state.settings`. Importing the module and calling
+  `create_app()` do not read configuration or create resources.
+- `.env.example` documents only disposable local values. A real `.env` remains optional and ignored
+  by Git.
+- `uv run pytest tests/unit -q`: eleven tests passed, with the previously recorded upstream
+  `TestClient`/`httpx` warning.
+- `uv run ruff check .`: passed after replacing one nested test context manager with Ruff's preferred
+  combined form.
+- `uv run ruff format --check .`: passed after formatting `test_config.py`; seven files were already
+  formatted on the final run.
+- Updated the lifespan annotation from the broader `AsyncIterator[None]` to
+  `AsyncGenerator[None, None]` after the editor reported the former annotation as deprecated for an
+  `@asynccontextmanager` function that yields.
+- Normal Uvicorn lifespan startup and shutdown succeeded, and liveness still returned `200` with
+  exactly `{ "status": "ok" }`.
+- Deliberately invalid production startup exited with code 3, named only `DATABASE_URL`, and did not
+  expose the recognizable fake password or connection URL.
+
 ## Health endpoint contract
 
 ### `GET /health/live`
@@ -264,6 +291,7 @@ temporary PostgreSQL outage must not turn into a process restart signal.
 
 ## Next implementation slice
 
-Implement typed configuration and unit tests, including production rejection of the disposable local
-database URL and proof that invalid input containing a recognizable fake password is not exposed in
-configuration failure output. Do not add database readiness until this boundary passes.
+Implement `app/database.py` with SQLAlchemy engine construction and disposal, then wire that resource
+into FastAPI lifespan without requiring a successful database connection during startup. Verify
+engine options and shutdown disposal with controlled unit substitutes before adding Compose or the
+database-aware readiness route.

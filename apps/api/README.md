@@ -15,6 +15,21 @@ Create or synchronize the local environment from the committed lockfile:
 uv sync --locked
 ```
 
+## Configuration
+
+Local development works with safe disposable defaults. To override them, create an optional `.env`
+file beside `pyproject.toml`; use `.env.example` as the field reference.
+
+| Variable | Default | Constraint |
+| --- | --- | --- |
+| `APP_ENV` | `local` | `local`, `test`, or `production` |
+| `LOG_LEVEL` | `INFO` | `DEBUG`, `INFO`, `WARNING`, `ERROR`, or `CRITICAL` |
+| `DATABASE_URL` | Local disposable PostgreSQL URL | Must use the `postgresql+psycopg` driver |
+| `DATABASE_CONNECT_TIMEOUT_SECONDS` | `2` | Integer from 1 through 10 |
+
+Production must explicitly override `DATABASE_URL`; the disposable local default is rejected.
+Database URLs are treated as secrets and must not be printed or logged.
+
 ## Start the development server
 
 ```bash
