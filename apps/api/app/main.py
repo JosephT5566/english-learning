@@ -11,7 +11,9 @@ from app.database import (
     create_database_session_factory,
     dispose_database_engine,
 )
+from app.errors import register_error_handlers
 from app.health import router as health_router
+from app.request_context import add_request_id
 
 
 @asynccontextmanager
@@ -47,5 +49,7 @@ def create_app() -> FastAPI:
     """
 
     app = FastAPI(title="English Learning API", lifespan=lifespan)
+    app.middleware("http")(add_request_id)
+    register_error_handlers(app)
     app.include_router(health_router)
     return app

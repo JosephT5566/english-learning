@@ -86,11 +86,15 @@ exercise. The final combined suite passed all 21 unit and integration tests; Ruf
 checks also passed. The PostgreSQL 17 Compose service is currently running with its named development
 volume.
 
-Issue #7 persistence-foundation work has started on `issue-7-persistence-foundations`. The first
-slice adds an application-scoped SQLAlchemy session factory and a transaction context that commits on
-success, rolls back on caller or commit failure, and always closes the session. Controlled tests
-cover all three outcomes and FastAPI lifespan ownership; the unit suite passes 23 tests. Alembic,
-the migration baseline, the common error envelope, and backend CI remain unimplemented.
+Issue #7 persistence-foundation implementation and learning checkpoint are complete locally on
+`issue-7-persistence-foundations`; publication remains pending. The API now has application-scoped
+session factories, short-lived transaction ownership, an empty reversible
+Alembic baseline, isolated real-PostgreSQL migration and transaction patterns, a stable safe API
+error envelope with server request IDs, and independent frontend/backend CI jobs. The development
+database and a fresh temporary database both passed upgrade, downgrade, and re-upgrade. The full
+PostgreSQL-backed backend suite passes 32 tests; Ruff and lock checks pass. The frontend production
+build passes, while the already documented `npm run check` 6 errors/6 warnings and repository-wide
+Prettier drift remain outside this backend ticket. Remote GitHub Actions execution is not yet claimed.
 
 GitHub tracking:
 
@@ -143,7 +147,5 @@ documentation session.
 
 ## Next action
 
-Configure Alembic through the existing secret-safe settings boundary, add an empty reversible
-baseline migration, and verify `upgrade -> downgrade -> upgrade` against Compose PostgreSQL. Keep
-production domain tables and authentication out of Issue #7. Formal GitHub status for issues #4,
-#5, and #6 remains unverified.
+Review and publish the focused Issue #7 branch, verify the remote CI result, and then begin the
+production domain schema. Formal GitHub status for issues #4, #5, and #6 remains unverified.

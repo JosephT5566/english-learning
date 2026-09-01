@@ -34,6 +34,26 @@ FastAPI creates the SQLAlchemy engine during lifespan startup and disposes its c
 shutdown. Engine creation is lazy and does not require PostgreSQL to be available; database
 availability is reported separately by the readiness endpoint.
 
+## Database migrations
+
+Start PostgreSQL before running migrations. Upgrade a clean or existing development database to the
+latest checked-in revision with:
+
+```bash
+uv run alembic upgrade head
+```
+
+During development, revert the latest revision and apply it again with:
+
+```bash
+uv run alembic downgrade -1
+uv run alembic upgrade head
+```
+
+Use `uv run alembic current` to inspect the applied revision. Downgrades are a development
+verification and recovery tool, not an assumed production rollback strategy. The initial Issue #7
+baseline is intentionally empty; production domain tables begin in a later migration.
+
 ## Local PostgreSQL
 
 From the repository root, start PostgreSQL and wait for its health check:
@@ -110,4 +130,27 @@ RUN_POSTGRES_INTEGRATION_TESTS=1 uv run pytest tests/integration -q
 ```
 
 The root Compose definition and integration suite are verified against `postgres:17-alpine` through
-OrbStack. Production startup commands are still pending.
+OrbStack. Integration tests are opt-in and fail if PostgreSQL is unavailable; they never substitute
+SQLite. The migration test creates a uniquely named temporary PostgreSQL database, verifies
+`upgrade -> downgrade -> upgrade`, and removes that database afterward. Production startup commands
+are still pending.
+
+## API error contract
+
+API failures use this stable envelope:
+
+```json
+{
+  "error": {
+    "code": "validation_failed",
+    "message": "The request did not pass validation.",
+    "retryable": false,
+    "request_id": "00000000-0000-0000-0000-000000000000"
+  }
+}
+```
+
+Safe code-specific `details` may also be present. Clients branch on `code`, not `message`. Every
+request receives a new UUID in `X-Request-ID`; error responses repeat it in the envelope. Validation
+and unexpected-error handlers do not return rejected inputs, exception text, stack traces, SQL,
+credentials, or connection details.

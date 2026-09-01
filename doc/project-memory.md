@@ -20,8 +20,10 @@ secret-safe startup configuration, a lazy SQLAlchemy engine lifecycle, and datab
 It is not connected to the frontend yet, so the current user experience and Google Apps Script
 runtime path are unchanged.
 
-Persistence-foundation work has started with an application-scoped SQLAlchemy session factory and an
-explicit short-lived transaction boundary. No domain schema or migration exists yet.
+Persistence foundations are implemented locally: application-scoped SQLAlchemy session factories,
+explicit short-lived transaction ownership, an empty reversible Alembic baseline, PostgreSQL-only
+integration patterns, stable safe API errors, and independent frontend/backend CI definitions. No
+production domain schema exists yet, and the backend remains disconnected from the frontend.
 
 ## Current User Experience
 

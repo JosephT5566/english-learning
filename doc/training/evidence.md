@@ -64,7 +64,44 @@ Use precise language such as “project,” “local load test,” or “deploye
   liveness stayed `200`. Invalid production configuration was also verified to fail without exposing
   the recognizable test secret.
 - Measured result: Local verification only; no production availability or performance claim.
-- Limitations: No SQLAlchemy session boundary, migration, domain schema, authentication, CI backend
-  job, or deployed API exists yet. One upstream FastAPI `TestClient` compatibility warning remains.
+- Limitations at this milestone: No SQLAlchemy session boundary, migration, domain schema,
+  authentication, CI backend job, or deployed API existed yet. The next evidence entry adds the
+  session, migration, and CI-definition foundations. One upstream FastAPI `TestClient` compatibility
+  warning remains.
 - Five-minute explanation practiced: Not yet.
 - Candidate resume bullet: Not yet; revisit after CI and deployment evidence exist.
+
+### Persistence, migration, and safe API error foundations
+
+- Date: 2026-09-01
+- Status: Verified locally
+- Problem: Establish dependable transaction, migration, error, test, and CI boundaries before
+  production domain tables make persistence failures costly.
+- Constraints and invariants: Keep domain schema, authentication, and frontend cutover out of scope;
+  use PostgreSQL rather than SQLite substitution; close sessions on every outcome; never serialize
+  exception, validation-input, credential, SQL, or connection details to clients.
+- Decision: Share one application-scoped SQLAlchemy session factory while each context manager owns
+  one short-lived session and transaction; use an empty reversible Alembic baseline configured
+  through the application's secret-safe settings; test migrations and transactions in isolated
+  temporary PostgreSQL databases; standardize errors and request IDs; run frontend and backend CI as
+  independent jobs.
+- Alternatives considered: Caller-owned commits were rejected because ownership becomes ambiguous;
+  SQLite integration tests were rejected because they do not exercise the deployed database dialect;
+  committing a database URL in Alembic configuration was rejected because it duplicates validation
+  and risks secret disclosure; introducing domain tables in the baseline was deferred to keep ticket
+  scope and rollback evidence clear.
+- Implementation references: `apps/api/app/database.py`, `apps/api/app/errors.py`,
+  `apps/api/app/request_context.py`, `apps/api/migrations/`, `apps/api/tests/`,
+  `.github/workflows/ci.yml`, and `doc/training/issues/issue-7/README.md`.
+- Verification and failure cases: The persistent development database and a new temporary database
+  both completed upgrade, downgrade, and re-upgrade. Tests prove commit, rollback, session cleanup,
+  validation redaction, unexpected exception redaction, and request-ID correlation. The full suite
+  passed 32 tests against PostgreSQL 17; Ruff, lock, YAML parse, and whitespace checks passed.
+- Measured result: Local verification only; no remote CI, deployment, scale, performance, or
+  production reliability claim.
+- Limitations: The baseline contains no domain schema; GitHub Actions has not run on the branch;
+  existing frontend type/lint debt remains; one upstream FastAPI `TestClient` warning remains.
+- Five-minute explanation practiced: A focused transaction/PostgreSQL checkpoint was completed;
+  the full five-minute explanation has not yet been practiced.
+- Candidate resume bullet: Not yet; revisit after remote CI and later domain behavior provide a
+  stronger end-to-end claim.

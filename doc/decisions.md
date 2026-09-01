@@ -19,6 +19,14 @@ Last updated: 2026-09-01
 - Keep the SQLAlchemy session factory application-scoped but make each unit of work own one
   short-lived session and transaction. The boundary commits only on success, rolls back on caller or
   commit failure, and always closes the session.
+- Keep Alembic inside the independently runnable API package and load its database connection through
+  the same validated, secret-safe settings and engine factories as the application. Start migration
+  history with an empty reversible baseline before domain tables are introduced.
+- Standardize API failures as `{ error: { code, message, retryable, request_id, details? } }`. Generate
+  a new server request UUID for every request, make codes the client contract, and expose only
+  allowlisted validation and exception information.
+- Run frontend and backend checks as independent GitHub Actions jobs. Backend CI uses PostgreSQL 17
+  explicitly and runs the opt-in integration suite; SQLite substitution is not permitted.
 
 ## Known Follow-Up Areas
 
