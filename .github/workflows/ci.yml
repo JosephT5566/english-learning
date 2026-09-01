@@ -26,6 +26,11 @@ jobs:
         run: npm ci
 
       - name: Build frontend
+        env:
+          PUBLIC_APP_SCRIPT_URL: ${{ vars.PUBLIC_APP_SCRIPT_URL }}
+          PUBLIC_GOOGLE_AUTH_CLIENT_ID: ${{ vars.PUBLIC_GOOGLE_AUTH_CLIENT_ID }}
+          PUBLIC_EMAIL_WHITE_LIST: ${{ vars.PUBLIC_EMAIL_WHITE_LIST }}
+          BASE_PATH: '/${{ github.event.repository.name }}'
         run: npm run build
 
   backend:
