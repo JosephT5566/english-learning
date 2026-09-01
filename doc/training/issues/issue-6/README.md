@@ -1,7 +1,7 @@
 # Issue #6 - FastAPI and PostgreSQL Foundation
 
 - Date started: 2026-08-31
-- Status: Design in progress; no backend implementation or verification yet
+- Status: Implementation in progress; `uv` scaffold and liveness slice verified
 - Outcome: Establish a minimal, reproducible Python API connected to local PostgreSQL
 
 ## Scope boundary
@@ -21,59 +21,13 @@ Use `uv` for Python dependency management, virtual environments, locking, and pr
 - Document API commands with `uv sync` and `uv run ...`; frontend commands remain npm-based.
 - Target Python 3.12 or newer, consistent with the training plan.
 
-This choice is a design decision until the project files exist and a clean install/build has been
-verified.
+The project files and locked Python environment have now been created and verified locally.
 
-### Planned `uv` commands
+### API command reference
 
-Run the initial project setup from the repository root. `--bare` avoids generating starter source
-files that conflict with the accepted `app/` package layout.
-
-```bash
-uv init --bare --name english-learning-api --python 3.12 apps/api
-cd apps/api
-uv python pin 3.12
-```
-
-Add the accepted runtime and development dependencies from `apps/api/`. Quote extras so shells such
-as Zsh do not interpret the square brackets as a filename pattern.
-
-```bash
-uv add fastapi pydantic pydantic-settings sqlalchemy \
-  'psycopg[binary]' 'uvicorn[standard]'
-uv add --dev pytest httpx ruff
-```
-
-Synchronize the environment and confirm the selected interpreter:
-
-```bash
-uv sync
-uv run python --version
-```
-
-After the application and tests exist, use these development and verification commands:
-
-```bash
-uv run uvicorn app.main:create_app --factory --reload
-uv run pytest
-uv run ruff check .
-uv run ruff format --check .
-```
-
-Common dependency and lockfile maintenance commands are:
-
-```bash
-uv lock
-uv sync --locked
-uv add PACKAGE
-uv add --dev PACKAGE
-uv remove PACKAGE
-uv tree
-uv run COMMAND
-```
-
-Commit both `apps/api/pyproject.toml` and `apps/api/uv.lock`. These commands remain planned rather
-than verified until they have been run successfully in the repository.
+The verified setup, development-server, liveness, test, and Ruff commands live in the
+[`apps/api/README.md`](../../../../apps/api/README.md). This issue note keeps design rationale and
+verification history rather than duplicating the daily command reference.
 
 ## Dependency set
 
@@ -229,6 +183,65 @@ The response must not include exception text, SQL, hostnames, ports, database na
 URLs, or credentials. Diagnostic details may be written to server logs only after secret-safe
 sanitization.
 
+## First implementation slice - liveness
+
+Implement liveness as the first independently runnable vertical slice before configuration,
+PostgreSQL, or readiness behavior.
+
+### File responsibilities
+
+- `app/health.py` owns an `APIRouter` under `/health`, the explicit liveness response model, and the
+  synchronous `GET /live` route.
+- The response model constrains `status` to the literal value `ok` so the public contract is visible
+  in both validation and generated API documentation.
+- `app/main.py` owns `create_app()`, constructs the `FastAPI` application, and registers the health
+  router.
+- Do not create a module-level application instance; local startup uses
+  `app.main:create_app --factory`.
+- `tests/unit/test_health.py` constructs the application through `create_app()` and exercises the
+  endpoint through FastAPI's `TestClient` rather than calling the route function directly.
+
+The initial tree is intentionally smaller than the final Issue #6 layout:
+
+```text
+apps/api/
+├── app/
+│   ├── __init__.py
+│   ├── health.py
+│   └── main.py
+└── tests/
+    └── unit/
+        └── test_health.py
+```
+
+Do not add configuration, database lifecycle, Compose, readiness, authentication, domain modules,
+or premature test fixtures in this slice. Liveness must not import or query database code; a
+temporary PostgreSQL outage must not turn into a process restart signal.
+
+### Acceptance criteria
+
+1. `uv run uvicorn app.main:create_app --factory --reload` starts the API from `apps/api/`.
+2. `GET /health/live` returns `200 OK` with exactly `{ "status": "ok" }`.
+3. The HTTP-level unit test verifies both the status code and exact JSON response.
+4. `uv run pytest tests/unit` passes.
+5. `uv run ruff check .` and `uv run ruff format --check .` pass.
+
+### Verification results - 2026-08-31
+
+- `uv run pytest tests/unit -q`: passed, one test.
+- `uv run ruff check .`: passed.
+- `uv run ruff format --check .`: passed, four files already formatted.
+- `uv run uvicorn app.main:create_app --factory --host 127.0.0.1 --port 8000`: application startup
+  and graceful shutdown succeeded.
+- A real `GET http://127.0.0.1:8000/health/live` request returned `200` with exactly
+  `{ "status": "ok" }`.
+- The first pytest run failed during collection because the console entry point did not include the
+  API project root on Python's import path. Adding `pythonpath = ["."]` under
+  `[tool.pytest.ini_options]` made test discovery explicit and corrected the failure.
+- Pytest emitted one upstream deprecation warning from FastAPI's current `TestClient` compatibility
+  layer about `httpx`. It does not fail this slice, but dependency compatibility should be revisited
+  when versions are next updated.
+
 ## Application lifecycle
 
 - Validate configuration and construct the database engine during the FastAPI lifespan startup.
@@ -249,7 +262,8 @@ sanitization.
 - Verify application shutdown disposes database resources.
 - Record the actual frontend, API, database, and test commands only after they have run successfully.
 
-## Next design decision
+## Next implementation slice
 
-Scaffold the accepted boundary and verify the first independently runnable liveness endpoint before
-adding PostgreSQL readiness behavior.
+Implement typed configuration and unit tests, including production rejection of the disposable local
+database URL and proof that invalid input containing a recognizable fake password is not exposed in
+configuration failure output. Do not add database readiness until this boundary passes.

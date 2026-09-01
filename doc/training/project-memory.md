@@ -59,15 +59,17 @@ failure/recovery, schema constraints/indexes, request/trust-boundary diagrams, a
 lifecycle, rejected alternatives, tradeoffs, and unresolved implementation choices. Joseph completed
 the design-defense check. No backend code or migration exists yet.
 
-Issue #6 backend-foundation design is in progress. The initial decisions are recorded in
+Issue #6 backend-foundation implementation is in progress. The initial decisions are recorded in
 [`issues/issue-6/README.md`](issues/issue-6/README.md): use `uv`, place the independent Python package
 under `apps/api/`, use typed secret-safe configuration with disposable local PostgreSQL defaults,
 keep liveness independent of PostgreSQL, return safe database-aware readiness results, and manage the
-database engine through FastAPI lifespan startup and shutdown. No backend code or verification exists
-yet. The initial dependency set is FastAPI, Pydantic, pydantic-settings, synchronous SQLAlchemy,
-Psycopg 3, and Uvicorn, with pytest, HTTPX, and Ruff for development. The accepted minimal package
-separates application creation, configuration, database lifecycle, health routing, unit tests, and
-PostgreSQL integration tests without adding empty future domain packages.
+database engine through FastAPI lifespan startup and shutdown. The `uv` package and lockfile exist,
+and the first liveness vertical slice is implemented through an application factory, isolated health
+router, explicit response model, and HTTP-level unit test. The unit test, Ruff lint, Ruff formatting,
+Uvicorn factory startup/shutdown, and a real `200` liveness request passed locally. Pytest currently
+emits one upstream FastAPI `TestClient`/`httpx` deprecation warning. `apps/api/README.md` is the
+canonical reference for verified API commands. Typed configuration, database lifecycle, Compose,
+readiness, and PostgreSQL integration tests do not exist yet.
 
 GitHub tracking:
 
@@ -119,7 +121,8 @@ the absence of a repeated signed-in end-to-end update during the documentation s
 
 ## Next action
 
-Scaffold the accepted Issue #6 `apps/api/` boundary and verify the independently runnable liveness
-endpoint before adding database-aware readiness. Keep domain tables, authentication, card/review
-endpoints, and production deployment out of scope. Formal GitHub status for issues #4 and #5 remains
-unverified.
+Implement the Issue #6 typed configuration boundary and unit tests. Reject the disposable local
+database URL in production and prove that invalid configuration cannot expose a recognizable fake
+password before adding database lifecycle or readiness behavior. Keep domain tables, authentication,
+card/review endpoints, and production deployment out of scope. Formal GitHub status for issues #4
+and #5 remains unverified.
