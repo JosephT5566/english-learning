@@ -1,6 +1,6 @@
 # Project Memory
 
-Last updated: 2026-08-02
+Last updated: 2026-09-01
 
 ## Product
 
@@ -14,6 +14,11 @@ This is Joseph's personal English learning/review app. The primary workflow is:
 6. App submits review updates back to the sheet.
 
 The app is optimized for a small, personal learning flow rather than a public multi-user product.
+
+An independently runnable FastAPI foundation now exists under `apps/api/`, with liveness, typed and
+secret-safe startup configuration, a lazy SQLAlchemy engine lifecycle, and database-aware readiness.
+It is not connected to the frontend yet, so the current user experience and Google Apps Script
+runtime path are unchanged.
 
 ## Current User Experience
 

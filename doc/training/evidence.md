@@ -42,4 +42,29 @@ Use precise language such as “project,” “local load test,” or “deploye
 
 ## Evidence entries
 
-No training milestone has been recorded yet. Add the first entry after the Week 0 baseline is completed and its observations are verified.
+### FastAPI and PostgreSQL service foundation
+
+- Date: 2026-09-01
+- Status: Verified locally
+- Problem: Establish an independently runnable API whose process health remains meaningful during a
+  temporary database outage.
+- Constraints and invariants: Preserve the existing frontend runtime path; keep secrets out of
+  errors and documentation; distinguish invalid startup configuration from transient PostgreSQL
+  unavailability; release pooled connections during shutdown.
+- Decision: Use a `uv`-managed FastAPI package, typed lifespan-loaded configuration, a lazy
+  synchronous SQLAlchemy engine, PostgreSQL 17 through Docker Compose, and separate liveness and
+  database-aware readiness probes.
+- Alternatives considered: Import-time configuration and connection, database-coupled liveness,
+  asynchronous SQLAlchemy, and broader infrastructure were rejected for this milestone because they
+  weakened test isolation or added complexity without a demonstrated requirement.
+- Implementation references: `apps/api/app/`, `apps/api/tests/`, `apps/api/pyproject.toml`,
+  `apps/api/README.md`, and `compose.yaml`.
+- Verification and failure cases: All 21 unit and PostgreSQL integration tests passed. A live
+  database stop/restart exercise produced readiness `200 -> 503 -> 200` on one API process while
+  liveness stayed `200`. Invalid production configuration was also verified to fail without exposing
+  the recognizable test secret.
+- Measured result: Local verification only; no production availability or performance claim.
+- Limitations: No SQLAlchemy session boundary, migration, domain schema, authentication, CI backend
+  job, or deployed API exists yet. One upstream FastAPI `TestClient` compatibility warning remains.
+- Five-minute explanation practiced: Not yet.
+- Candidate resume bullet: Not yet; revisit after CI and deployment evidence exist.

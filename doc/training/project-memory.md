@@ -1,6 +1,6 @@
 # English Learning Project Memory
 
-Last updated: 2026-08-29
+Last updated: 2026-09-01
 
 ## Purpose
 
@@ -45,7 +45,7 @@ This is project evidence, not professional production-service experience.
 
 ## Active milestone
 
-Week 0 — baseline and design.
+Week 1 — backend foundation, Issue #6.
 
 Issue #4 current-state trace is documented in
 [`current-state-flow-trace.md`](current-state-flow-trace.md). It includes the three request flows,
@@ -58,6 +58,33 @@ all 21 Sheet-field mappings, MVP API contracts,
 failure/recovery, schema constraints/indexes, request/trust-boundary diagrams, a safe future AI draft
 lifecycle, rejected alternatives, tradeoffs, and unresolved implementation choices. Joseph completed
 the design-defense check. No backend code or migration exists yet.
+
+Issue #6 backend-foundation implementation is complete and verified locally. The decisions are recorded in
+[`issues/issue-6/README.md`](issues/issue-6/README.md): use `uv`, place the independent Python package
+under `apps/api/`, use typed secret-safe configuration with disposable local PostgreSQL defaults,
+keep liveness independent of PostgreSQL, return safe database-aware readiness results, and manage the
+database engine through FastAPI lifespan startup and shutdown. The `uv` package and lockfile exist,
+and the first liveness vertical slice is implemented through an application factory, isolated health
+router, explicit response model, and HTTP-level unit test. The unit test, Ruff lint, Ruff formatting,
+Uvicorn factory startup/shutdown, and a real `200` liveness request passed locally. Pytest currently
+emits one upstream FastAPI `TestClient`/`httpx` deprecation warning. `apps/api/README.md` is the
+canonical reference for verified API commands. Typed, frozen configuration now loads during FastAPI
+lifespan without import-time side effects. It validates supported environments and log levels, keeps
+the database URL secret, bounds connection timeout to 1-10 seconds, requires the Psycopg driver,
+rejects the disposable local URL in production, and translates raw validation failures into safe
+startup errors. The full unit suite passes with eleven tests; normal Uvicorn startup and deliberate
+secret-safe startup failure were both verified. SQLAlchemy engine construction and disposal now live
+in `app/database.py`; FastAPI lifespan creates the lazy engine without connecting, stores it in app
+state, and disposes its pool during shutdown. The bounded `SELECT 1` readiness probe and safe
+`200`/`503` endpoint now exist. Nineteen unit tests and two opt-in real-driver integration tests pass.
+A live PostgreSQL stop/restart exercise changed readiness `200 -> 503 -> 200` without restarting the
+API, while liveness stayed `200`. Initial available-database verification used an existing local
+`postgres:12` image after the old Docker Desktop stack failed to complete the selected image pull.
+After switching to OrbStack, the exact `postgres:17-alpine` Compose service pulled successfully,
+became healthy, passed both integration tests, and repeated the live `200 -> 503 -> 200` recovery
+exercise. The final combined suite passed all 21 unit and integration tests; Ruff lint and formatting
+checks also passed. The PostgreSQL 17 Compose service is currently running with its named development
+volume.
 
 GitHub tracking:
 
@@ -79,7 +106,6 @@ Required outputs:
 - Exact Unicode normalization/case-fold implementation and test vectors
 - Canonical idempotency request serialization and scheduling algorithm version/test vectors
 - Per-category repair policy for malformed imported scheduling rows
-- Python dependency and packaging tool
 - Production API host and managed PostgreSQL provider
 - AI provider and model
 - Whether initial AI generation meets synchronous latency requirements
@@ -104,12 +130,13 @@ Required outputs:
 
 ## Current blockers
 
-None. Remaining issue #4 uncertainties are documented rather than hidden: blank sort behavior,
-the exact Apps Script exception envelope, concurrency/locking outside the inspected function, and
-the absence of a repeated signed-in end-to-end update during the documentation session.
+None for the active Issue #6 implementation. Remaining issue #4 uncertainties are documented rather
+than hidden: blank sort behavior, the exact Apps Script exception envelope, concurrency/locking
+outside the inspected function, and the absence of a repeated signed-in end-to-end update during the
+documentation session.
 
 ## Next action
 
-Verify formal GitHub status for issues #4 and #5, route Issue #5 implementation-area unresolved
-choices into the appropriate later ticket acceptance criteria, then continue the next Week 0 ticket.
-Do not add FastAPI until that ticket's prerequisites are satisfied.
+Commit the verified Issue #6 readiness/Compose slice and prepare formal GitHub verification. Then
+select the next bounded Week 1 ticket without pulling domain tables or authentication into the
+foundation milestone. Formal GitHub status for issues #4 and #5 remains unverified.

@@ -1,8 +1,10 @@
 # Development Memory
 
-Last updated: 2026-08-02
+Last updated: 2026-09-01
 
 ## Commands
+
+### Frontend
 
 - Install dependencies: `npm install`
 - Start dev server: `npm run dev`
@@ -11,6 +13,23 @@ Last updated: 2026-08-02
 - Type/Svelte validation: `npm run check`
 - Format all files: `npm run format`
 - Lint and formatting check: `npm run lint`
+
+### API
+
+Run API commands from `apps/api/`. See [`apps/api/README.md`](../apps/api/README.md) for the
+canonical verified command reference.
+
+- Synchronize locked dependencies: `uv sync --locked`
+- Start development server: `uv run uvicorn app.main:create_app --factory --reload`
+- Run unit tests: `uv run pytest tests/unit -q`
+- Run PostgreSQL integration tests when a local database is available:
+  `RUN_POSTGRES_INTEGRATION_TESTS=1 uv run pytest tests/integration -q`
+- Lint: `uv run ruff check .`
+- Check formatting: `uv run ruff format --check .`
+
+Start the verified local PostgreSQL 17 service from the repository root with
+`docker compose up -d --wait postgres`. Inspect it with `docker compose ps` and stop it with
+`docker compose stop postgres`.
 
 ## Environment Variables
 
@@ -25,6 +44,17 @@ Because these are `PUBLIC_` vars, they are bundled into browser code. Do not sto
 Production static builds may also need:
 
 - `BASE_PATH`: base path for GitHub Pages-style deployments, consumed by `svelte.config.js`.
+
+The API accepts these server-side variables:
+
+- `APP_ENV`: `local`, `test`, or `production`; defaults to `local`.
+- `LOG_LEVEL`: supported Python log level; defaults to `INFO`.
+- `DATABASE_URL`: secret SQLAlchemy URL using the `postgresql+psycopg` driver. The local default is
+  disposable and rejected in production.
+- `DATABASE_CONNECT_TIMEOUT_SECONDS`: integer from 1 through 10; defaults to `2`.
+
+These API values are server-side and must never use the SvelteKit `PUBLIC_` prefix. A local
+`apps/api/.env` is optional and ignored by Git; `.env.example` contains only disposable defaults.
 
 ## Validation Expectations
 
