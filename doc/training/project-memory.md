@@ -59,7 +59,7 @@ failure/recovery, schema constraints/indexes, request/trust-boundary diagrams, a
 lifecycle, rejected alternatives, tradeoffs, and unresolved implementation choices. Joseph completed
 the design-defense check. No backend code or migration exists yet.
 
-Issue #6 backend-foundation implementation is in progress. The initial decisions are recorded in
+Issue #6 backend-foundation implementation is complete and verified locally. The decisions are recorded in
 [`issues/issue-6/README.md`](issues/issue-6/README.md): use `uv`, place the independent Python package
 under `apps/api/`, use typed secret-safe configuration with disposable local PostgreSQL defaults,
 keep liveness independent of PostgreSQL, return safe database-aware readiness results, and manage the
@@ -75,9 +75,16 @@ rejects the disposable local URL in production, and translates raw validation fa
 startup errors. The full unit suite passes with eleven tests; normal Uvicorn startup and deliberate
 secret-safe startup failure were both verified. SQLAlchemy engine construction and disposal now live
 in `app/database.py`; FastAPI lifespan creates the lazy engine without connecting, stores it in app
-state, and disposes its pool during shutdown. Fourteen unit tests pass. With local port 5432 refusing
-connections, Uvicorn still started, liveness returned `200`, and shutdown completed cleanly. Compose,
-database probing, readiness, and PostgreSQL integration tests do not exist yet.
+state, and disposes its pool during shutdown. The bounded `SELECT 1` readiness probe and safe
+`200`/`503` endpoint now exist. Nineteen unit tests and two opt-in real-driver integration tests pass.
+A live PostgreSQL stop/restart exercise changed readiness `200 -> 503 -> 200` without restarting the
+API, while liveness stayed `200`. Initial available-database verification used an existing local
+`postgres:12` image after the old Docker Desktop stack failed to complete the selected image pull.
+After switching to OrbStack, the exact `postgres:17-alpine` Compose service pulled successfully,
+became healthy, passed both integration tests, and repeated the live `200 -> 503 -> 200` recovery
+exercise. The final combined suite passed all 21 unit and integration tests; Ruff lint and formatting
+checks also passed. The PostgreSQL 17 Compose service is currently running with its named development
+volume.
 
 GitHub tracking:
 
@@ -123,13 +130,13 @@ Required outputs:
 
 ## Current blockers
 
-None. Remaining issue #4 uncertainties are documented rather than hidden: blank sort behavior,
-the exact Apps Script exception envelope, concurrency/locking outside the inspected function, and
-the absence of a repeated signed-in end-to-end update during the documentation session.
+None for the active Issue #6 implementation. Remaining issue #4 uncertainties are documented rather
+than hidden: blank sort behavior, the exact Apps Script exception envelope, concurrency/locking
+outside the inspected function, and the absence of a repeated signed-in end-to-end update during the
+documentation session.
 
 ## Next action
 
-Add root `compose.yaml` with disposable local PostgreSQL, implement a bounded `SELECT 1` probe and
-`GET /health/ready`, and verify available/unavailable database behavior with a PostgreSQL integration
-test while liveness remains independent. Keep domain tables, authentication, card/review endpoints,
-and production deployment out of scope. Formal GitHub status for issues #4 and #5 remains unverified.
+Commit the verified Issue #6 readiness/Compose slice and prepare formal GitHub verification. Then
+select the next bounded Week 1 ticket without pulling domain tables or authentication into the
+foundation milestone. Formal GitHub status for issues #4 and #5 remains unverified.

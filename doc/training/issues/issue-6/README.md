@@ -1,7 +1,7 @@
 # Issue #6 - FastAPI and PostgreSQL Foundation
 
 - Date started: 2026-08-31
-- Status: Implementation in progress; liveness, configuration, and engine lifecycle verified
+- Status: Implementation and final verification complete locally
 - Outcome: Establish a minimal, reproducible Python API connected to local PostgreSQL
 
 ## Scope boundary
@@ -210,6 +210,33 @@ The response must not include exception text, SQL, hostnames, ports, database na
 URLs, or credentials. Diagnostic details may be written to server logs only after secret-safe
 sanitization.
 
+### Readiness implementation and verification - 2026-09-01
+
+- Root `compose.yaml` defines a `postgres:17-alpine` service with disposable local credentials, a
+  named data volume, published port 5432, and a `pg_isready` health check.
+- `check_database_readiness()` opens a bounded SQLAlchemy connection, executes `SELECT 1`, closes the
+  connection through its context manager, and maps `SQLAlchemyError` to `False` without exposing the
+  exception.
+- `GET /health/ready` returns only the accepted `200`/`503` response models. It performs a fresh probe
+  for every request so availability can recover without restarting the API.
+- Unit tests cover successful probes, failures, exact safe response envelopes, and recovery. The
+  fast suite passed with nineteen tests and the existing upstream warning.
+- The opt-in integration suite passed twice: available PostgreSQL returned `200`, and a real Psycopg
+  attempt to an unavailable port returned the safe `503` response. These two tests ran against a
+  temporary container created from an existing local `postgres:12` image.
+- A process-level stop/restart exercise on one Uvicorn process produced readiness
+  `200 -> 503 -> 200`; liveness remained `200` during the outage. The temporary container was then
+  stopped and removed without a volume.
+- `docker compose config` validated the selected Compose definition. Docker Desktop initially was
+  not running; after launch, its Docker 20.10.8 and Compose v2.0.0-rc.1 stack did not complete the
+  `postgres:17-alpine` registry pull. Initial available-database verification therefore used the
+  temporary PostgreSQL 12 fixture described above.
+- After switching the active Docker context to OrbStack, `docker compose up -d --wait postgres`
+  pulled `postgres:17-alpine`, created the named volume, and reported the service healthy. The two
+  integration tests passed against this exact service.
+- The stop/restart exercise was repeated against the Compose PostgreSQL 17 service. On one API
+  process, readiness again transitioned `200 -> 503 -> 200` while liveness remained `200`.
+
 ## First implementation slice - liveness
 
 Implement liveness as the first independently runnable vertical slice before configuration,
@@ -306,8 +333,17 @@ temporary PostgreSQL outage must not turn into a process restart signal.
 - Verify application shutdown disposes database resources.
 - Record the actual frontend, API, database, and test commands only after they have run successfully.
 
-## Next implementation slice
+## Final verification - 2026-09-01
 
-Add root `compose.yaml` with disposable local PostgreSQL, then implement the bounded `SELECT 1`
-database probe and `/health/ready` response contract. Verify both available and unavailable database
-states with a PostgreSQL integration test while liveness remains `200` in both states.
+- `docker compose ps`: the OrbStack-hosted `postgres:17-alpine` service reported healthy.
+- `RUN_POSTGRES_INTEGRATION_TESTS=1 uv run pytest -q`: all 21 unit and integration tests passed with
+  one recorded upstream `TestClient` compatibility warning.
+- `uv run ruff check .`: passed.
+- `uv run ruff format --check .`: passed; ten files were already formatted.
+- Python application modules, classes, and functions now include conventional docstrings describing
+  their contracts and lifecycle responsibilities.
+
+## Next completion step
+
+Commit the verified readiness/Compose slice and prepare Issue #6 for formal GitHub verification.
+PostgreSQL 17 is currently running through OrbStack for local development.

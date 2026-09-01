@@ -1,8 +1,9 @@
-from unittest.mock import Mock
+from unittest.mock import MagicMock, Mock
 
 from fastapi.testclient import TestClient
 from pytest import MonkeyPatch
 from sqlalchemy.engine import Engine
+from sqlalchemy.exc import SQLAlchemyError
 
 import app.database as database_module
 import app.main as main_module
@@ -53,6 +54,27 @@ def test_dispose_database_engine_closes_pool() -> None:
     database_module.dispose_database_engine(engine)
 
     engine.dispose.assert_called_once_with()
+
+
+def test_check_database_readiness_executes_select_one() -> None:
+    engine = MagicMock(spec=Engine)
+    connection = engine.connect.return_value.__enter__.return_value
+
+    is_ready = database_module.check_database_readiness(engine)
+
+    assert is_ready is True
+    connection.execute.assert_called_once()
+    statement = connection.execute.call_args.args[0]
+    assert str(statement) == "SELECT 1"
+
+
+def test_check_database_readiness_handles_database_failure() -> None:
+    engine = MagicMock(spec=Engine)
+    engine.connect.side_effect = SQLAlchemyError("database unavailable")
+
+    is_ready = database_module.check_database_readiness(engine)
+
+    assert is_ready is False
 
 
 def test_database_engine_lifecycle_uses_fastapi_lifespan(

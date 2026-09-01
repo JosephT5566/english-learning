@@ -1,3 +1,5 @@
+"""FastAPI application construction and resource lifecycle."""
+
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
@@ -10,11 +12,20 @@ from app.health import router as health_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
+    """Create and dispose application-scoped resources.
+
+    Args:
+        app: FastAPI application receiving the validated settings and engine.
+
+    Yields:
+        Control while the application is serving requests.
+    """
+
     settings = load_settings()
     database_engine = create_database_engine(settings)
 
     try:
-        # save application-level state to app.
+        # Expose application-scoped resources to request handlers.
         app.state.settings = settings
         app.state.database_engine = database_engine
         yield
@@ -23,6 +34,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
 
 def create_app() -> FastAPI:
+    """Build a new FastAPI application and register its routers.
+
+    Returns:
+        A FastAPI application whose resources are owned by lifespan.
+    """
+
     app = FastAPI(title="English Learning API", lifespan=lifespan)
     app.include_router(health_router)
     return app

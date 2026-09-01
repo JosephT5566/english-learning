@@ -1,3 +1,5 @@
+"""Typed, secret-safe application configuration."""
+
 from enum import StrEnum
 from typing import Annotated
 
@@ -14,12 +16,16 @@ DEFAULT_DATABASE_URL = (
 
 
 class AppEnvironment(StrEnum):
+    """Supported deployment environments."""
+
     LOCAL = "local"
     TEST = "test"
     PRODUCTION = "production"
 
 
 class LogLevel(StrEnum):
+    """Supported application logging levels."""
+
     DEBUG = "DEBUG"
     INFO = "INFO"
     WARNING = "WARNING"
@@ -32,6 +38,8 @@ class ConfigurationError(RuntimeError):
 
 
 class Settings(BaseSettings):
+    """Validated settings loaded from environment variables and an optional `.env`."""
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
@@ -48,6 +56,8 @@ class Settings(BaseSettings):
     @field_validator("database_url")
     @classmethod
     def require_psycopg_database_url(cls, value: SecretStr) -> SecretStr:
+        """Require a valid SQLAlchemy URL that selects the Psycopg driver."""
+
         try:
             parsed_url = make_url(value.get_secret_value())
         except ArgumentError:
@@ -60,6 +70,8 @@ class Settings(BaseSettings):
 
 
 def _invalid_environment_names(error: ValidationError) -> list[str]:
+    """Extract safe environment-variable names without rejected input values."""
+
     names = {
         str(detail["loc"][0]).upper()
         for detail in error.errors(
@@ -73,6 +85,16 @@ def _invalid_environment_names(error: ValidationError) -> list[str]:
 
 
 def load_settings() -> Settings:
+    """Load validated application settings through a sanitized failure boundary.
+
+    Returns:
+        Frozen settings safe to share for the application lifespan.
+
+    Raises:
+        ConfigurationError: If a source or value is invalid, or production uses
+            the disposable local database URL.
+    """
+
     try:
         settings = Settings()
     except ValidationError as error:

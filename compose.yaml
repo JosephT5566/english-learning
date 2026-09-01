@@ -1,0 +1,19 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: english_learning
+      POSTGRES_USER: english_learning
+      POSTGRES_PASSWORD: english_learning
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U english_learning -d english_learning"]
+      interval: 2s
+      timeout: 2s
+      retries: 15
+    volumes:
+      - english_learning_postgres_data:/var/lib/postgresql/data
+
+volumes:
+  english_learning_postgres_data:

@@ -16,9 +16,9 @@ This is Joseph's personal English learning/review app. The primary workflow is:
 The app is optimized for a small, personal learning flow rather than a public multi-user product.
 
 An independently runnable FastAPI foundation now exists under `apps/api/`, with liveness, typed and
-secret-safe startup configuration, and a lazy SQLAlchemy engine lifecycle. It does not query
-PostgreSQL and is not connected to the frontend yet, so the current user experience and Google Apps
-Script runtime path are unchanged.
+secret-safe startup configuration, a lazy SQLAlchemy engine lifecycle, and database-aware readiness.
+It is not connected to the frontend yet, so the current user experience and Google Apps Script
+runtime path are unchanged.
 
 ## Current User Experience
 
