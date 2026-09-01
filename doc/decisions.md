@@ -16,6 +16,9 @@ Last updated: 2026-09-01
   startup, and dispose its pool during lifespan shutdown.
 - Keep liveness independent of PostgreSQL. Readiness executes a fresh bounded `SELECT 1`, reports
   only `ok` or `unavailable`, and can recover without restarting the API.
+- Keep the SQLAlchemy session factory application-scoped but make each unit of work own one
+  short-lived session and transaction. The boundary commits only on success, rolls back on caller or
+  commit failure, and always closes the session.
 
 ## Known Follow-Up Areas
 

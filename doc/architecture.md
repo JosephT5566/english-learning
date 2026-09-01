@@ -31,7 +31,8 @@ Last updated: 2026-09-01
 - `src/app.css`: global CSS, Tailwind import, and base layout styling.
 - `apps/api/app/main.py`: FastAPI application factory, lifespan boundary, and router composition.
 - `apps/api/app/config.py`: typed, secret-safe environment configuration loaded during lifespan.
-- `apps/api/app/database.py`: lazy SQLAlchemy engine construction and pool disposal.
+- `apps/api/app/database.py`: lazy SQLAlchemy engine construction, application-scoped session factory,
+  explicit transaction ownership, readiness queries, and pool disposal.
 - `apps/api/app/health.py`: database-independent liveness and database-aware readiness contracts.
 - `apps/api/tests/unit/`: API configuration, lifecycle, probe, and HTTP contract tests.
 - `apps/api/tests/integration/`: opt-in real PostgreSQL readiness tests.
@@ -48,8 +49,10 @@ Last updated: 2026-09-01
 4. Valid settings construct a lazy SQLAlchemy engine without opening a connection; settings and the
    engine are stored in application state.
 5. Lifespan shutdown disposes the engine pool in a `finally` block.
-6. `GET /health/live` remains independent of PostgreSQL connectivity.
-7. `GET /health/ready` performs a fresh `SELECT 1` probe and returns a safe `503` when PostgreSQL is
+6. Lifespan creates one session factory from the engine. Each future unit of work will create a
+   short-lived session that commits on success, rolls back on failure, and always closes.
+7. `GET /health/live` remains independent of PostgreSQL connectivity.
+8. `GET /health/ready` performs a fresh `SELECT 1` probe and returns a safe `503` when PostgreSQL is
    unavailable, allowing recovery without an API restart.
 
 The frontend still uses Google Apps Script at runtime. No frontend request currently targets this

@@ -20,6 +20,9 @@ secret-safe startup configuration, a lazy SQLAlchemy engine lifecycle, and datab
 It is not connected to the frontend yet, so the current user experience and Google Apps Script
 runtime path are unchanged.
 
+Persistence-foundation work has started with an application-scoped SQLAlchemy session factory and an
+explicit short-lived transaction boundary. No domain schema or migration exists yet.
+
 ## Current User Experience
 
 - `/` shows today's date, a welcome message, and either a Google sign-in button or a `Start` button.
