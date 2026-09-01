@@ -73,8 +73,11 @@ lifespan without import-time side effects. It validates supported environments a
 the database URL secret, bounds connection timeout to 1-10 seconds, requires the Psycopg driver,
 rejects the disposable local URL in production, and translates raw validation failures into safe
 startup errors. The full unit suite passes with eleven tests; normal Uvicorn startup and deliberate
-secret-safe startup failure were both verified. Database lifecycle, Compose, readiness, and
-PostgreSQL integration tests do not exist yet.
+secret-safe startup failure were both verified. SQLAlchemy engine construction and disposal now live
+in `app/database.py`; FastAPI lifespan creates the lazy engine without connecting, stores it in app
+state, and disposes its pool during shutdown. Fourteen unit tests pass. With local port 5432 refusing
+connections, Uvicorn still started, liveness returned `200`, and shutdown completed cleanly. Compose,
+database probing, readiness, and PostgreSQL integration tests do not exist yet.
 
 GitHub tracking:
 
@@ -126,8 +129,7 @@ the absence of a repeated signed-in end-to-end update during the documentation s
 
 ## Next action
 
-Implement `apps/api/app/database.py` with SQLAlchemy engine construction and disposal, then wire it
-into FastAPI lifespan without connecting during startup. Verify engine options and disposal with
-controlled unit substitutes before adding Compose or database-aware readiness. Keep domain tables,
-authentication, card/review endpoints, and production deployment out of scope. Formal GitHub status
-for issues #4 and #5 remains unverified.
+Add root `compose.yaml` with disposable local PostgreSQL, implement a bounded `SELECT 1` probe and
+`GET /health/ready`, and verify available/unavailable database behavior with a PostgreSQL integration
+test while liveness remains independent. Keep domain tables, authentication, card/review endpoints,
+and production deployment out of scope. Formal GitHub status for issues #4 and #5 remains unverified.

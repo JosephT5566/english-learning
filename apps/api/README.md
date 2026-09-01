@@ -30,6 +30,10 @@ file beside `pyproject.toml`; use `.env.example` as the field reference.
 Production must explicitly override `DATABASE_URL`; the disposable local default is rejected.
 Database URLs are treated as secrets and must not be printed or logged.
 
+FastAPI creates the SQLAlchemy engine during lifespan startup and disposes its connection pool during
+shutdown. Engine creation is lazy and does not require PostgreSQL to be available; database
+availability will be reported separately by the future readiness endpoint.
+
 ## Start the development server
 
 ```bash

@@ -1,7 +1,7 @@
 # Issue #6 - FastAPI and PostgreSQL Foundation
 
 - Date started: 2026-08-31
-- Status: Implementation in progress; `uv` scaffold and liveness slice verified
+- Status: Implementation in progress; liveness, configuration, and engine lifecycle verified
 - Outcome: Establish a minimal, reproducible Python API connected to local PostgreSQL
 
 ## Scope boundary
@@ -279,6 +279,23 @@ temporary PostgreSQL outage must not turn into a process restart signal.
   startup clearly.
 - Readiness should recover automatically when PostgreSQL becomes available again.
 
+### Database engine lifecycle implementation and verification - 2026-09-01
+
+- `app/database.py` owns SQLAlchemy engine construction and disposal.
+- Engine construction unwraps the secret URL only at the SQLAlchemy boundary, applies the configured
+  Psycopg `connect_timeout`, and enables `pool_pre_ping` for later stale-connection detection.
+- Creating the engine remains lazy and does not open a PostgreSQL connection.
+- FastAPI lifespan stores the engine in `app.state.database_engine` and disposes it in a `finally`
+  block during shutdown.
+- Controlled unit substitutes verified engine options, disposal, startup ordering, state ownership,
+  and shutdown ordering without contacting PostgreSQL.
+- `uv run pytest tests/unit -q`: fourteen tests passed, with the existing upstream
+  `TestClient`/`httpx` warning.
+- `uv run ruff check .` and `uv run ruff format --check .`: passed; nine files were formatted.
+- A direct port check confirmed `127.0.0.1:5432` refused connections. Uvicorn still completed
+  startup, `GET /health/live` returned `200` with exactly `{ "status": "ok" }`, and shutdown
+  completed cleanly.
+
 ## Planned verification
 
 - Prove a clean `uv` dependency sync and independent API start/build path.
@@ -291,7 +308,6 @@ temporary PostgreSQL outage must not turn into a process restart signal.
 
 ## Next implementation slice
 
-Implement `app/database.py` with SQLAlchemy engine construction and disposal, then wire that resource
-into FastAPI lifespan without requiring a successful database connection during startup. Verify
-engine options and shutdown disposal with controlled unit substitutes before adding Compose or the
-database-aware readiness route.
+Add root `compose.yaml` with disposable local PostgreSQL, then implement the bounded `SELECT 1`
+database probe and `/health/ready` response contract. Verify both available and unavailable database
+states with a PostgreSQL integration test while liveness remains `200` in both states.

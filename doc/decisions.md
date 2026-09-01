@@ -12,6 +12,8 @@ Last updated: 2026-09-01
 - Keep the initial Python backend as an independently runnable `uv` project under `apps/api/`.
 - Load typed server configuration during FastAPI lifespan rather than at module import. Treat the
   database URL as a secret, reject disposable defaults in production, and sanitize startup errors.
+- Construct SQLAlchemy's engine lazily during FastAPI lifespan without requiring PostgreSQL at
+  startup, and dispose its pool during lifespan shutdown.
 
 ## Known Follow-Up Areas
 
@@ -25,5 +27,5 @@ Last updated: 2026-09-01
 ## Change Log
 
 - 2026-08-02: Created repo memory docs and root agent instructions.
-- 2026-09-01: Added the initial FastAPI liveness and typed configuration boundaries; the frontend
-  remains on Google Apps Script while backend migration work continues.
+- 2026-09-01: Added the initial FastAPI liveness, typed configuration, and SQLAlchemy engine lifecycle
+  boundaries; the frontend remains on Google Apps Script while backend migration work continues.

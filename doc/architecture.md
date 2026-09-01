@@ -31,6 +31,7 @@ Last updated: 2026-09-01
 - `src/app.css`: global CSS, Tailwind import, and base layout styling.
 - `apps/api/app/main.py`: FastAPI application factory, lifespan boundary, and router composition.
 - `apps/api/app/config.py`: typed, secret-safe environment configuration loaded during lifespan.
+- `apps/api/app/database.py`: lazy SQLAlchemy engine construction and pool disposal.
 - `apps/api/app/health.py`: database-independent liveness contract.
 - `apps/api/tests/unit/`: API configuration and HTTP contract tests.
 
@@ -41,8 +42,10 @@ Last updated: 2026-09-01
    import or application construction time.
 3. Invalid configuration stops startup through a sanitized `ConfigurationError` without exposing
    raw values or database credentials.
-4. Valid settings are stored in `app.state.settings` for later database lifecycle construction.
-5. `GET /health/live` remains independent of configuration consumers and PostgreSQL connectivity.
+4. Valid settings construct a lazy SQLAlchemy engine without opening a connection; settings and the
+   engine are stored in application state.
+5. Lifespan shutdown disposes the engine pool in a `finally` block.
+6. `GET /health/live` remains independent of PostgreSQL connectivity.
 
 The frontend still uses Google Apps Script at runtime. No frontend request currently targets this
 FastAPI service.
