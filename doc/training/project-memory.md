@@ -45,7 +45,7 @@ This is project evidence, not professional production-service experience.
 
 ## Active milestone
 
-Week 1 — backend foundation, Issue #6.
+Week 1 — persistence foundations, Issue #7.
 
 Issue #4 current-state trace is documented in
 [`current-state-flow-trace.md`](current-state-flow-trace.md). It includes the three request flows,
@@ -85,6 +85,16 @@ became healthy, passed both integration tests, and repeated the live `200 -> 503
 exercise. The final combined suite passed all 21 unit and integration tests; Ruff lint and formatting
 checks also passed. The PostgreSQL 17 Compose service is currently running with its named development
 volume.
+
+Issue #7 persistence-foundation implementation and learning checkpoint are complete locally on
+`issue-7-persistence-foundations`; publication remains pending. The API now has application-scoped
+session factories, short-lived transaction ownership, an empty reversible
+Alembic baseline, isolated real-PostgreSQL migration and transaction patterns, a stable safe API
+error envelope with server request IDs, and independent frontend/backend CI jobs. The development
+database and a fresh temporary database both passed upgrade, downgrade, and re-upgrade. The full
+PostgreSQL-backed backend suite passes 32 tests; Ruff and lock checks pass. The frontend production
+build passes, while the already documented `npm run check` 6 errors/6 warnings and repository-wide
+Prettier drift remain outside this backend ticket. Remote GitHub Actions execution is not yet claimed.
 
 GitHub tracking:
 
@@ -130,13 +140,12 @@ Required outputs:
 
 ## Current blockers
 
-None for the active Issue #6 implementation. Remaining issue #4 uncertainties are documented rather
+None for the active Issue #7 implementation. Remaining issue #4 uncertainties are documented rather
 than hidden: blank sort behavior, the exact Apps Script exception envelope, concurrency/locking
 outside the inspected function, and the absence of a repeated signed-in end-to-end update during the
 documentation session.
 
 ## Next action
 
-Commit the verified Issue #6 readiness/Compose slice and prepare formal GitHub verification. Then
-select the next bounded Week 1 ticket without pulling domain tables or authentication into the
-foundation milestone. Formal GitHub status for issues #4 and #5 remains unverified.
+Review and publish the focused Issue #7 branch, verify the remote CI result, and then begin the
+production domain schema. Formal GitHub status for issues #4, #5, and #6 remains unverified.

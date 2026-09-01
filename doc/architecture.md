@@ -31,12 +31,19 @@ Last updated: 2026-09-01
 - `src/app.css`: global CSS, Tailwind import, and base layout styling.
 - `apps/api/app/main.py`: FastAPI application factory, lifespan boundary, and router composition.
 - `apps/api/app/config.py`: typed, secret-safe environment configuration loaded during lifespan.
-- `apps/api/app/database.py`: lazy SQLAlchemy engine construction and pool disposal.
+- `apps/api/app/database.py`: lazy SQLAlchemy engine construction, application-scoped session factory,
+  explicit transaction ownership, readiness queries, and pool disposal.
+- `apps/api/app/errors.py`: stable safe API error models and application/framework exception handlers.
+- `apps/api/app/request_context.py`: per-request UUID generation for response headers, error
+  correlation, and future structured logs.
 - `apps/api/app/health.py`: database-independent liveness and database-aware readiness contracts.
+- `apps/api/migrations/`: Alembic environment and reversible migration history; the initial baseline
+  contains no production domain tables.
 - `apps/api/tests/unit/`: API configuration, lifecycle, probe, and HTTP contract tests.
-- `apps/api/tests/integration/`: opt-in real PostgreSQL readiness tests.
+- `apps/api/tests/integration/`: opt-in real PostgreSQL readiness and migration lifecycle tests.
 - `compose.yaml`: verified local `postgres:17-alpine` service with persistent development volume and
   health check, run through OrbStack's Docker-compatible engine.
+- `.github/workflows/ci.yml`: independent frontend and PostgreSQL-backed backend verification jobs.
 
 ## Backend Foundation Flow
 
@@ -48,12 +55,26 @@ Last updated: 2026-09-01
 4. Valid settings construct a lazy SQLAlchemy engine without opening a connection; settings and the
    engine are stored in application state.
 5. Lifespan shutdown disposes the engine pool in a `finally` block.
-6. `GET /health/live` remains independent of PostgreSQL connectivity.
-7. `GET /health/ready` performs a fresh `SELECT 1` probe and returns a safe `503` when PostgreSQL is
+6. Lifespan creates one session factory from the engine. Each future unit of work will create a
+   short-lived session that commits on success, rolls back on failure, and always closes.
+7. `GET /health/live` remains independent of PostgreSQL connectivity.
+8. `GET /health/ready` performs a fresh `SELECT 1` probe and returns a safe `503` when PostgreSQL is
    unavailable, allowing recovery without an API restart.
+9. Alembic loads the same validated settings and engine options as the API. Migration commands own
+   and dispose their engine, while each revision runs in Alembic's transaction boundary.
+10. HTTP middleware assigns a new request UUID. Expected, validation, framework, and unexpected
+    failures return one stable envelope and never serialize internal exception details.
 
 The frontend still uses Google Apps Script at runtime. No frontend request currently targets this
 FastAPI service.
+
+## API Error Contract
+
+Failures use `{ "error": { "code", "message", "retryable", "request_id", "details"? } }`.
+Machine-readable `code` values are the client contract; messages are human-readable fallbacks.
+`request_id` also appears in `X-Request-ID`. Validation details contain only safe field paths,
+field-level codes, and fallback messages. The readiness endpoint retains its purpose-specific health
+contract rather than masquerading dependency unavailability as an application exception.
 
 ## Data Contracts
 

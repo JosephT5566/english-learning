@@ -24,12 +24,19 @@ canonical verified command reference.
 - Run unit tests: `uv run pytest tests/unit -q`
 - Run PostgreSQL integration tests when a local database is available:
   `RUN_POSTGRES_INTEGRATION_TESTS=1 uv run pytest tests/integration -q`
+- Upgrade the development database: `uv run alembic upgrade head`
+- Inspect the current migration: `uv run alembic current`
+- Revert the latest development migration: `uv run alembic downgrade -1`
 - Lint: `uv run ruff check .`
 - Check formatting: `uv run ruff format --check .`
 
 Start the verified local PostgreSQL 17 service from the repository root with
 `docker compose up -d --wait postgres`. Inspect it with `docker compose ps` and stop it with
 `docker compose stop postgres`.
+
+Migration downgrades are exercised for local development and recovery verification. A production
+deployment must use a separately reviewed forward/backward-compatible rollout and rollback plan.
+PostgreSQL integration tests are explicitly opt-in and never fall back to SQLite.
 
 ## Environment Variables
 
