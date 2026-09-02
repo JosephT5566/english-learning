@@ -1,6 +1,6 @@
 # English Learning Project Memory
 
-Last updated: 2026-09-01
+Last updated: 2026-09-02
 
 ## Purpose
 
@@ -45,7 +45,7 @@ This is project evidence, not professional production-service experience.
 
 ## Active milestone
 
-Week 1 — persistence foundations, Issue #7.
+Week 2 — multilingual domain schema, Issue #8.
 
 Issue #4 current-state trace is documented in
 [`current-state-flow-trace.md`](current-state-flow-trace.md). It includes the three request flows,
@@ -86,15 +86,23 @@ exercise. The final combined suite passed all 21 unit and integration tests; Ruf
 checks also passed. The PostgreSQL 17 Compose service is currently running with its named development
 volume.
 
-Issue #7 persistence-foundation implementation and learning checkpoint are complete locally on
-`issue-7-persistence-foundations`; publication remains pending. The API now has application-scoped
+Issue #7 persistence-foundation implementation and learning checkpoint are merged on `main` at
+`b1227ae`. The API now has application-scoped
 session factories, short-lived transaction ownership, an empty reversible
 Alembic baseline, isolated real-PostgreSQL migration and transaction patterns, a stable safe API
 error envelope with server request IDs, and independent frontend/backend CI jobs. The development
 database and a fresh temporary database both passed upgrade, downgrade, and re-upgrade. The full
 PostgreSQL-backed backend suite passes 32 tests; Ruff and lock checks pass. The frontend production
 build passes, while the already documented `npm run check` 6 errors/6 warnings and repository-wide
-Prettier drift remain outside this backend ticket. Remote GitHub Actions execution is not yet claimed.
+Prettier drift remain outside this backend ticket.
+
+Issue #8 completed its initial coached design checkpoint. The accepted implementation boundary is
+recorded in [`issues/issue-8/`](issues/issue-8/README.md): confirmed cards require nonblank term and
+meaning, cards derive language from required owned decks, optional multilingual fields share one
+card table, one example remains embedded, review state uses `card_id` as its primary key, redundant
+constrained owner IDs enforce same-owner relationships, review history records before/after state,
+and indexes map to named list, language, due-review, and history queries. No Issue #8 migration,
+fixture, constraint test, ER diagram, or query-plan evidence exists yet.
 
 GitHub tracking:
 
@@ -140,12 +148,13 @@ Required outputs:
 
 ## Current blockers
 
-None for the active Issue #7 implementation. Remaining issue #4 uncertainties are documented rather
+None for the active Issue #8 design. Remaining issue #4 uncertainties are documented rather
 than hidden: blank sort behavior, the exact Apps Script exception envelope, concurrency/locking
 outside the inspected function, and the absence of a repeated signed-in end-to-end update during the
 documentation session.
 
 ## Next action
 
-Review and publish the focused Issue #7 branch, verify the remote CI result, and then begin the
-production domain schema. Formal GitHub status for issues #4, #5, and #6 remains unverified.
+Create the Issue #8 branch and implement the first migration/test slice for `users` and
+`learning_decks`, including required ownership, supported languages, shared English/Japanese use,
+and restricted owner deletion. Formal GitHub status for issues #4, #5, and #6 remains unverified.

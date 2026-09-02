@@ -121,9 +121,9 @@ Keeping web and API code together makes the end-to-end contract, CI, documentati
 The exact schema must be defended before implementation. Begin with these concepts:
 
 - `users`: stable internal ID, Google subject, normalized email, timestamps
-- `learning_decks`: owner, target language, explanation language, title, and status
-- `learning_cards`: deck, term, meaning, optional reading or pronunciation, notes, part of speech, status, timestamps, and version
-- `card_examples`: card, target-language sentence, optional translation, source, and position
+- `learning_decks`: owner, target language, explanation language, title, archive time, and timestamps
+- `learning_cards`: deck, term, meaning, optional reading or pronunciation, one optional embedded
+  example, notes, part of speech, archive time, timestamps, and version
 - `tags` and `learning_card_tags`: normalized per-user tags and associations
 - `review_states`: current scheduling state for one learning card
 - `review_events`: immutable history of review decisions and state transitions

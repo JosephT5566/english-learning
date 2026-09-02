@@ -10,6 +10,8 @@ This directory is the persistent learning context for turning English Learning i
 - [Current-state flow trace](current-state-flow-trace.md): issue #4 auth, vocabulary, review, Sheet contract, trust-boundary, and baseline evidence
 - [`issues/`](issues/): per-ticket design and implementation artifacts grouped to keep the training root concise
 - [Issue #5 multilingual backend design](issues/issue-5/README.md): completed MVP domain, API, schema, recovery, trust-boundary, AI-safety, and alternatives index
+- [Issue #8 multilingual domain schema](issues/issue-8/README.md): active implementation design,
+  invariants, index rationale, fixtures, and PostgreSQL verification plan
 - [`fixtures/`](fixtures/): sanitized synthetic datasets for future contract and migration tests
 - [`logs/`](logs/): chronological weekly learning records
 - [`decisions/`](decisions/): architecture decision records for consequential choices
