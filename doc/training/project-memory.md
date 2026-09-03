@@ -101,8 +101,12 @@ recorded in [`issues/issue-8/`](issues/issue-8/README.md): confirmed cards requi
 meaning, cards derive language from required owned decks, optional multilingual fields share one
 card table, one example remains embedded, review state uses `card_id` as its primary key, redundant
 constrained owner IDs enforce same-owner relationships, review history records before/after state,
-and indexes map to named list, language, due-review, and history queries. No Issue #8 migration,
-fixture, constraint test, ER diagram, or query-plan evidence exists yet.
+and indexes map to named list, language, due-review, and history queries. The first verified slice
+adds users and owned multilingual decks in revision `20260902_0002`. Named constraints cover user
+identity, supported languages, content/version/time validity, creation replay fields, and restricted
+owner deletion. English and Japanese deck fixtures share one table. The temporary and development
+databases passed upgrade, baseline downgrade, and re-upgrade; the full local backend suite passes 40
+tests. Cards, tags, review tables, the ER diagram, full fixtures, and query plans remain pending.
 
 GitHub tracking:
 
@@ -148,13 +152,14 @@ Required outputs:
 
 ## Current blockers
 
-None for the active Issue #8 design. Remaining issue #4 uncertainties are documented rather
+None for the active Issue #8 implementation. Remaining issue #4 uncertainties are documented rather
 than hidden: blank sort behavior, the exact Apps Script exception envelope, concurrency/locking
 outside the inspected function, and the absence of a repeated signed-in end-to-end update during the
 documentation session.
 
 ## Next action
 
-Create the Issue #8 branch and implement the first migration/test slice for `users` and
-`learning_decks`, including required ownership, supported languages, shared English/Japanese use,
-and restricted owner deletion. Formal GitHub status for issues #4, #5, and #6 remains unverified.
+Implement confirmed `learning_cards` in revision `20260902_0002` as the next bounded slice. Enforce
+its required owned deck relationship, confirmed content, optional multilingual and embedded-example
+fields, version/timestamps, and card-list index with PostgreSQL tests. Formal GitHub status for
+issues #4, #5, and #6 remains unverified.

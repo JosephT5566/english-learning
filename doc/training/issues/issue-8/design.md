@@ -1,7 +1,7 @@
 # Issue #8 Implementation Design
 
 - Date: 2026-09-02
-- Status: Accepted design checkpoint; not implementation evidence
+- Status: Accepted design; users/decks slice verified locally
 - Dependency: Issue #7 persistence foundations are merged on `main` at `b1227ae`
 
 ## Boundary
@@ -118,3 +118,12 @@ index remains deferred until a representative query and `EXPLAIN` result justify
 Add `users` and `learning_decks` in the new domain migration, then prove that a deck requires an
 existing owner, accepts only supported target languages, supports both English and Japanese through
 one table, and restricts deletion of an owner with retained decks.
+
+### Result
+
+Revision `20260902_0002` implements the slice with named PostgreSQL constraints, a per-owner partial
+unique creation-replay index, the language-filtering index, and a reversible downgrade. Tests cover
+the generated IDs, shared English/Japanese table, required and existing owners, supported languages,
+nonblank identity/title/hash data, uniqueness, version/timestamp/archive checks, replay pairing, and
+restricted deletion. The temporary and development databases both passed upgrade, downgrade to the
+Issue #7 baseline, and re-upgrade.

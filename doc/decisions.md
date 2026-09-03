@@ -1,6 +1,6 @@
 # Decisions And Known Issues
 
-Last updated: 2026-09-01
+Last updated: 2026-09-02
 
 ## Durable Decisions
 
@@ -27,6 +27,10 @@ Last updated: 2026-09-01
   allowlisted validation and exception information.
 - Run frontend and backend checks as independent GitHub Actions jobs. Backend CI uses PostgreSQL 17
   explicitly and runs the opt-in integration suite; SQLite substitution is not permitted.
+- Use generated internal `BIGINT` identities for users and generated UUIDs for client-addressable
+  decks. A deck requires one owner, uses constrained standard language codes, and exposes unique
+  `(id, owner_id)` for later same-owner composite foreign keys. Retained decks restrict physical
+  owner deletion; user-facing deck deletion will archive instead.
 
 ## Known Follow-Up Areas
 
@@ -43,3 +47,5 @@ Last updated: 2026-09-01
 - 2026-09-01: Added the initial FastAPI liveness, readiness, typed configuration, and SQLAlchemy
   engine lifecycle boundaries; the frontend remains on Google Apps Script while backend migration
   work continues.
+- 2026-09-02: Added the first production domain migration for database-constrained users and owned
+  multilingual learning decks; no API route or frontend flow uses it yet.

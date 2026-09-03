@@ -1,6 +1,6 @@
 # Architecture Memory
 
-Last updated: 2026-09-01
+Last updated: 2026-09-02
 
 ## Stack
 
@@ -37,10 +37,11 @@ Last updated: 2026-09-01
 - `apps/api/app/request_context.py`: per-request UUID generation for response headers, error
   correlation, and future structured logs.
 - `apps/api/app/health.py`: database-independent liveness and database-aware readiness contracts.
-- `apps/api/migrations/`: Alembic environment and reversible migration history; the initial baseline
-  contains no production domain tables.
+- `apps/api/migrations/`: Alembic environment and reversible migration history; the empty baseline
+  is followed by the first production domain revision for users and learning decks.
 - `apps/api/tests/unit/`: API configuration, lifecycle, probe, and HTTP contract tests.
-- `apps/api/tests/integration/`: opt-in real PostgreSQL readiness and migration lifecycle tests.
+- `apps/api/tests/integration/`: opt-in real PostgreSQL readiness, migration lifecycle, transaction,
+  and domain-constraint tests.
 - `compose.yaml`: verified local `postgres:17-alpine` service with persistent development volume and
   health check, run through OrbStack's Docker-compatible engine.
 - `.github/workflows/ci.yml`: independent frontend and PostgreSQL-backed backend verification jobs.
@@ -67,6 +68,19 @@ Last updated: 2026-09-01
 
 The frontend still uses Google Apps Script at runtime. No frontend request currently targets this
 FastAPI service.
+
+## Initial Domain Schema
+
+- `users` uses an internal generated `BIGINT` identity. Google subject is the unique external
+  identity; normalized email is required but is not an ownership key.
+- `learning_decks` uses a generated UUID, requires an owner, and supports target languages `en` and
+  `ja` with explanation languages `en`, `ja`, and `zh-TW`.
+- Unique `(learning_decks.id, owner_id)` is available for later composite owned foreign keys. A
+  user with retained decks cannot be physically deleted.
+- Deck creation replay fields are paired and unique per owner when present. Deck title, version,
+  timestamp ordering, and archive ordering are database constrained.
+- `(owner_id, target_language, archived_at)` supports the named owner/language filtering pattern.
+- The migration is persistence-only. No API route reads or writes these tables yet.
 
 ## API Error Contract
 

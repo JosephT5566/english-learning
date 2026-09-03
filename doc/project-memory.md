@@ -1,6 +1,6 @@
 # Project Memory
 
-Last updated: 2026-09-01
+Last updated: 2026-09-02
 
 ## Product
 
@@ -22,8 +22,10 @@ runtime path are unchanged.
 
 Persistence foundations are implemented locally: application-scoped SQLAlchemy session factories,
 explicit short-lived transaction ownership, an empty reversible Alembic baseline, PostgreSQL-only
-integration patterns, stable safe API errors, and independent frontend/backend CI definitions. No
-production domain schema exists yet, and the backend remains disconnected from the frontend.
+integration patterns, stable safe API errors, and independent frontend/backend CI definitions. The
+first production domain migration now adds database-constrained users and owned English/Japanese
+learning decks. Cards and review tables do not exist yet, and the backend remains disconnected from
+the frontend.
 
 ## Current User Experience
 

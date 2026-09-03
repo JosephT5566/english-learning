@@ -1,7 +1,7 @@
 # Issue #8 - Multilingual Domain Schema
 
 - Date: 2026-09-02
-- Status: Design checkpoint complete; implementation not started
+- Status: First users/decks slice implemented and verified locally
 - Outcome: Represent English and Japanese learning with database-enforced integrity
 
 ## Start here
@@ -27,7 +27,18 @@ Detailed artifacts:
   belongs in separate draft tables.
 - Derive indexes from named access patterns and verify important behavior against PostgreSQL.
 
+## Verified progress
+
+- Revision `20260902_0002` adds `users` and `learning_decks` after the empty Issue #7 baseline.
+- PostgreSQL enforces user identity, required deck ownership, supported languages, title/version/time
+  checks, paired per-owner creation replay data, and restricted owner deletion.
+- English and Japanese deck fixtures use the same table.
+- A temporary database and the development database both passed upgrade, baseline downgrade, and
+  re-upgrade. The full local backend suite passes 40 tests with one existing upstream warning.
+- Cards, tags, review tables, the ER diagram, full multilingual fixtures, and query-plan inspection
+  remain unimplemented.
+
 ## Next action
 
-Create the Issue #8 branch and add the first bounded migration/test slice for `users` and
-`learning_decks`.
+Implement confirmed `learning_cards` and its composite owned deck relationship as the next bounded
+migration/test slice.

@@ -19,6 +19,7 @@ pytestmark = [
 
 ALEMBIC_CONFIG_PATH = Path(__file__).parents[2] / "alembic.ini"
 BASELINE_REVISION = "20260901_0001"
+DOMAIN_REVISION = "20260902_0002"
 
 
 def current_revision(engine: Engine) -> str | None:
@@ -44,8 +45,26 @@ def test_clean_postgres_database_supports_reversible_migration_cycle(
 
         command.upgrade(alembic_config, "head")
 
+        assert set(inspect(database_engine).get_table_names()) == {
+            "alembic_version",
+            "learning_decks",
+            "users",
+        }
+        assert current_revision(database_engine) == DOMAIN_REVISION
+
+        command.downgrade(alembic_config, BASELINE_REVISION)
+
         assert inspect(database_engine).get_table_names() == ["alembic_version"]
         assert current_revision(database_engine) == BASELINE_REVISION
+
+        command.upgrade(alembic_config, "head")
+
+        assert set(inspect(database_engine).get_table_names()) == {
+            "alembic_version",
+            "learning_decks",
+            "users",
+        }
+        assert current_revision(database_engine) == DOMAIN_REVISION
 
         command.downgrade(alembic_config, "base")
 
@@ -54,7 +73,11 @@ def test_clean_postgres_database_supports_reversible_migration_cycle(
 
         command.upgrade(alembic_config, "head")
 
-        assert inspect(database_engine).get_table_names() == ["alembic_version"]
-        assert current_revision(database_engine) == BASELINE_REVISION
+        assert set(inspect(database_engine).get_table_names()) == {
+            "alembic_version",
+            "learning_decks",
+            "users",
+        }
+        assert current_revision(database_engine) == DOMAIN_REVISION
     finally:
         database_engine.dispose()

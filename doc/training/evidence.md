@@ -105,3 +105,38 @@ Use precise language such as “project,” “local load test,” or “deploye
   the full five-minute explanation has not yet been practiced.
 - Candidate resume bullet: Not yet; revisit after remote CI and later domain behavior provide a
   stronger end-to-end claim.
+
+### Owned multilingual users and learning decks
+
+- Date: 2026-09-02
+- Status: Verified locally
+- Problem: Begin the production relational model with user-owned English and Japanese decks whose
+  integrity does not depend only on application validation.
+- Constraints and invariants: A deck requires an existing owner and supported language codes;
+  Google subject is the durable unique external identity; timestamps and versions must remain
+  ordered and valid; retained learning data prevents physical owner deletion; English and Japanese
+  must share one model.
+- Decision: Use generated `BIGINT` user identities, generated UUID deck IDs, named PostgreSQL checks,
+  an explicit restricted owner foreign key, unique `(id, owner_id)` for later owned child keys,
+  and a per-owner partial unique creation-idempotency index.
+- Alternatives considered: Email ownership was rejected because email is not the durable Google
+  identity; separate language tables were rejected because ownership and deck behavior are shared;
+  application-only validation was rejected because invalid direct or buggy writes would bypass it;
+  cascading owner deletion was rejected because retained learning data requires stable ownership.
+- Implementation references:
+  `apps/api/migrations/versions/20260902_0002_add_users_and_learning_decks.py`,
+  `apps/api/tests/integration/test_users_and_learning_decks.py`, and
+  `apps/api/tests/integration/test_migrations.py`.
+- Verification and failure cases: PostgreSQL tests accept English and Japanese decks through one
+  table and reject missing/nonexistent owners, unsupported languages, blank identity/content,
+  duplicate Google subjects and replay keys, unpaired replay data, invalid versions/timestamps, and
+  owner deletion with retained decks. Temporary and development databases passed upgrade, baseline
+  downgrade, and re-upgrade. The full local suite passed 40 tests; Ruff and whitespace checks passed.
+- Measured result: Local correctness verification only; no performance, deployment, or user-impact
+  claim.
+- Limitations: Cards, tags, review state/events, complete fixtures, ER diagram, query-plan evidence,
+  API use, authentication, frontend integration, remote CI, and deployment remain pending. One
+  existing upstream FastAPI `TestClient` warning remains.
+- Five-minute explanation practiced: The pre-implementation ownership and constraint checkpoint was
+  completed; the implemented DDL has not yet received a full explanation checkpoint.
+- Candidate resume bullet: Not yet; wait for the complete domain and API boundary.

@@ -52,7 +52,8 @@ uv run alembic upgrade head
 
 Use `uv run alembic current` to inspect the applied revision. Downgrades are a development
 verification and recovery tool, not an assumed production rollback strategy. The initial Issue #7
-baseline is intentionally empty; production domain tables begin in a later migration.
+baseline is intentionally empty. Issue #8 revision `20260902_0002` begins the production domain
+schema with owned users and multilingual learning decks.
 
 ## Local PostgreSQL
 
@@ -132,8 +133,8 @@ RUN_POSTGRES_INTEGRATION_TESTS=1 uv run pytest tests/integration -q
 The root Compose definition and integration suite are verified against `postgres:17-alpine` through
 OrbStack. Integration tests are opt-in and fail if PostgreSQL is unavailable; they never substitute
 SQLite. The migration test creates a uniquely named temporary PostgreSQL database, verifies
-`upgrade -> downgrade -> upgrade`, and removes that database afterward. Production startup commands
-are still pending.
+`upgrade -> baseline downgrade -> upgrade`, and removes that database afterward. Domain constraint
+tests also run in isolated temporary databases. Production startup commands are still pending.
 
 ## API error contract
 

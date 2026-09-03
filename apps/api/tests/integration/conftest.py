@@ -27,7 +27,7 @@ def execute_database_ddl(engine: Engine, statement: str) -> None:
 def temporary_database_url() -> Iterator[str]:
     """Create and remove an isolated PostgreSQL database for one test."""
 
-    database_name = f"issue7_{uuid4().hex}"
+    database_name = f"api_test_{uuid4().hex}"
     admin_engine = create_engine(
         database_url_for("postgres"),
         isolation_level="AUTOCOMMIT",
