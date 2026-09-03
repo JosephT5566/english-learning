@@ -174,6 +174,19 @@ Japanese records spanning every Issue #8 table. `test_multilingual_domain_fixtur
 an isolated migrated database in one transaction and verifies shared ownership, tags, current state,
 and before/after review history. It is intentionally not a production seed or Google Sheets import.
 
+### Representative query plans
+
+Run the Issue #8 planner evidence independently with:
+
+```bash
+RUN_POSTGRES_INTEGRATION_TESTS=1 uv run pytest tests/integration/test_query_plans.py -q
+```
+
+The test loads deterministic representative-volume data, runs `ANALYZE`, then executes the seven
+named access patterns with `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)`. It asserts that PostgreSQL 17
+selects each deliberate index without forcing planner settings. It does not assert timings, costs,
+buffer counts, or a complete plan shape and is not a production benchmark.
+
 ## API error contract
 
 API failures use this stable envelope:

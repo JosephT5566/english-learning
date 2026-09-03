@@ -42,7 +42,7 @@ Last updated: 2026-09-03
   current review state, and review history.
 - `apps/api/tests/unit/`: API configuration, lifecycle, probe, and HTTP contract tests.
 - `apps/api/tests/integration/`: opt-in real PostgreSQL readiness, migration lifecycle, transaction,
-  and domain-constraint tests.
+  domain-constraint, fixture, and representative query-plan tests.
 - `apps/api/tests/fixtures/multilingual_learning_domain.sql`: deterministic synthetic English and
   Japanese data spanning the complete Issue #8 schema for isolated PostgreSQL tests.
 - `compose.yaml`: verified local `postgres:17-alpine` service with persistent development volume and
@@ -75,7 +75,8 @@ FastAPI service.
 ## Initial Domain Schema
 
 The complete implemented relationship view is documented in the
-[Issue #8 entity-relationship diagram](training/issues/issue-8/erd.md).
+[Issue #8 entity-relationship diagram](training/issues/issue-8/erd.md). The local PostgreSQL planner
+evidence is recorded in the [Issue #8 query-plan report](training/issues/issue-8/query-plans.md).
 
 - `users` uses an internal generated `BIGINT` identity. Google subject is the unique external
   identity; normalized email is required but is not an ownership key.
@@ -94,22 +95,22 @@ The complete implemented relationship view is documented in the
 - Unique `(learning_cards.id, owner_id)` supports later owned tag and review relationships. Physical
   deck deletion is restricted while a card exists; user-facing deletion will archive cards/decks.
 - The partial `(deck_id, created_at DESC, id DESC)` active-card index matches the defined stable
-  deck-list ordering. Its shape is tested; query-plan effectiveness remains unmeasured.
+  deck-list ordering and is selected for the representative query.
 - `tags` uses normalized per-owner identity through unique `(owner_id, normalized_name)` and exposes
   unique `(id, owner_id)` for owned associations.
 - `learning_card_tags` uses `(card_id, tag_id)` as its primary key and validates the repeated owner
   through composite foreign keys to both parent rows. Tag deletion cascades only to associations;
   physical card deletion is restricted while an association remains.
 - `(tag_id, card_id)` supports filtering cards by tag because the association primary key begins
-  with `card_id`. Its definition is tested; query-plan effectiveness remains unmeasured.
+  with `card_id`; PostgreSQL selects it for the representative reverse traversal.
 - `review_states` uses `card_id` as its primary key, directly enforcing at most one current row per
   card. Its composite `(card_id, owner_id)` foreign key rejects cross-owner state.
 - Review scheduling fields are required without database defaults, so the future backend must write
   the initial stage, ease, interval, next-review time, and version explicitly. Checks enforce stage
   1-5, ease 1.30-2.50, nonnegative intervals, positive versions, and next review not before a present
   last review.
-- `(owner_id, next_review_at, card_id)` supports stable owner-scoped due retrieval. Its definition is
-  tested; archived-card/deck joins and query-plan effectiveness remain future work.
+- `(owner_id, next_review_at, card_id)` supports stable owner-scoped due retrieval and is selected
+  for the representative due query even with archived-card/deck joins.
 - `review_batches` owns the client idempotency key through unique `(owner_id, idempotency_key)` and
   stores one backend review time, algorithm version, request hash, and bounded item count. Unique
   `(id, owner_id)` supports owned event relationships.
@@ -117,7 +118,7 @@ The complete implemented relationship view is documented in the
   keys reject both forms of cross-owner history; local checks enforce decision/quality mapping,
   scheduling ranges, version progression, and timestamp relationships.
 - Review-event indexes support owner history, card history, and batch response reconstruction. Their
-  definitions are tested; query plans remain unmeasured.
+  definitions and representative PostgreSQL planner use are tested.
 - Event-count agreement with a batch, consistency with current state, atomic state/event writes,
   request-hash replay handling, and the no-mutation application contract remain responsibilities of
   the future review transaction service.
@@ -125,6 +126,9 @@ The complete implemented relationship view is documented in the
   reusable tags, current states, and one two-card review batch. It is test evidence, not a production
   seed or import path.
 - The migration is persistence-only. No API route reads or writes these tables yet.
+- Query-plan evidence comes from a deterministic local dataset with 40,000 cards, states, tag links,
+  and events. It verifies planner selection, not production latency, throughput, or future planner
+  behavior.
 
 ## API Error Contract
 

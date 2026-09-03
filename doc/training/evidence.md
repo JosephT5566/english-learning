@@ -276,3 +276,26 @@ Use precise language such as “project,” “local load test,” or “deploye
   Remote CI and deployment remain pending; one upstream `TestClient` warning remains.
 - Five-minute explanation practiced: Not yet for the implemented review-history constraints.
 - Candidate resume bullet: Not yet; wait for the complete domain and API boundary.
+
+### Representative multilingual-domain query plans
+
+- Date: 2026-09-03
+- Status: Verified locally
+- Problem: Confirm that the indexes justified during schema design are useful to PostgreSQL for the
+  exact access patterns they were intended to support.
+- Decision: Test seven named queries on one deterministic representative-volume PostgreSQL 17
+  dataset after `ANALYZE`, inspect executed JSON plans recursively, and assert intended index names
+  without freezing planner costs or timings.
+- Implementation references: `apps/api/tests/integration/test_query_plans.py` and
+  `doc/training/issues/issue-8/query-plans.md`.
+- Verification: The focused test passed with 100 users, 2,000 decks, 40,000 cards/states/tag links/
+  events, and 4,000 batches. PostgreSQL selected the intended indexes for active deck cards,
+  owner-language decks, tag filtering, joined due retrieval, owner history, card history, and batch
+  reconstruction.
+- Measured result: Intended index selection for the deterministic local distribution; focused test
+  duration was 9.24 seconds including migration, data generation, analysis, and all queries. The
+  complete PostgreSQL-backed API suite passed 103 tests in 43.69 seconds.
+- Limitations: This is not a latency, throughput, production-scale, or future planner guarantee.
+  Real data skew and growth can change plans; remote CI and deployment remain unverified.
+- Five-minute explanation practiced: Not yet; complete during the Issue #8 learning checkpoint.
+- Candidate resume bullet: Not yet; wait for the complete issue audit and later API usage.

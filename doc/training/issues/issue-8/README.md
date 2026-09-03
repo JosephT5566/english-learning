@@ -1,7 +1,7 @@
 # Issue #8 - Multilingual Domain Schema
 
 - Date: 2026-09-03
-- Status: Core domain tables and constraints implemented and verified locally
+- Status: Core domain schema and representative query plans verified locally
 - Outcome: Represent English and Japanese learning with database-enforced integrity
 
 ## Start here
@@ -16,6 +16,8 @@ Detailed artifacts:
   scheduling checks, indexes, fixtures, and verification plan
 - [Entity-relationship diagram](erd.md): implemented tables, cardinality, composite ownership keys,
   deletion behavior, and transaction-only boundaries
+- [Representative query plans](query-plans.md): deterministic dataset, named query shapes, observed
+  index use, and evidence limits
 - [Issue #5 schema proposal](../issue-5/schema.md): broader approved schema that Issue #8 refines
 - [Issue #5 alternatives](../issue-5/alternatives.md): rejected schema alternatives and accepted
   consequences
@@ -40,38 +42,40 @@ Detailed artifacts:
   Japanese card fixtures through the same table.
 - Card constraints cover optional field lengths, example dependencies, related-word collection
   bounds, part-of-speech values, replay data, versions, and timestamps.
-- The active-card listing index shape is verified against its named access pattern; no query-plan
-  effectiveness claim exists yet.
+- The active-card listing index is selected for its representative deck-scoped query.
 - Tags are unique by normalized name per owner but can be reused by different owners. Composite
   foreign keys reject cross-owner associations, and `(card_id, tag_id)` rejects duplicates.
 - Tag deletion removes only association rows; it does not delete cards. The reverse tag-filtering
-  index definition is verified. The 20-tag card limit remains a future locked transaction rule.
+  index is selected for its representative query. The 20-tag card limit remains a future locked
+  transaction rule.
 - `review_states.card_id` is the primary key, and its composite owned-card foreign key rejects
   cross-owner state. Required scheduling fields have no database defaults, so omitted backend-owned
   values are rejected rather than silently initialized.
 - PostgreSQL checks enforce stage 1-5, ease 1.30-2.50, nonnegative interval, positive version, and
   next-review ordering relative to a present last-review time. Physical card deletion is restricted
   while state remains.
-- The `(owner_id, next_review_at, card_id)` due-index definition is verified against its named access
-  pattern; no query-plan effectiveness claim exists yet.
+- The `(owner_id, next_review_at, card_id)` index is selected for the joined representative due-card
+  query, including card/deck archive filtering.
 - `review_batches` makes the idempotency key unique per owner and keeps the request hash, one
   authoritative review time, algorithm version, and bounded item count. Events reference both an
   owned batch and owned card.
 - `review_events` requires complete before/after schedule snapshots and rejects invalid
   decision/quality mappings, ranges, version increments, and time ordering. One card can appear only
   once per batch, and retained history restricts physical batch/card deletion.
-- Owner-history, card-history, and batch-reconstruction index definitions match their named access
-  patterns. Event-count/state agreement, replay behavior, atomic writes, and the no-update/delete
+- Owner-history, card-history, and batch-reconstruction indexes are selected for their representative
+  queries. Event-count/state agreement, replay behavior, atomic writes, and the no-update/delete
   application contract remain future service responsibilities.
 - The complete deterministic fixture loads one owner, English and Japanese decks/cards, shared tags,
   current states, and one two-card review batch with matching events through the same schema. A
   second load is rejected rather than silently hiding duplicate data.
 - A temporary database and the development database both passed upgrade, baseline downgrade, and
-  re-upgrade. The full local backend suite passes 102 tests with one existing upstream warning.
+  re-upgrade. The full local backend suite passes 103 tests with one existing upstream warning.
 - The checked-in ER diagram maps every implemented table and foreign key, including the composite
   owned relationships and the distinction between database and future transaction guarantees.
-- Representative query-plan inspection remains unimplemented.
+- PostgreSQL 17 selects all seven deliberate indexes after `ANALYZE` on a deterministic dataset with
+  40,000 cards, states, tag links, and events. This is local planner evidence, not a benchmark or
+  production-performance claim.
 
 ## Next action
 
-Inspect the named access patterns with representative PostgreSQL query plans.
+Audit the Issue #8 acceptance criteria and complete the learning-checkpoint defense.

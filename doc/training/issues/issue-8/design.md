@@ -98,6 +98,7 @@ Only indexes tied to named access patterns are accepted initially:
 | --------------------------------------------------- | --------------------------------------------------------------- | ------------------------------------------------------------------------------- |
 | List active cards in a deck, newest first           | `(deck_id, created_at DESC, id DESC) WHERE archived_at IS NULL` | Deck equality leads; ID makes equal timestamps deterministic                    |
 | Filter a user's decks by language and archive state | `(owner_id, target_language, archived_at)`                      | Matches ownership and language filters                                          |
+| List cards attached to one tag                      | `(tag_id, card_id)` on `learning_card_tags`                    | Supports reverse traversal and stable card-ID order                              |
 | Retrieve a user's due cards in due order            | `(owner_id, next_review_at, card_id)` on `review_states`        | Owner and due range lead; card ID is the stable tie-breaker                     |
 | Show a user's review history newest first           | `(owner_id, reviewed_at DESC, id DESC)` on `review_events`      | Supports owner-scoped reverse chronology with deterministic order               |
 | Show one card's review history newest first         | `(card_id, reviewed_at DESC, id DESC)` on `review_events`       | Supports card-scoped reverse chronology with deterministic order                |
@@ -241,3 +242,16 @@ The diagram deliberately does not draw a database relationship between current s
 Their agreement, atomic update, locking, and replay behavior are future review-service transaction
 guarantees rather than implemented foreign keys. This distinction prevents planned application
 behavior from being presented as current database enforcement.
+
+## Eighth implementation slice
+
+`tests/integration/test_query_plans.py` builds a deterministic representative dataset in one
+isolated migrated PostgreSQL 17 database, runs `ANALYZE`, then executes all seven named reads with
+`EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)`. The JSON plan assertions prove that PostgreSQL naturally
+selects each deliberate index, including the review-state index in the joined due-card query.
+
+The dataset contains 100 owners, 2,000 decks, and 40,000 rows in each of cards, states, tag links,
+and review events. Planner methods remain enabled. The test intentionally does not assert cost,
+timing, buffer totals, or a complete plan tree, so the evidence remains about index selection rather
+than unstable performance numbers. The full method, mapping, and limitations are recorded in the
+[query-plan report](query-plans.md).

@@ -114,11 +114,13 @@ baseline downgrade, and re-upgrade. Review batches enforce per-owner idempotency
 events use composite owned batch/card relationships, complete before/after values, transition
 checks, and duplicate-per-batch prevention. A deterministic synthetic fixture now spans every table
 with English and Japanese decks/cards, shared tags, current states, and matching batch events. The
-full local backend suite passes 102 tests. All named index definitions match their access patterns,
-but query-plan effectiveness is not claimed. The implemented ER diagram now covers every table,
-foreign key, composite ownership constraint, cardinality, and deletion rule while separating future
-transaction guarantees. Query plans remain pending; atomic review behavior remains a future service
-responsibility.
+full local backend suite now passes 103 tests with one existing upstream warning. All named index
+definitions match their access patterns, and a PostgreSQL 17 integration test builds a deterministic
+representative dataset, runs `ANALYZE`, and verifies that all seven deliberate indexes are selected
+by their executed query shapes. The implemented ER diagram covers every table, foreign key,
+composite ownership constraint, cardinality, and deletion rule while separating future transaction
+guarantees. Planner evidence is local and distribution-specific, not a performance benchmark;
+atomic review behavior remains a future service responsibility.
 
 GitHub tracking:
 
@@ -171,5 +173,5 @@ documentation session.
 
 ## Next action
 
-Inspect the named PostgreSQL access patterns with representative query plans. Formal GitHub status
-for issues #4, #5, and #6 remains unverified.
+Audit the Issue #8 acceptance criteria and complete the learning-checkpoint defense. Formal GitHub
+status for issues #4, #5, and #6 remains unverified.
