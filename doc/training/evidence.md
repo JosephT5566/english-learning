@@ -265,10 +265,13 @@ Use precise language such as “project,” “local load test,” or “deploye
 - Verification and failure cases: PostgreSQL tests accept a complete transition; reject missing
   batch/event fields, invalid ownership pairs, duplicate retries/events, invalid metadata and
   transition values; retain batch/card identities while events exist; and verify all three index
-  definitions. The development migration cycle passed, and the full backend suite passed 100 tests.
+  definitions. A complete synthetic fixture verifies English and Japanese cards, shared tags,
+  current states, and matching events through one schema and rejects duplicate loading. The
+  development migration cycle passed, and the full backend suite passed 102 tests.
 - Measured result: Local correctness and index-definition evidence only; no query-plan, performance,
   deployment, or user-impact claim.
-- Limitations: Batch event counts, current-state agreement, request-hash replay behavior, locking,
+- Limitations: The fixture demonstrates but does not enforce batch event counts or current-state
+  agreement. Request-hash replay behavior, locking,
   atomic event/state writes, and the no-mutation API contract require the future review service.
   Remote CI and deployment remain pending; one upstream `TestClient` warning remains.
 - Five-minute explanation practiced: Not yet for the implemented review-history constraints.

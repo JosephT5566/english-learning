@@ -167,6 +167,13 @@ PostgreSQL schema behavior at the properties they explicitly assert; a successfu
 or matching `alembic_version` alone does not prove the restored schema is correct. ORM agreement,
 API behavior, and production-data import are separate test boundaries.
 
+### Complete multilingual fixture
+
+`tests/fixtures/multilingual_learning_domain.sql` contains deterministic synthetic English and
+Japanese records spanning every Issue #8 table. `test_multilingual_domain_fixture.py` loads it into
+an isolated migrated database in one transaction and verifies shared ownership, tags, current state,
+and before/after review history. It is intentionally not a production seed or Google Sheets import.
+
 ## API error contract
 
 API failures use this stable envelope:

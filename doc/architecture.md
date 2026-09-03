@@ -43,6 +43,8 @@ Last updated: 2026-09-03
 - `apps/api/tests/unit/`: API configuration, lifecycle, probe, and HTTP contract tests.
 - `apps/api/tests/integration/`: opt-in real PostgreSQL readiness, migration lifecycle, transaction,
   and domain-constraint tests.
+- `apps/api/tests/fixtures/multilingual_learning_domain.sql`: deterministic synthetic English and
+  Japanese data spanning the complete Issue #8 schema for isolated PostgreSQL tests.
 - `compose.yaml`: verified local `postgres:17-alpine` service with persistent development volume and
   health check, run through OrbStack's Docker-compatible engine.
 - `.github/workflows/ci.yml`: independent frontend and PostgreSQL-backed backend verification jobs.
@@ -116,6 +118,9 @@ FastAPI service.
 - Event-count agreement with a batch, consistency with current state, atomic state/event writes,
   request-hash replay handling, and the no-mutation application contract remain responsibilities of
   the future review transaction service.
+- The checked-in bilingual fixture uses one owner with English and Japanese decks/cards, shared
+  reusable tags, current states, and one two-card review batch. It is test evidence, not a production
+  seed or import path.
 - The migration is persistence-only. No API route reads or writes these tables yet.
 
 ## API Error Contract

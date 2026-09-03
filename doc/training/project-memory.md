@@ -112,10 +112,11 @@ its composite card relationship, required scheduling values, range/time checks, 
 deletion are enforced by PostgreSQL. The temporary and development databases passed upgrade,
 baseline downgrade, and re-upgrade. Review batches enforce per-owner idempotency-key uniqueness;
 events use composite owned batch/card relationships, complete before/after values, transition
-checks, and duplicate-per-batch prevention. The full local backend suite passes 100 tests. All named
-index definitions match their access patterns, but query-plan effectiveness is not claimed. The ER
-diagram, complete fixtures, and query plans remain pending; atomic review behavior remains a future
-service responsibility.
+checks, and duplicate-per-batch prevention. A deterministic synthetic fixture now spans every table
+with English and Japanese decks/cards, shared tags, current states, and matching batch events. The
+full local backend suite passes 102 tests. All named index definitions match their access patterns,
+but query-plan effectiveness is not claimed. The ER diagram and query plans remain pending; atomic
+review behavior remains a future service responsibility.
 
 GitHub tracking:
 
@@ -168,6 +169,5 @@ documentation session.
 
 ## Next action
 
-Add complete representative English/Japanese fixtures and the entity-relationship diagram, then
-inspect the named PostgreSQL access patterns with representative query plans. Formal GitHub status
-for issues #4, #5, and #6 remains unverified.
+Add the entity-relationship diagram, then inspect the named PostgreSQL access patterns with
+representative query plans. Formal GitHub status for issues #4, #5, and #6 remains unverified.

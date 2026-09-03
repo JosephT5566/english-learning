@@ -61,12 +61,14 @@ Detailed artifacts:
 - Owner-history, card-history, and batch-reconstruction index definitions match their named access
   patterns. Event-count/state agreement, replay behavior, atomic writes, and the no-update/delete
   application contract remain future service responsibilities.
+- The complete deterministic fixture loads one owner, English and Japanese decks/cards, shared tags,
+  current states, and one two-card review batch with matching events through the same schema. A
+  second load is rejected rather than silently hiding duplicate data.
 - A temporary database and the development database both passed upgrade, baseline downgrade, and
-  re-upgrade. The full local backend suite passes 100 tests with one existing upstream warning.
-- The ER diagram, complete domain fixtures, and representative query-plan inspection remain
-  unimplemented.
+  re-upgrade. The full local backend suite passes 102 tests with one existing upstream warning.
+- The ER diagram and representative query-plan inspection remain unimplemented.
 
 ## Next action
 
-Add complete representative English/Japanese fixtures and the entity-relationship diagram, then
-inspect the four named access patterns with representative PostgreSQL query plans.
+Add the entity-relationship diagram, then inspect the named access patterns with representative
+PostgreSQL query plans.

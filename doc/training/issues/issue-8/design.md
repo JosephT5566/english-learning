@@ -212,3 +212,17 @@ their named access patterns. Static row constraints cannot prove that `item_coun
 event count or that an event matches and atomically updates current state; request-hash replay,
 locking, atomic writes, and the no-update/delete application contract remain future review-service
 responsibilities.
+
+## Sixth implementation slice
+
+`tests/fixtures/multilingual_learning_domain.sql` provides deterministic synthetic data spanning
+every Issue #8 table. One owner has English and Japanese decks/cards, reusable tags shared across
+languages, matching current review states, and one two-card batch whose before/after events align
+with those states. Fixed UUIDs keep relationships readable while PostgreSQL generates internal user
+and event identity values.
+
+The integration test loads the fixture in one transaction, verifies exact table counts,
+language-specific optional fields through the shared card table, cross-language tag reuse, batch
+membership, and resulting-event/current-state agreement. A repeated load fails on the expected
+durable user identity. This is a test fixture, not a production seed, import implementation, or
+proof that cross-row agreement is enforced for arbitrary writes.

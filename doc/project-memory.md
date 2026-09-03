@@ -27,8 +27,9 @@ first production domain migration now adds database-constrained users, owned Eng
 learning decks, confirmed language-aware cards with optional embedded learning content, and reusable
 owned tags with same-owner card associations. It also adds one database-constrained current review
 state per card, owned idempotent review batches, and retained before/after review events. The
-transactional review service and API remain pending, and the backend remains disconnected from the
-frontend.
+complete synthetic integration fixture exercises English and Japanese through that same relational
+model. The transactional review service and API remain pending, and the backend remains disconnected
+from the frontend.
 
 ## Current User Experience
 
