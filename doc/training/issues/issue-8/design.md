@@ -97,6 +97,8 @@ Only indexes tied to named access patterns are accepted initially:
 | Filter a user's decks by language and archive state | `(owner_id, target_language, archived_at)` | Matches ownership and language filters |
 | Retrieve a user's due cards in due order | `(owner_id, next_review_at, card_id)` on `review_states` | Owner and due range lead; card ID is the stable tie-breaker |
 | Show a user's review history newest first | `(owner_id, reviewed_at DESC, id DESC)` on `review_events` | Supports owner-scoped reverse chronology with deterministic order |
+| Show one card's review history newest first | `(card_id, reviewed_at DESC, id DESC)` on `review_events` | Supports card-scoped reverse chronology with deterministic order |
+| Reconstruct one batch response in event order | `(batch_id, id)` on `review_events` | Batch equality leads; generated event ID provides explicit reconstruction order |
 
 The due query still joins cards and decks to exclude effectively archived content. A trigram search
 index remains deferred until a representative query and `EXPLAIN` result justify it.
@@ -190,3 +192,23 @@ Focused PostgreSQL tests reject every omitted scheduling field, cross-owner stat
 out-of-range stage/ease/interval/version values, invalid review-time ordering, and physical card
 deletion while state remains. The `(owner_id, next_review_at, card_id)` index definition matches the
 named due-review pattern; archived card/deck filtering and query-plan evidence remain pending.
+
+## Fifth implementation slice
+
+Revision `20260902_0002` now includes `review_batches` and `review_events`. A batch owns one client
+idempotency key under unique `(owner_id, idempotency_key)` and records the request hash, backend
+review time, algorithm version, and 1-10 item count. Unique `(id, owner_id)` supports the event's
+composite owned-batch foreign key.
+
+Each event also references an owned card and requires a complete before/after schedule snapshot,
+except for the intentionally nullable previous last-review time. Named checks enforce supported and
+matching decision/quality values, stage/ease/interval ranges, positive consecutive versions,
+previous/resulting schedule ordering, monotonic review time, and equality between review time and
+the resulting last-review time. Unique `(batch_id, card_id)` prevents two events for one card in a
+batch, and restrictive foreign keys retain card and batch identities while history exists.
+
+The owner-history, card-history, and batch-reconstruction index definitions are verified against
+their named access patterns. Static row constraints cannot prove that `item_count` equals the final
+event count or that an event matches and atomically updates current state; request-hash replay,
+locking, atomic writes, and the no-update/delete application contract remain future review-service
+responsibilities.

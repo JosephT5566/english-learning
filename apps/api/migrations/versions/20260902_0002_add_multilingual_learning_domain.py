@@ -18,7 +18,7 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    """Create users, decks, cards, tags, and current review state."""
+    """Create the owned multilingual learning and review domain."""
 
     op.create_table(
         "users",
@@ -459,6 +459,61 @@ def upgrade() -> None:
     )
 
     op.create_table(
+        "review_batches",
+        sa.Column(
+            "id",
+            postgresql.UUID(as_uuid=True),
+            server_default=sa.text("gen_random_uuid()"),
+            nullable=False,
+        ),
+        sa.Column("owner_id", sa.BigInteger(), nullable=False),
+        sa.Column(
+            "idempotency_key",
+            postgresql.UUID(as_uuid=True),
+            nullable=False,
+        ),
+        sa.Column("request_hash", sa.Text(), nullable=False),
+        sa.Column("reviewed_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("algorithm_version", sa.Text(), nullable=False),
+        sa.Column("item_count", sa.SmallInteger(), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("CURRENT_TIMESTAMP"),
+            nullable=False,
+        ),
+        sa.CheckConstraint(
+            "char_length(btrim(request_hash)) > 0",
+            name="ck_review_batches_request_hash_nonblank",
+        ),
+        sa.CheckConstraint(
+            "char_length(btrim(algorithm_version)) > 0",
+            name="ck_review_batches_algorithm_version_nonblank",
+        ),
+        sa.CheckConstraint(
+            "item_count BETWEEN 1 AND 10",
+            name="ck_review_batches_item_count_range",
+        ),
+        sa.ForeignKeyConstraint(
+            ["owner_id"],
+            ["users.id"],
+            name="fk_review_batches_owner_id_users",
+            ondelete="RESTRICT",
+        ),
+        sa.PrimaryKeyConstraint("id", name="pk_review_batches"),
+        sa.UniqueConstraint(
+            "owner_id",
+            "idempotency_key",
+            name="uq_review_batches_owner_id_idempotency_key",
+        ),
+        sa.UniqueConstraint(
+            "id",
+            "owner_id",
+            name="uq_review_batches_id_owner_id",
+        ),
+    )
+
+    op.create_table(
         "review_states",
         sa.Column("card_id", postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column("owner_id", sa.BigInteger(), nullable=False),
@@ -509,15 +564,172 @@ def upgrade() -> None:
         unique=False,
     )
 
+    op.create_table(
+        "review_events",
+        sa.Column(
+            "id",
+            sa.BigInteger(),
+            sa.Identity(always=True),
+            nullable=False,
+        ),
+        sa.Column("batch_id", postgresql.UUID(as_uuid=True), nullable=False),
+        sa.Column("owner_id", sa.BigInteger(), nullable=False),
+        sa.Column("card_id", postgresql.UUID(as_uuid=True), nullable=False),
+        sa.Column("decision", sa.Text(), nullable=False),
+        sa.Column("quality", sa.SmallInteger(), nullable=False),
+        sa.Column("previous_review_stage", sa.SmallInteger(), nullable=False),
+        sa.Column("resulting_review_stage", sa.SmallInteger(), nullable=False),
+        sa.Column("previous_ease_factor", sa.Numeric(3, 2), nullable=False),
+        sa.Column("resulting_ease_factor", sa.Numeric(3, 2), nullable=False),
+        sa.Column("previous_interval_days", sa.Integer(), nullable=False),
+        sa.Column("resulting_interval_days", sa.Integer(), nullable=False),
+        sa.Column(
+            "previous_last_reviewed_at",
+            sa.DateTime(timezone=True),
+            nullable=True,
+        ),
+        sa.Column(
+            "resulting_last_reviewed_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+        ),
+        sa.Column(
+            "previous_next_review_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+        ),
+        sa.Column(
+            "resulting_next_review_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+        ),
+        sa.Column("previous_version", sa.Integer(), nullable=False),
+        sa.Column("resulting_version", sa.Integer(), nullable=False),
+        sa.Column("algorithm_version", sa.Text(), nullable=False),
+        sa.Column("reviewed_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("CURRENT_TIMESTAMP"),
+            nullable=False,
+        ),
+        sa.CheckConstraint(
+            "decision IN ('no', 'no_a_bit', 'yes_a_bit', 'yes')",
+            name="ck_review_events_decision_supported",
+        ),
+        sa.CheckConstraint(
+            "quality IN (0, 2, 3, 5)",
+            name="ck_review_events_quality_supported",
+        ),
+        sa.CheckConstraint(
+            "(decision = 'no' AND quality = 0) "
+            "OR (decision = 'no_a_bit' AND quality = 2) "
+            "OR (decision = 'yes_a_bit' AND quality = 3) "
+            "OR (decision = 'yes' AND quality = 5)",
+            name="ck_review_events_decision_quality_match",
+        ),
+        sa.CheckConstraint(
+            "previous_review_stage BETWEEN 1 AND 5 "
+            "AND resulting_review_stage BETWEEN 1 AND 5",
+            name="ck_review_events_review_stage_ranges",
+        ),
+        sa.CheckConstraint(
+            "previous_ease_factor BETWEEN 1.30 AND 2.50 "
+            "AND resulting_ease_factor BETWEEN 1.30 AND 2.50",
+            name="ck_review_events_ease_factor_ranges",
+        ),
+        sa.CheckConstraint(
+            "previous_interval_days >= 0 AND resulting_interval_days >= 0",
+            name="ck_review_events_interval_days_nonnegative",
+        ),
+        sa.CheckConstraint(
+            "previous_version >= 1 AND resulting_version = previous_version + 1",
+            name="ck_review_events_version_transition",
+        ),
+        sa.CheckConstraint(
+            "char_length(btrim(algorithm_version)) > 0",
+            name="ck_review_events_algorithm_version_nonblank",
+        ),
+        sa.CheckConstraint(
+            "previous_last_reviewed_at IS NULL "
+            "OR previous_next_review_at >= previous_last_reviewed_at",
+            name="ck_review_events_previous_schedule_ordered",
+        ),
+        sa.CheckConstraint(
+            "previous_last_reviewed_at IS NULL "
+            "OR reviewed_at >= previous_last_reviewed_at",
+            name="ck_review_events_review_time_monotonic",
+        ),
+        sa.CheckConstraint(
+            "resulting_last_reviewed_at = reviewed_at",
+            name="ck_review_events_resulting_last_review_matches_review",
+        ),
+        sa.CheckConstraint(
+            "resulting_next_review_at >= resulting_last_reviewed_at",
+            name="ck_review_events_resulting_schedule_ordered",
+        ),
+        sa.ForeignKeyConstraint(
+            ["batch_id", "owner_id"],
+            ["review_batches.id", "review_batches.owner_id"],
+            name="fk_review_events_batch_id_owner_id_review_batches",
+            ondelete="RESTRICT",
+        ),
+        sa.ForeignKeyConstraint(
+            ["card_id", "owner_id"],
+            ["learning_cards.id", "learning_cards.owner_id"],
+            name="fk_review_events_card_id_owner_id_learning_cards",
+            ondelete="RESTRICT",
+        ),
+        sa.PrimaryKeyConstraint("id", name="pk_review_events"),
+        sa.UniqueConstraint(
+            "batch_id",
+            "card_id",
+            name="uq_review_events_batch_id_card_id",
+        ),
+    )
+    op.create_index(
+        "ix_review_events_owner_reviewed_id",
+        "review_events",
+        ["owner_id", sa.text("reviewed_at DESC"), sa.text("id DESC")],
+        unique=False,
+    )
+    op.create_index(
+        "ix_review_events_card_reviewed_id",
+        "review_events",
+        ["card_id", sa.text("reviewed_at DESC"), sa.text("id DESC")],
+        unique=False,
+    )
+    op.create_index(
+        "ix_review_events_batch_id_id",
+        "review_events",
+        ["batch_id", "id"],
+        unique=False,
+    )
+
 
 def downgrade() -> None:
-    """Remove review state, tags, cards, decks, and users in dependency order."""
+    """Remove review history and learning data in dependency order."""
+
+    op.drop_index(
+        "ix_review_events_batch_id_id",
+        table_name="review_events",
+    )
+    op.drop_index(
+        "ix_review_events_card_reviewed_id",
+        table_name="review_events",
+    )
+    op.drop_index(
+        "ix_review_events_owner_reviewed_id",
+        table_name="review_events",
+    )
+    op.drop_table("review_events")
 
     op.drop_index(
         "ix_review_states_owner_next_review_card",
         table_name="review_states",
     )
     op.drop_table("review_states")
+    op.drop_table("review_batches")
 
     op.drop_index(
         "ix_learning_card_tags_tag_id_card_id",

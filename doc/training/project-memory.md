@@ -102,18 +102,20 @@ meaning, cards derive language from required owned decks, optional multilingual 
 card table, one example remains embedded, review state uses `card_id` as its primary key, redundant
 constrained owner IDs enforce same-owner relationships, review history records before/after state,
 and indexes map to named list, language, due-review, and history queries. Revision `20260902_0002`
-now adds users, owned multilingual decks, confirmed learning cards, tags, card/tag associations, and
-current review state.
+now adds users, owned multilingual decks, confirmed learning cards, tags, card/tag associations,
+current review state, owned review batches, and retained review events.
 Cards use a composite owned deck foreign key, require nonblank term/meaning, share optional
 English/Japanese fields, and embed one example. Tags have normalized per-owner identity; two
 composite foreign keys prevent cross-owner attachment, and the association primary key prevents
 duplicates. Tag deletion cascades only to associations. Review-state `card_id` is the primary key;
 its composite card relationship, required scheduling values, range/time checks, and restricted card
 deletion are enforced by PostgreSQL. The temporary and development databases passed upgrade,
-baseline downgrade, and re-upgrade; the full local backend suite passes 86 tests. The active-card,
-reverse tag-filter, and due-review index definitions match their named patterns, but query-plan
-effectiveness is not claimed. Review batches/events, the ER diagram, complete fixtures, and query
-plans remain pending.
+baseline downgrade, and re-upgrade. Review batches enforce per-owner idempotency-key uniqueness;
+events use composite owned batch/card relationships, complete before/after values, transition
+checks, and duplicate-per-batch prevention. The full local backend suite passes 100 tests. All named
+index definitions match their access patterns, but query-plan effectiveness is not claimed. The ER
+diagram, complete fixtures, and query plans remain pending; atomic review behavior remains a future
+service responsibility.
 
 GitHub tracking:
 
@@ -166,6 +168,6 @@ documentation session.
 
 ## Next action
 
-Implement owned idempotent `review_batches` and immutable `review_events` in revision
-`20260902_0002` as the next bounded slice. Enforce cross-owner rejection, event transition checks,
-and the owner/history index. Formal GitHub status for issues #4, #5, and #6 remains unverified.
+Add complete representative English/Japanese fixtures and the entity-relationship diagram, then
+inspect the named PostgreSQL access patterns with representative query plans. Formal GitHub status
+for issues #4, #5, and #6 remains unverified.

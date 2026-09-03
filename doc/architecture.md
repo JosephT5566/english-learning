@@ -38,8 +38,8 @@ Last updated: 2026-09-03
   correlation, and future structured logs.
 - `apps/api/app/health.py`: database-independent liveness and database-aware readiness contracts.
 - `apps/api/migrations/`: Alembic environment and reversible migration history; the empty baseline
-  is followed by the first production domain revision for users, decks, confirmed cards, tags, and
-  current review state.
+  is followed by the first production domain revision for users, decks, confirmed cards, tags,
+  current review state, and review history.
 - `apps/api/tests/unit/`: API configuration, lifecycle, probe, and HTTP contract tests.
 - `apps/api/tests/integration/`: opt-in real PostgreSQL readiness, migration lifecycle, transaction,
   and domain-constraint tests.
@@ -105,6 +105,17 @@ FastAPI service.
   last review.
 - `(owner_id, next_review_at, card_id)` supports stable owner-scoped due retrieval. Its definition is
   tested; archived-card/deck joins and query-plan effectiveness remain future work.
+- `review_batches` owns the client idempotency key through unique `(owner_id, idempotency_key)` and
+  stores one backend review time, algorithm version, request hash, and bounded item count. Unique
+  `(id, owner_id)` supports owned event relationships.
+- `review_events` retains required before/after scheduling snapshots. Composite batch/card foreign
+  keys reject both forms of cross-owner history; local checks enforce decision/quality mapping,
+  scheduling ranges, version progression, and timestamp relationships.
+- Review-event indexes support owner history, card history, and batch response reconstruction. Their
+  definitions are tested; query plans remain unmeasured.
+- Event-count agreement with a batch, consistency with current state, atomic state/event writes,
+  request-hash replay handling, and the no-mutation application contract remain responsibilities of
+  the future review transaction service.
 - The migration is persistence-only. No API route reads or writes these tables yet.
 
 ## API Error Contract

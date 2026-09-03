@@ -241,3 +241,35 @@ Use precise language such as “project,” “local load test,” or “deploye
   upstream FastAPI `TestClient` warning remains.
 - Five-minute explanation practiced: Not yet for the implemented review-state constraints.
 - Candidate resume bullet: Not yet; wait for the complete domain and API boundary.
+
+### Owned idempotent review-history schema
+
+- Date: 2026-09-03
+- Status: Verified locally
+- Problem: Preserve explainable review transitions and retry identity without permitting history to
+  cross a user's batch/card ownership boundary.
+- Constraints and invariants: A retry key is unique per owner; one card appears at most once per
+  batch; history requires valid before/after schedules, consecutive versions, and consistent
+  decision/quality and timestamp values.
+- Decision: Store command-level idempotency metadata once on an owned batch, retain complete
+  transition snapshots on generated-identity events, enforce both owned composite foreign keys, and
+  add owner, card, and batch indexes only for named history/reconstruction patterns.
+- Alternatives considered: Repeating idempotency keys on each event was rejected because retry
+  identity belongs to the atomic command; independent foreign keys were rejected because valid IDs
+  could still cross ownership; storing only resulting values was rejected because later scheduling
+  changes would make historical transitions harder to explain.
+- Implementation references:
+  `apps/api/migrations/versions/20260902_0002_add_multilingual_learning_domain.py`,
+  `apps/api/tests/integration/test_review_history.py`, and
+  `apps/api/tests/integration/test_migrations.py`.
+- Verification and failure cases: PostgreSQL tests accept a complete transition; reject missing
+  batch/event fields, invalid ownership pairs, duplicate retries/events, invalid metadata and
+  transition values; retain batch/card identities while events exist; and verify all three index
+  definitions. The development migration cycle passed, and the full backend suite passed 100 tests.
+- Measured result: Local correctness and index-definition evidence only; no query-plan, performance,
+  deployment, or user-impact claim.
+- Limitations: Batch event counts, current-state agreement, request-hash replay behavior, locking,
+  atomic event/state writes, and the no-mutation API contract require the future review service.
+  Remote CI and deployment remain pending; one upstream `TestClient` warning remains.
+- Five-minute explanation practiced: Not yet for the implemented review-history constraints.
+- Candidate resume bullet: Not yet; wait for the complete domain and API boundary.

@@ -1,7 +1,7 @@
 # Issue #8 - Multilingual Domain Schema
 
 - Date: 2026-09-03
-- Status: Users, decks, confirmed cards, tags, and review state implemented and verified locally
+- Status: Core domain tables and constraints implemented and verified locally
 - Outcome: Represent English and Japanese learning with database-enforced integrity
 
 ## Start here
@@ -52,12 +52,21 @@ Detailed artifacts:
   while state remains.
 - The `(owner_id, next_review_at, card_id)` due-index definition is verified against its named access
   pattern; no query-plan effectiveness claim exists yet.
+- `review_batches` makes the idempotency key unique per owner and keeps the request hash, one
+  authoritative review time, algorithm version, and bounded item count. Events reference both an
+  owned batch and owned card.
+- `review_events` requires complete before/after schedule snapshots and rejects invalid
+  decision/quality mappings, ranges, version increments, and time ordering. One card can appear only
+  once per batch, and retained history restricts physical batch/card deletion.
+- Owner-history, card-history, and batch-reconstruction index definitions match their named access
+  patterns. Event-count/state agreement, replay behavior, atomic writes, and the no-update/delete
+  application contract remain future service responsibilities.
 - A temporary database and the development database both passed upgrade, baseline downgrade, and
-  re-upgrade. The full local backend suite passes 86 tests with one existing upstream warning.
-- Review batches/events, the ER diagram, complete domain fixtures, and query-plan inspection remain
+  re-upgrade. The full local backend suite passes 100 tests with one existing upstream warning.
+- The ER diagram, complete domain fixtures, and representative query-plan inspection remain
   unimplemented.
 
 ## Next action
 
-Implement owned idempotent `review_batches` and immutable `review_events`, including before/after
-state evidence and the owner/history index.
+Add complete representative English/Japanese fixtures and the entity-relationship diagram, then
+inspect the four named access patterns with representative PostgreSQL query plans.

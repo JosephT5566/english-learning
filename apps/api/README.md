@@ -55,7 +55,9 @@ verification and recovery tool, not an assumed production rollback strategy. The
 baseline is intentionally empty. Issue #8 revision `20260902_0002` begins the production domain
 schema with owned users, multilingual learning decks, confirmed learning cards, and reusable
 per-owner tags. It also stores one current review state per card with database-enforced ownership,
-scheduling ranges, timestamp ordering, and due-review indexing.
+scheduling ranges, timestamp ordering, and due-review indexing. Owned review batches provide
+per-user retry-key uniqueness, while review events retain complete constrained before/after
+snapshots for history and response reconstruction.
 
 ## Local PostgreSQL
 

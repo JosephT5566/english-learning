@@ -42,6 +42,10 @@ Last updated: 2026-09-03
   Require scheduling values without database defaults so the backend explicitly supplies its
   calculated initial state; constrain ranges and last/next ordering in PostgreSQL. Retain state by
   restricting physical card deletion.
+- Store review retry identity once on an owned batch, unique per `(owner_id, idempotency_key)`, and
+  retain one event per `(batch_id, card_id)`. Events repeat constrained owner IDs and complete
+  before/after scheduling values for explainable history; cross-row count/state agreement and atomic
+  transitions remain explicit review-service transaction rules.
 
 ## Known Follow-Up Areas
 
@@ -66,3 +70,5 @@ Last updated: 2026-09-03
   duplicate prevention and association-only tag deletion cascade.
 - 2026-09-03: Added one owned current review state per card with explicit required scheduling data,
   range/time checks, restricted card deletion, and the owner/due-time index.
+- 2026-09-03: Added owned idempotent review batches and retained review events with composite
+  ownership, complete transition checks, deletion restriction, and named history/replay indexes.

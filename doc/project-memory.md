@@ -26,8 +26,9 @@ integration patterns, stable safe API errors, and independent frontend/backend C
 first production domain migration now adds database-constrained users, owned English/Japanese
 learning decks, confirmed language-aware cards with optional embedded learning content, and reusable
 owned tags with same-owner card associations. It also adds one database-constrained current review
-state per card; immutable review batches and events remain pending. The backend remains disconnected
-from the frontend.
+state per card, owned idempotent review batches, and retained before/after review events. The
+transactional review service and API remain pending, and the backend remains disconnected from the
+frontend.
 
 ## Current User Experience
 
