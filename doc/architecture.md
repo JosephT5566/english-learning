@@ -74,6 +74,9 @@ FastAPI service.
 
 ## Initial Domain Schema
 
+The complete implemented relationship view is documented in the
+[Issue #8 entity-relationship diagram](training/issues/issue-8/erd.md).
+
 - `users` uses an internal generated `BIGINT` identity. Google subject is the unique external
   identity; normalized email is required but is not an ownership key.
 - `learning_decks` uses a generated UUID, requires an owner, and supports target languages `en` and

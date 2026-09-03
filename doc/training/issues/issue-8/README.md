@@ -14,6 +14,8 @@ Detailed artifacts:
 
 - [Implementation design](design.md): accepted invariants, ownership constraints, example model,
   scheduling checks, indexes, fixtures, and verification plan
+- [Entity-relationship diagram](erd.md): implemented tables, cardinality, composite ownership keys,
+  deletion behavior, and transaction-only boundaries
 - [Issue #5 schema proposal](../issue-5/schema.md): broader approved schema that Issue #8 refines
 - [Issue #5 alternatives](../issue-5/alternatives.md): rejected schema alternatives and accepted
   consequences
@@ -66,9 +68,10 @@ Detailed artifacts:
   second load is rejected rather than silently hiding duplicate data.
 - A temporary database and the development database both passed upgrade, baseline downgrade, and
   re-upgrade. The full local backend suite passes 102 tests with one existing upstream warning.
-- The ER diagram and representative query-plan inspection remain unimplemented.
+- The checked-in ER diagram maps every implemented table and foreign key, including the composite
+  owned relationships and the distinction between database and future transaction guarantees.
+- Representative query-plan inspection remains unimplemented.
 
 ## Next action
 
-Add the entity-relationship diagram, then inspect the named access patterns with representative
-PostgreSQL query plans.
+Inspect the named access patterns with representative PostgreSQL query plans.

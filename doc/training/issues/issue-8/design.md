@@ -1,8 +1,11 @@
 # Issue #8 Implementation Design
 
 - Date: 2026-09-03
-- Status: Accepted design; users, decks, cards, tags, and review state verified locally
+- Status: Core schema, bilingual fixture, and ER diagram verified locally
 - Dependency: Issue #7 persistence foundations are merged on `main` at `b1227ae`
+
+The implemented entity relationships, composite ownership keys, deletion behavior, and
+transaction-only boundaries are visualized in the [Issue #8 ER diagram](erd.md).
 
 ## Boundary
 
@@ -91,14 +94,14 @@ The first version keeps one optional example directly on `learning_cards` throug
 
 Only indexes tied to named access patterns are accepted initially:
 
-| Access pattern | Index | Rationale |
-| --- | --- | --- |
-| List active cards in a deck, newest first | `(deck_id, created_at DESC, id DESC) WHERE archived_at IS NULL` | Deck equality leads; ID makes equal timestamps deterministic |
-| Filter a user's decks by language and archive state | `(owner_id, target_language, archived_at)` | Matches ownership and language filters |
-| Retrieve a user's due cards in due order | `(owner_id, next_review_at, card_id)` on `review_states` | Owner and due range lead; card ID is the stable tie-breaker |
-| Show a user's review history newest first | `(owner_id, reviewed_at DESC, id DESC)` on `review_events` | Supports owner-scoped reverse chronology with deterministic order |
-| Show one card's review history newest first | `(card_id, reviewed_at DESC, id DESC)` on `review_events` | Supports card-scoped reverse chronology with deterministic order |
-| Reconstruct one batch response in event order | `(batch_id, id)` on `review_events` | Batch equality leads; generated event ID provides explicit reconstruction order |
+| Access pattern                                      | Index                                                           | Rationale                                                                       |
+| --------------------------------------------------- | --------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| List active cards in a deck, newest first           | `(deck_id, created_at DESC, id DESC) WHERE archived_at IS NULL` | Deck equality leads; ID makes equal timestamps deterministic                    |
+| Filter a user's decks by language and archive state | `(owner_id, target_language, archived_at)`                      | Matches ownership and language filters                                          |
+| Retrieve a user's due cards in due order            | `(owner_id, next_review_at, card_id)` on `review_states`        | Owner and due range lead; card ID is the stable tie-breaker                     |
+| Show a user's review history newest first           | `(owner_id, reviewed_at DESC, id DESC)` on `review_events`      | Supports owner-scoped reverse chronology with deterministic order               |
+| Show one card's review history newest first         | `(card_id, reviewed_at DESC, id DESC)` on `review_events`       | Supports card-scoped reverse chronology with deterministic order                |
+| Reconstruct one batch response in event order       | `(batch_id, id)` on `review_events`                             | Batch equality leads; generated event ID provides explicit reconstruction order |
 
 The due query still joins cards and decks to exclude effectively archived content. A trigram search
 index remains deferred until a representative query and `EXPLAIN` result justify it.
@@ -226,3 +229,15 @@ language-specific optional fields through the shared card table, cross-language 
 membership, and resulting-event/current-state agreement. A repeated load fails on the expected
 durable user identity. This is a test fixture, not a production seed, import implementation, or
 proof that cross-row agreement is enforced for arbitrary writes.
+
+## Seventh implementation slice
+
+The Mermaid [entity-relationship diagram](erd.md) now covers every implemented table and physical
+foreign-key relationship in revision `20260902_0002`. Supporting notes make the composite owned keys,
+one-to-one review-state identity, many-to-many tag association, history cardinality, and asymmetric
+deletion behavior explicit.
+
+The diagram deliberately does not draw a database relationship between current state and events.
+Their agreement, atomic update, locking, and replay behavior are future review-service transaction
+guarantees rather than implemented foreign keys. This distinction prevents planned application
+behavior from being presented as current database enforcement.

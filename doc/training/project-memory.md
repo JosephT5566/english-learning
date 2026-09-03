@@ -115,8 +115,10 @@ events use composite owned batch/card relationships, complete before/after value
 checks, and duplicate-per-batch prevention. A deterministic synthetic fixture now spans every table
 with English and Japanese decks/cards, shared tags, current states, and matching batch events. The
 full local backend suite passes 102 tests. All named index definitions match their access patterns,
-but query-plan effectiveness is not claimed. The ER diagram and query plans remain pending; atomic
-review behavior remains a future service responsibility.
+but query-plan effectiveness is not claimed. The implemented ER diagram now covers every table,
+foreign key, composite ownership constraint, cardinality, and deletion rule while separating future
+transaction guarantees. Query plans remain pending; atomic review behavior remains a future service
+responsibility.
 
 GitHub tracking:
 
@@ -169,5 +171,5 @@ documentation session.
 
 ## Next action
 
-Add the entity-relationship diagram, then inspect the named PostgreSQL access patterns with
-representative query plans. Formal GitHub status for issues #4, #5, and #6 remains unverified.
+Inspect the named PostgreSQL access patterns with representative query plans. Formal GitHub status
+for issues #4, #5, and #6 remains unverified.
