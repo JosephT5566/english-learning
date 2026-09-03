@@ -47,6 +47,7 @@ def test_clean_postgres_database_supports_reversible_migration_cycle(
 
         assert set(inspect(database_engine).get_table_names()) == {
             "alembic_version",
+            "learning_cards",
             "learning_decks",
             "users",
         }
@@ -61,6 +62,7 @@ def test_clean_postgres_database_supports_reversible_migration_cycle(
 
         assert set(inspect(database_engine).get_table_names()) == {
             "alembic_version",
+            "learning_cards",
             "learning_decks",
             "users",
         }
@@ -75,6 +77,7 @@ def test_clean_postgres_database_supports_reversible_migration_cycle(
 
         assert set(inspect(database_engine).get_table_names()) == {
             "alembic_version",
+            "learning_cards",
             "learning_decks",
             "users",
         }

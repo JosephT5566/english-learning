@@ -1,15 +1,12 @@
 """PostgreSQL constraint tests for users and learning decks."""
 
 import os
-from collections.abc import Iterator, Mapping
-from pathlib import Path
+from collections.abc import Mapping
 from typing import Any
 from uuid import UUID, uuid4
 
 import pytest
-from alembic import command
-from alembic.config import Config
-from sqlalchemy import Engine, create_engine, text
+from sqlalchemy import Engine, text
 from sqlalchemy.exc import IntegrityError
 
 pytestmark = [
@@ -19,26 +16,6 @@ pytestmark = [
         reason="set RUN_POSTGRES_INTEGRATION_TESTS=1 to run PostgreSQL integration tests",
     ),
 ]
-
-ALEMBIC_CONFIG_PATH = Path(__file__).parents[2] / "alembic.ini"
-
-
-@pytest.fixture
-def migrated_database_engine(
-    monkeypatch: pytest.MonkeyPatch,
-    temporary_database_url: str,
-) -> Iterator[Engine]:
-    """Yield an isolated PostgreSQL database migrated to the current head."""
-
-    monkeypatch.setenv("APP_ENV", "test")
-    monkeypatch.setenv("DATABASE_URL", temporary_database_url)
-    command.upgrade(Config(ALEMBIC_CONFIG_PATH), "head")
-    engine = create_engine(temporary_database_url)
-
-    try:
-        yield engine
-    finally:
-        engine.dispose()
 
 
 def insert_user(

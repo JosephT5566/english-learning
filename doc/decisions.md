@@ -1,6 +1,6 @@
 # Decisions And Known Issues
 
-Last updated: 2026-09-02
+Last updated: 2026-09-03
 
 ## Durable Decisions
 
@@ -31,6 +31,10 @@ Last updated: 2026-09-02
   decks. A deck requires one owner, uses constrained standard language codes, and exposes unique
   `(id, owner_id)` for later same-owner composite foreign keys. Retained decks restrict physical
   owner deletion; user-facing deck deletion will archive instead.
+- Treat every `learning_cards` row as confirmed content with required term and meaning; incomplete
+  AI output will use separate future draft tables. Cards derive language through a required owned
+  deck, share nullable language-specific fields, embed one optional example, and expose unique
+  `(id, owner_id)` for later owned relationships.
 
 ## Known Follow-Up Areas
 
@@ -49,3 +53,5 @@ Last updated: 2026-09-02
   work continues.
 - 2026-09-02: Added the first production domain migration for database-constrained users and owned
   multilingual learning decks; no API route or frontend flow uses it yet.
+- 2026-09-03: Extended the unshipped domain migration with confirmed English/Japanese cards,
+  composite deck ownership, embedded example content, and a named active-card listing index.

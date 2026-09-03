@@ -1,6 +1,6 @@
 # Architecture Memory
 
-Last updated: 2026-09-02
+Last updated: 2026-09-03
 
 ## Stack
 
@@ -38,7 +38,7 @@ Last updated: 2026-09-02
   correlation, and future structured logs.
 - `apps/api/app/health.py`: database-independent liveness and database-aware readiness contracts.
 - `apps/api/migrations/`: Alembic environment and reversible migration history; the empty baseline
-  is followed by the first production domain revision for users and learning decks.
+  is followed by the first production domain revision for users, decks, and confirmed cards.
 - `apps/api/tests/unit/`: API configuration, lifecycle, probe, and HTTP contract tests.
 - `apps/api/tests/integration/`: opt-in real PostgreSQL readiness, migration lifecycle, transaction,
   and domain-constraint tests.
@@ -80,6 +80,15 @@ FastAPI service.
 - Deck creation replay fields are paired and unique per owner when present. Deck title, version,
   timestamp ordering, and archive ordering are database constrained.
 - `(owner_id, target_language, archived_at)` supports the named owner/language filtering pattern.
+- `learning_cards` uses generated UUIDs and a composite `(deck_id, owner_id)` foreign key, so a
+  separately valid deck and owner cannot be combined across ownership boundaries.
+- Every card is confirmed content with required nonblank term and meaning. Optional reading,
+  pronunciation, romanization, definition, notes, related-word arrays, and one embedded example use
+  the same table for English and Japanese.
+- Unique `(learning_cards.id, owner_id)` supports later owned tag and review relationships. Physical
+  deck deletion is restricted while a card exists; user-facing deletion will archive cards/decks.
+- The partial `(deck_id, created_at DESC, id DESC)` active-card index matches the defined stable
+  deck-list ordering. Its shape is tested; query-plan effectiveness remains unmeasured.
 - The migration is persistence-only. No API route reads or writes these tables yet.
 
 ## API Error Contract

@@ -53,7 +53,7 @@ uv run alembic upgrade head
 Use `uv run alembic current` to inspect the applied revision. Downgrades are a development
 verification and recovery tool, not an assumed production rollback strategy. The initial Issue #7
 baseline is intentionally empty. Issue #8 revision `20260902_0002` begins the production domain
-schema with owned users and multilingual learning decks.
+schema with owned users, multilingual learning decks, and confirmed learning cards.
 
 ## Local PostgreSQL
 
@@ -135,6 +135,26 @@ OrbStack. Integration tests are opt-in and fail if PostgreSQL is unavailable; th
 SQLite. The migration test creates a uniquely named temporary PostgreSQL database, verifies
 `upgrade -> baseline downgrade -> upgrade`, and removes that database afterward. Domain constraint
 tests also run in isolated temporary databases. Production startup commands are still pending.
+
+### How migrated database tests work
+
+The shared fixtures in `tests/integration/conftest.py` separate database creation from schema setup:
+
+1. `temporary_database_url` creates a uniquely named empty PostgreSQL database.
+2. `migrated_database_engine` points the test environment at that database and runs
+   `alembic upgrade head`.
+3. It yields a SQLAlchemy `Engine`, which is a connection factory and pool rather than a single
+   long-lived connection.
+4. Test helpers insert valid prerequisite rows, then tests attempt valid or invalid writes against
+   the migrated schema.
+5. Fixture teardown disposes the engine before the temporary database is dropped.
+
+Pytest injects the fixture when a test declares a parameter named `migrated_database_engine`.
+Function-scoped fixtures give every test case, including each parametrized case, an isolated
+database. `test_migrations.py` instead requests `temporary_database_url` directly so it can begin
+empty and control its own upgrade/downgrade sequence. These tests verify migration-created
+PostgreSQL schema behavior; ORM agreement, API behavior, and production-data import are separate
+test boundaries.
 
 ## API error contract
 

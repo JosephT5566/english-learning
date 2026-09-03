@@ -1,7 +1,7 @@
 # Issue #8 Implementation Design
 
-- Date: 2026-09-02
-- Status: Accepted design; users/decks slice verified locally
+- Date: 2026-09-03
+- Status: Accepted design; users, decks, and cards verified locally
 - Dependency: Issue #7 persistence foundations are merged on `main` at `b1227ae`
 
 ## Boundary
@@ -113,6 +113,23 @@ index remains deferred until a representative query and `EXPLAIN` result justify
 - Inspect the named list, language, due-review, and history queries with representative data before
   claiming index effectiveness.
 
+### Test harness mental model
+
+`temporary_database_url` owns creation and deletion of one uniquely named empty PostgreSQL database.
+`migrated_database_engine` depends on that fixture, points Alembic at the temporary URL, runs
+`upgrade head`, and yields a SQLAlchemy engine for schema tests. Helpers such as `insert_user()` and
+`insert_deck()` then establish valid prerequisite rows before each test exercises accepted and
+rejected writes.
+
+The engine is a connection factory/pool, not the database itself or one permanent connection.
+Teardown disposes it before the temporary database fixture drops the database. Because these are
+function-scoped fixtures, every test invocation is isolated. The migration lifecycle test
+deliberately uses the empty-database fixture directly so it can control upgrade and downgrade itself.
+
+This boundary proves that Alembic creates the expected PostgreSQL tables, defaults, keys, indexes,
+and checks. It does not by itself prove ORM metadata agreement, API behavior, authentication,
+production-data import, or deployment behavior.
+
 ## First implementation slice
 
 Add `users` and `learning_decks` in the new domain migration, then prove that a deck requires an
@@ -127,3 +144,15 @@ the generated IDs, shared English/Japanese table, required and existing owners, 
 nonblank identity/title/hash data, uniqueness, version/timestamp/archive checks, replay pairing, and
 restricted deletion. The temporary and development databases both passed upgrade, downgrade to the
 Issue #7 baseline, and re-upgrade.
+
+## Second implementation slice
+
+The same unshipped revision now adds confirmed `learning_cards`. PostgreSQL requires a matching
+owned `(deck_id, owner_id)` pair and nonblank term/meaning, while nullable language-specific fields
+allow English and Japanese to share one table. Named checks cover optional lengths, embedded-example
+dependencies, related-word array bounds/null elements, part-of-speech values, creation replay data,
+versions, timestamps, and archive ordering. Physical deck deletion is restricted while cards remain.
+
+Representative English and Japanese card tests pass through the same schema. The partial active-card
+index is verified to have `(deck_id, created_at DESC, id DESC)` and `archived_at IS NULL`; this is
+index-definition evidence only, not an `EXPLAIN` or performance result.

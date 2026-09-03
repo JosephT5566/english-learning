@@ -1,6 +1,6 @@
 # English Learning Project Memory
 
-Last updated: 2026-09-02
+Last updated: 2026-09-03
 
 ## Purpose
 
@@ -101,12 +101,14 @@ recorded in [`issues/issue-8/`](issues/issue-8/README.md): confirmed cards requi
 meaning, cards derive language from required owned decks, optional multilingual fields share one
 card table, one example remains embedded, review state uses `card_id` as its primary key, redundant
 constrained owner IDs enforce same-owner relationships, review history records before/after state,
-and indexes map to named list, language, due-review, and history queries. The first verified slice
-adds users and owned multilingual decks in revision `20260902_0002`. Named constraints cover user
-identity, supported languages, content/version/time validity, creation replay fields, and restricted
-owner deletion. English and Japanese deck fixtures share one table. The temporary and development
-databases passed upgrade, baseline downgrade, and re-upgrade; the full local backend suite passes 40
-tests. Cards, tags, review tables, the ER diagram, full fixtures, and query plans remain pending.
+and indexes map to named list, language, due-review, and history queries. Revision `20260902_0002`
+now adds users, owned multilingual decks, and confirmed learning cards. Cards use a composite owned
+deck foreign key, require nonblank term/meaning, share optional English/Japanese fields, embed one
+example, and constrain content collections, replay data, versions, and timestamps. Representative
+English and Japanese cards pass through one table. The temporary and development databases passed
+upgrade, baseline downgrade, and re-upgrade; the full local backend suite passes 56 tests. The
+active-card index definition matches its named pattern, but query-plan effectiveness is not claimed.
+Tags, review tables, the ER diagram, complete fixtures, and query plans remain pending.
 
 GitHub tracking:
 
@@ -159,7 +161,7 @@ documentation session.
 
 ## Next action
 
-Implement confirmed `learning_cards` in revision `20260902_0002` as the next bounded slice. Enforce
-its required owned deck relationship, confirmed content, optional multilingual and embedded-example
-fields, version/timestamps, and card-list index with PostgreSQL tests. Formal GitHub status for
-issues #4, #5, and #6 remains unverified.
+Implement `tags` and `learning_card_tags` in revision `20260902_0002` as the next bounded slice.
+Enforce normalized per-owner tag identity, same-owner card/tag composite foreign keys, duplicate
+attachment prevention, and tag-to-association cascade behavior. Formal GitHub status for issues #4,
+#5, and #6 remains unverified.

@@ -1,7 +1,7 @@
 # Issue #8 - Multilingual Domain Schema
 
-- Date: 2026-09-02
-- Status: First users/decks slice implemented and verified locally
+- Date: 2026-09-03
+- Status: Users, decks, and confirmed cards implemented and verified locally
 - Outcome: Represent English and Japanese learning with database-enforced integrity
 
 ## Start here
@@ -29,16 +29,23 @@ Detailed artifacts:
 
 ## Verified progress
 
-- Revision `20260902_0002` adds `users` and `learning_decks` after the empty Issue #7 baseline.
+- Revision `20260902_0002` adds `users`, `learning_decks`, and `learning_cards` after the empty
+  Issue #7 baseline.
 - PostgreSQL enforces user identity, required deck ownership, supported languages, title/version/time
   checks, paired per-owner creation replay data, and restricted owner deletion.
-- English and Japanese deck fixtures use the same table.
+- Confirmed cards require nonblank term/meaning and a valid owned `(deck_id, owner_id)` pair.
+- Nullable language-specific fields and one embedded example support representative English and
+  Japanese card fixtures through the same table.
+- Card constraints cover optional field lengths, example dependencies, related-word collection
+  bounds, part-of-speech values, replay data, versions, and timestamps.
+- The active-card listing index shape is verified against its named access pattern; no query-plan
+  effectiveness claim exists yet.
 - A temporary database and the development database both passed upgrade, baseline downgrade, and
-  re-upgrade. The full local backend suite passes 40 tests with one existing upstream warning.
-- Cards, tags, review tables, the ER diagram, full multilingual fixtures, and query-plan inspection
-  remain unimplemented.
+  re-upgrade. The full local backend suite passes 56 tests with one existing upstream warning.
+- Tags, review tables, the ER diagram, complete domain fixtures, and query-plan inspection remain
+  unimplemented.
 
 ## Next action
 
-Implement confirmed `learning_cards` and its composite owned deck relationship as the next bounded
-migration/test slice.
+Implement `tags` and `learning_card_tags`, including normalized per-owner uniqueness, same-owner
+card/tag associations, duplicate prevention, and association-only cascade deletion.

@@ -124,7 +124,7 @@ Use precise language such as “project,” “local load test,” or “deploye
   application-only validation was rejected because invalid direct or buggy writes would bypass it;
   cascading owner deletion was rejected because retained learning data requires stable ownership.
 - Implementation references:
-  `apps/api/migrations/versions/20260902_0002_add_users_and_learning_decks.py`,
+  `apps/api/migrations/versions/20260902_0002_add_multilingual_learning_domain.py`,
   `apps/api/tests/integration/test_users_and_learning_decks.py`, and
   `apps/api/tests/integration/test_migrations.py`.
 - Verification and failure cases: PostgreSQL tests accept English and Japanese decks through one
@@ -134,9 +134,43 @@ Use precise language such as “project,” “local load test,” or “deploye
   downgrade, and re-upgrade. The full local suite passed 40 tests; Ruff and whitespace checks passed.
 - Measured result: Local correctness verification only; no performance, deployment, or user-impact
   claim.
-- Limitations: Cards, tags, review state/events, complete fixtures, ER diagram, query-plan evidence,
-  API use, authentication, frontend integration, remote CI, and deployment remain pending. One
+- Limitations: Tags, review state/events, complete fixtures, ER diagram, query-plan evidence, API
+  use, authentication, frontend integration, remote CI, and deployment remain pending. One
   existing upstream FastAPI `TestClient` warning remains.
 - Five-minute explanation practiced: The pre-implementation ownership and constraint checkpoint was
   completed; the implemented DDL has not yet received a full explanation checkpoint.
+- Candidate resume bullet: Not yet; wait for the complete domain and API boundary.
+
+### Confirmed multilingual learning-card integrity
+
+- Date: 2026-09-03
+- Status: Verified locally
+- Problem: Store confirmed English and Japanese learning content without separate language tables or
+  application-only ownership validation.
+- Constraints and invariants: Every card requires meaningful term and meaning data, belongs to the
+  declared owner's deck, permits optional language-specific fields, keeps one embedded example
+  internally consistent, and preserves archive/history identities.
+- Decision: Use one UUID card table, derive language through the required deck, repeat owner ID under
+  a composite owned foreign key, embed one optional example, keep bounded related-word arrays, and
+  use named PostgreSQL checks plus a partial active-card listing index.
+- Alternatives considered: Separate language tables were rejected because shared ownership and
+  review behavior would be duplicated; application-only owner checks were rejected because valid
+  owner and deck IDs can still form an invalid pair; a child example table and JSON collection were
+  rejected because only one non-independent example is currently required.
+- Implementation references:
+  `apps/api/migrations/versions/20260902_0002_add_multilingual_learning_domain.py`,
+  `apps/api/tests/integration/test_learning_cards.py`, and
+  `apps/api/tests/integration/test_migrations.py`.
+- Verification and failure cases: Real PostgreSQL tests accept representative English and Japanese
+  cards and reject missing or cross-owner decks, absent/blank confirmed content, malformed optional
+  content, invalid example dependencies, oversized/null-containing related-word arrays, invalid
+  part-of-speech values, invalid replay/version/time state, and physical deck deletion with retained
+  cards. The combined backend suite passed 56 tests. The development database completed downgrade
+  and re-upgrade and was left at revision `20260902_0002`.
+- Measured result: The index definition matches the named active-deck listing pattern. No query-plan,
+  latency, scale, deployment, or user-impact claim exists.
+- Limitations: Per-entry related-word trimming and normalized uniqueness remain backend validation;
+  tags, reviews, API use, authentication, complete fixtures, ER diagram, `EXPLAIN`, remote CI, and
+  deployment remain pending. One existing upstream FastAPI `TestClient` warning remains.
+- Five-minute explanation practiced: Not yet for the implemented card constraints.
 - Candidate resume bullet: Not yet; wait for the complete domain and API boundary.
