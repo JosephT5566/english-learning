@@ -1,6 +1,6 @@
 # Decisions And Known Issues
 
-Last updated: 2026-09-01
+Last updated: 2026-09-03
 
 ## Durable Decisions
 
@@ -27,6 +27,25 @@ Last updated: 2026-09-01
   allowlisted validation and exception information.
 - Run frontend and backend checks as independent GitHub Actions jobs. Backend CI uses PostgreSQL 17
   explicitly and runs the opt-in integration suite; SQLite substitution is not permitted.
+- Use generated internal `BIGINT` identities for users and generated UUIDs for client-addressable
+  decks. A deck requires one owner, uses constrained standard language codes, and exposes unique
+  `(id, owner_id)` for later same-owner composite foreign keys. Retained decks restrict physical
+  owner deletion; user-facing deck deletion will archive instead.
+- Treat every `learning_cards` row as confirmed content with required term and meaning; incomplete
+  AI output will use separate future draft tables. Cards derive language through a required owned
+  deck, share nullable language-specific fields, embed one optional example, and expose unique
+  `(id, owner_id)` for later owned relationships.
+- Model tags as reusable per-owner resources with normalized identity. Card/tag associations repeat
+  owner ID and use two composite owned foreign keys; deleting a tag cascades only to association
+  rows, while cards retain archive-first deletion semantics.
+- Use `review_states.card_id` as the current-state primary key and a composite owned card foreign key.
+  Require scheduling values without database defaults so the backend explicitly supplies its
+  calculated initial state; constrain ranges and last/next ordering in PostgreSQL. Retain state by
+  restricting physical card deletion.
+- Store review retry identity once on an owned batch, unique per `(owner_id, idempotency_key)`, and
+  retain one event per `(batch_id, card_id)`. Events repeat constrained owner IDs and complete
+  before/after scheduling values for explainable history; cross-row count/state agreement and atomic
+  transitions remain explicit review-service transaction rules.
 
 ## Known Follow-Up Areas
 
@@ -43,3 +62,13 @@ Last updated: 2026-09-01
 - 2026-09-01: Added the initial FastAPI liveness, readiness, typed configuration, and SQLAlchemy
   engine lifecycle boundaries; the frontend remains on Google Apps Script while backend migration
   work continues.
+- 2026-09-02: Added the first production domain migration for database-constrained users and owned
+  multilingual learning decks; no API route or frontend flow uses it yet.
+- 2026-09-03: Extended the unshipped domain migration with confirmed English/Japanese cards,
+  composite deck ownership, embedded example content, and a named active-card listing index.
+- 2026-09-03: Added owned reusable tags and database-enforced same-owner card/tag associations with
+  duplicate prevention and association-only tag deletion cascade.
+- 2026-09-03: Added one owned current review state per card with explicit required scheduling data,
+  range/time checks, restricted card deletion, and the owner/due-time index.
+- 2026-09-03: Added owned idempotent review batches and retained review events with composite
+  ownership, complete transition checks, deletion restriction, and named history/replay indexes.

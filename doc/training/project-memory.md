@@ -1,6 +1,6 @@
 # English Learning Project Memory
 
-Last updated: 2026-09-01
+Last updated: 2026-09-03
 
 ## Purpose
 
@@ -45,7 +45,7 @@ This is project evidence, not professional production-service experience.
 
 ## Active milestone
 
-Week 1 — persistence foundations, Issue #7.
+Week 2 — multilingual domain schema, Issue #8.
 
 Issue #4 current-state trace is documented in
 [`current-state-flow-trace.md`](current-state-flow-trace.md). It includes the three request flows,
@@ -86,15 +86,41 @@ exercise. The final combined suite passed all 21 unit and integration tests; Ruf
 checks also passed. The PostgreSQL 17 Compose service is currently running with its named development
 volume.
 
-Issue #7 persistence-foundation implementation and learning checkpoint are complete locally on
-`issue-7-persistence-foundations`; publication remains pending. The API now has application-scoped
+Issue #7 persistence-foundation implementation and learning checkpoint are merged on `main` at
+`b1227ae`. The API now has application-scoped
 session factories, short-lived transaction ownership, an empty reversible
 Alembic baseline, isolated real-PostgreSQL migration and transaction patterns, a stable safe API
 error envelope with server request IDs, and independent frontend/backend CI jobs. The development
 database and a fresh temporary database both passed upgrade, downgrade, and re-upgrade. The full
 PostgreSQL-backed backend suite passes 32 tests; Ruff and lock checks pass. The frontend production
 build passes, while the already documented `npm run check` 6 errors/6 warnings and repository-wide
-Prettier drift remain outside this backend ticket. Remote GitHub Actions execution is not yet claimed.
+Prettier drift remain outside this backend ticket.
+
+Issue #8 completed its initial coached design checkpoint. The accepted implementation boundary is
+recorded in [`issues/issue-8/`](issues/issue-8/README.md): confirmed cards require nonblank term and
+meaning, cards derive language from required owned decks, optional multilingual fields share one
+card table, one example remains embedded, review state uses `card_id` as its primary key, redundant
+constrained owner IDs enforce same-owner relationships, review history records before/after state,
+and indexes map to named list, language, due-review, and history queries. Revision `20260902_0002`
+now adds users, owned multilingual decks, confirmed learning cards, tags, card/tag associations,
+current review state, owned review batches, and retained review events.
+Cards use a composite owned deck foreign key, require nonblank term/meaning, share optional
+English/Japanese fields, and embed one example. Tags have normalized per-owner identity; two
+composite foreign keys prevent cross-owner attachment, and the association primary key prevents
+duplicates. Tag deletion cascades only to associations. Review-state `card_id` is the primary key;
+its composite card relationship, required scheduling values, range/time checks, and restricted card
+deletion are enforced by PostgreSQL. The temporary and development databases passed upgrade,
+baseline downgrade, and re-upgrade. Review batches enforce per-owner idempotency-key uniqueness;
+events use composite owned batch/card relationships, complete before/after values, transition
+checks, and duplicate-per-batch prevention. A deterministic synthetic fixture now spans every table
+with English and Japanese decks/cards, shared tags, current states, and matching batch events. The
+full local backend suite now passes 103 tests with one existing upstream warning. All named index
+definitions match their access patterns, and a PostgreSQL 17 integration test builds a deterministic
+representative dataset, runs `ANALYZE`, and verifies that all seven deliberate indexes are selected
+by their executed query shapes. The implemented ER diagram covers every table, foreign key,
+composite ownership constraint, cardinality, and deletion rule while separating future transaction
+guarantees. Planner evidence is local and distribution-specific, not a performance benchmark;
+atomic review behavior remains a future service responsibility.
 
 GitHub tracking:
 
@@ -140,12 +166,12 @@ Required outputs:
 
 ## Current blockers
 
-None for the active Issue #7 implementation. Remaining issue #4 uncertainties are documented rather
+None for the active Issue #8 implementation. Remaining issue #4 uncertainties are documented rather
 than hidden: blank sort behavior, the exact Apps Script exception envelope, concurrency/locking
 outside the inspected function, and the absence of a repeated signed-in end-to-end update during the
 documentation session.
 
 ## Next action
 
-Review and publish the focused Issue #7 branch, verify the remote CI result, and then begin the
-production domain schema. Formal GitHub status for issues #4, #5, and #6 remains unverified.
+Audit the Issue #8 acceptance criteria and complete the learning-checkpoint defense. Formal GitHub
+status for issues #4, #5, and #6 remains unverified.

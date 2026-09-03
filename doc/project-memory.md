@@ -1,6 +1,6 @@
 # Project Memory
 
-Last updated: 2026-09-01
+Last updated: 2026-09-03
 
 ## Product
 
@@ -22,8 +22,14 @@ runtime path are unchanged.
 
 Persistence foundations are implemented locally: application-scoped SQLAlchemy session factories,
 explicit short-lived transaction ownership, an empty reversible Alembic baseline, PostgreSQL-only
-integration patterns, stable safe API errors, and independent frontend/backend CI definitions. No
-production domain schema exists yet, and the backend remains disconnected from the frontend.
+integration patterns, stable safe API errors, and independent frontend/backend CI definitions. The
+first production domain migration now adds database-constrained users, owned English/Japanese
+learning decks, confirmed language-aware cards with optional embedded learning content, and reusable
+owned tags with same-owner card associations. It also adds one database-constrained current review
+state per card, owned idempotent review batches, and retained before/after review events. The
+complete synthetic integration fixture exercises English and Japanese through that same relational
+model. The transactional review service and API remain pending, and the backend remains disconnected
+from the frontend.
 
 ## Current User Experience
 

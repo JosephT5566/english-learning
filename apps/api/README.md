@@ -52,7 +52,12 @@ uv run alembic upgrade head
 
 Use `uv run alembic current` to inspect the applied revision. Downgrades are a development
 verification and recovery tool, not an assumed production rollback strategy. The initial Issue #7
-baseline is intentionally empty; production domain tables begin in a later migration.
+baseline is intentionally empty. Issue #8 revision `20260902_0002` begins the production domain
+schema with owned users, multilingual learning decks, confirmed learning cards, and reusable
+per-owner tags. It also stores one current review state per card with database-enforced ownership,
+scheduling ranges, timestamp ordering, and due-review indexing. Owned review batches provide
+per-user retry-key uniqueness, while review events retain complete constrained before/after
+snapshots for history and response reconstruction.
 
 ## Local PostgreSQL
 
@@ -132,8 +137,55 @@ RUN_POSTGRES_INTEGRATION_TESTS=1 uv run pytest tests/integration -q
 The root Compose definition and integration suite are verified against `postgres:17-alpine` through
 OrbStack. Integration tests are opt-in and fail if PostgreSQL is unavailable; they never substitute
 SQLite. The migration test creates a uniquely named temporary PostgreSQL database, verifies
-`upgrade -> downgrade -> upgrade`, and removes that database afterward. Production startup commands
-are still pending.
+`upgrade -> baseline downgrade -> upgrade`, and removes that database afterward. Domain constraint
+tests also run in isolated temporary databases. Production startup commands are still pending.
+
+The cycle verifies both the head and reverted baseline at the assertions' level of detail. The
+current baseline intentionally has no domain tables, so the test checks that only
+`alembic_version` remains after downgrade. It does not prove complete schema equivalence for every
+historical revision: if an older revision later contains tables, its expected columns, constraints,
+indexes, defaults, and any important data transformations need revision-specific assertions.
+
+### How migrated database tests work
+
+The shared fixtures in `tests/integration/conftest.py` separate database creation from schema setup:
+
+1. `temporary_database_url` creates a uniquely named empty PostgreSQL database.
+2. `migrated_database_engine` points the test environment at that database and runs
+   `alembic upgrade head`.
+3. It yields a SQLAlchemy `Engine`, which is a connection factory and pool rather than a single
+   long-lived connection.
+4. Test helpers insert valid prerequisite rows, then tests attempt valid or invalid writes against
+   the migrated schema.
+5. Fixture teardown disposes the engine before the temporary database is dropped.
+
+Pytest injects the fixture when a test declares a parameter named `migrated_database_engine`.
+Function-scoped fixtures give every test case, including each parametrized case, an isolated
+database. `test_migrations.py` instead requests `temporary_database_url` directly so it can begin
+empty and control its own upgrade/downgrade sequence. These tests verify migration-created
+PostgreSQL schema behavior at the properties they explicitly assert; a successful Alembic command
+or matching `alembic_version` alone does not prove the restored schema is correct. ORM agreement,
+API behavior, and production-data import are separate test boundaries.
+
+### Complete multilingual fixture
+
+`tests/fixtures/multilingual_learning_domain.sql` contains deterministic synthetic English and
+Japanese records spanning every Issue #8 table. `test_multilingual_domain_fixture.py` loads it into
+an isolated migrated database in one transaction and verifies shared ownership, tags, current state,
+and before/after review history. It is intentionally not a production seed or Google Sheets import.
+
+### Representative query plans
+
+Run the Issue #8 planner evidence independently with:
+
+```bash
+RUN_POSTGRES_INTEGRATION_TESTS=1 uv run pytest tests/integration/test_query_plans.py -q
+```
+
+The test loads deterministic representative-volume data, runs `ANALYZE`, then executes the seven
+named access patterns with `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)`. It asserts that PostgreSQL 17
+selects each deliberate index without forcing planner settings. It does not assert timings, costs,
+buffer counts, or a complete plan shape and is not a production benchmark.
 
 ## API error contract
 
