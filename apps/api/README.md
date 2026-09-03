@@ -54,7 +54,8 @@ Use `uv run alembic current` to inspect the applied revision. Downgrades are a d
 verification and recovery tool, not an assumed production rollback strategy. The initial Issue #7
 baseline is intentionally empty. Issue #8 revision `20260902_0002` begins the production domain
 schema with owned users, multilingual learning decks, confirmed learning cards, and reusable
-per-owner tags.
+per-owner tags. It also stores one current review state per card with database-enforced ownership,
+scheduling ranges, timestamp ordering, and due-review indexing.
 
 ## Local PostgreSQL
 
@@ -137,6 +138,12 @@ SQLite. The migration test creates a uniquely named temporary PostgreSQL databas
 `upgrade -> baseline downgrade -> upgrade`, and removes that database afterward. Domain constraint
 tests also run in isolated temporary databases. Production startup commands are still pending.
 
+The cycle verifies both the head and reverted baseline at the assertions' level of detail. The
+current baseline intentionally has no domain tables, so the test checks that only
+`alembic_version` remains after downgrade. It does not prove complete schema equivalence for every
+historical revision: if an older revision later contains tables, its expected columns, constraints,
+indexes, defaults, and any important data transformations need revision-specific assertions.
+
 ### How migrated database tests work
 
 The shared fixtures in `tests/integration/conftest.py` separate database creation from schema setup:
@@ -154,8 +161,9 @@ Pytest injects the fixture when a test declares a parameter named `migrated_data
 Function-scoped fixtures give every test case, including each parametrized case, an isolated
 database. `test_migrations.py` instead requests `temporary_database_url` directly so it can begin
 empty and control its own upgrade/downgrade sequence. These tests verify migration-created
-PostgreSQL schema behavior; ORM agreement, API behavior, and production-data import are separate
-test boundaries.
+PostgreSQL schema behavior at the properties they explicitly assert; a successful Alembic command
+or matching `alembic_version` alone does not prove the restored schema is correct. ORM agreement,
+API behavior, and production-data import are separate test boundaries.
 
 ## API error contract
 

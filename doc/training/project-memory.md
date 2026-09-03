@@ -102,15 +102,18 @@ meaning, cards derive language from required owned decks, optional multilingual 
 card table, one example remains embedded, review state uses `card_id` as its primary key, redundant
 constrained owner IDs enforce same-owner relationships, review history records before/after state,
 and indexes map to named list, language, due-review, and history queries. Revision `20260902_0002`
-now adds users, owned multilingual decks, confirmed learning cards, tags, and card/tag associations.
+now adds users, owned multilingual decks, confirmed learning cards, tags, card/tag associations, and
+current review state.
 Cards use a composite owned deck foreign key, require nonblank term/meaning, share optional
 English/Japanese fields, and embed one example. Tags have normalized per-owner identity; two
 composite foreign keys prevent cross-owner attachment, and the association primary key prevents
-duplicates. Tag deletion cascades only to associations. The temporary and development databases
-passed upgrade, baseline downgrade, and re-upgrade; the full local backend suite passes 69 tests.
-The active-card and reverse tag-filter index definitions match their named patterns, but query-plan
-effectiveness is not claimed. Review tables, the ER diagram, complete fixtures, and query plans
-remain pending.
+duplicates. Tag deletion cascades only to associations. Review-state `card_id` is the primary key;
+its composite card relationship, required scheduling values, range/time checks, and restricted card
+deletion are enforced by PostgreSQL. The temporary and development databases passed upgrade,
+baseline downgrade, and re-upgrade; the full local backend suite passes 86 tests. The active-card,
+reverse tag-filter, and due-review index definitions match their named patterns, but query-plan
+effectiveness is not claimed. Review batches/events, the ER diagram, complete fixtures, and query
+plans remain pending.
 
 GitHub tracking:
 
@@ -163,6 +166,6 @@ documentation session.
 
 ## Next action
 
-Implement `review_states` in revision `20260902_0002` as the next bounded slice. Enforce one current
-row per card, same-owner composite ownership, valid scheduling values and timestamp relationships,
-and the owner/due-time index. Formal GitHub status for issues #4, #5, and #6 remains unverified.
+Implement owned idempotent `review_batches` and immutable `review_events` in revision
+`20260902_0002` as the next bounded slice. Enforce cross-owner rejection, event transition checks,
+and the owner/history index. Formal GitHub status for issues #4, #5, and #6 remains unverified.

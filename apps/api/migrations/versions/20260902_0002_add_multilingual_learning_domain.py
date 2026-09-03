@@ -18,7 +18,7 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    """Create users, decks, confirmed cards, and owned tags."""
+    """Create users, decks, cards, tags, and current review state."""
 
     op.create_table(
         "users",
@@ -458,9 +458,66 @@ def upgrade() -> None:
         unique=False,
     )
 
+    op.create_table(
+        "review_states",
+        sa.Column("card_id", postgresql.UUID(as_uuid=True), nullable=False),
+        sa.Column("owner_id", sa.BigInteger(), nullable=False),
+        sa.Column("review_stage", sa.SmallInteger(), nullable=False),
+        sa.Column("ease_factor", sa.Numeric(3, 2), nullable=False),
+        sa.Column("interval_days", sa.Integer(), nullable=False),
+        sa.Column("last_reviewed_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("next_review_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("version", sa.Integer(), nullable=False),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("CURRENT_TIMESTAMP"),
+            nullable=False,
+        ),
+        sa.CheckConstraint(
+            "review_stage BETWEEN 1 AND 5",
+            name="ck_review_states_review_stage_range",
+        ),
+        sa.CheckConstraint(
+            "ease_factor BETWEEN 1.30 AND 2.50",
+            name="ck_review_states_ease_factor_range",
+        ),
+        sa.CheckConstraint(
+            "interval_days >= 0",
+            name="ck_review_states_interval_days_nonnegative",
+        ),
+        sa.CheckConstraint(
+            "version >= 1",
+            name="ck_review_states_version_positive",
+        ),
+        sa.CheckConstraint(
+            "last_reviewed_at IS NULL OR next_review_at >= last_reviewed_at",
+            name="ck_review_states_next_review_not_before_last_review",
+        ),
+        sa.ForeignKeyConstraint(
+            ["card_id", "owner_id"],
+            ["learning_cards.id", "learning_cards.owner_id"],
+            name="fk_review_states_card_id_owner_id_learning_cards",
+            ondelete="RESTRICT",
+        ),
+        sa.PrimaryKeyConstraint("card_id", name="pk_review_states"),
+    )
+    op.create_index(
+        "ix_review_states_owner_next_review_card",
+        "review_states",
+        ["owner_id", "next_review_at", "card_id"],
+        unique=False,
+    )
+
 
 def downgrade() -> None:
-    """Remove tags, cards, decks, and users in dependency order."""
+    """Remove review state, tags, cards, decks, and users in dependency order."""
+
+    op.drop_index(
+        "ix_review_states_owner_next_review_card",
+        table_name="review_states",
+    )
+    op.drop_table("review_states")
 
     op.drop_index(
         "ix_learning_card_tags_tag_id_card_id",

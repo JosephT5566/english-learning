@@ -1,7 +1,7 @@
 # Issue #8 - Multilingual Domain Schema
 
 - Date: 2026-09-03
-- Status: Users, decks, confirmed cards, and tags implemented and verified locally
+- Status: Users, decks, confirmed cards, tags, and review state implemented and verified locally
 - Outcome: Represent English and Japanese learning with database-enforced integrity
 
 ## Start here
@@ -44,12 +44,20 @@ Detailed artifacts:
   foreign keys reject cross-owner associations, and `(card_id, tag_id)` rejects duplicates.
 - Tag deletion removes only association rows; it does not delete cards. The reverse tag-filtering
   index definition is verified. The 20-tag card limit remains a future locked transaction rule.
+- `review_states.card_id` is the primary key, and its composite owned-card foreign key rejects
+  cross-owner state. Required scheduling fields have no database defaults, so omitted backend-owned
+  values are rejected rather than silently initialized.
+- PostgreSQL checks enforce stage 1-5, ease 1.30-2.50, nonnegative interval, positive version, and
+  next-review ordering relative to a present last-review time. Physical card deletion is restricted
+  while state remains.
+- The `(owner_id, next_review_at, card_id)` due-index definition is verified against its named access
+  pattern; no query-plan effectiveness claim exists yet.
 - A temporary database and the development database both passed upgrade, baseline downgrade, and
-  re-upgrade. The full local backend suite passes 69 tests with one existing upstream warning.
-- Review tables, the ER diagram, complete domain fixtures, and query-plan inspection remain
+  re-upgrade. The full local backend suite passes 86 tests with one existing upstream warning.
+- Review batches/events, the ER diagram, complete domain fixtures, and query-plan inspection remain
   unimplemented.
 
 ## Next action
 
-Implement `review_states`, including one current row per card, composite ownership, scheduling
-checks, timestamp relationships, and the owner/due-time index.
+Implement owned idempotent `review_batches` and immutable `review_events`, including before/after
+state evidence and the owner/history index.

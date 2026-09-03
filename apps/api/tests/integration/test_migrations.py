@@ -50,6 +50,7 @@ def test_clean_postgres_database_supports_reversible_migration_cycle(
             "learning_card_tags",
             "learning_cards",
             "learning_decks",
+            "review_states",
             "tags",
             "users",
         }
@@ -67,6 +68,7 @@ def test_clean_postgres_database_supports_reversible_migration_cycle(
             "learning_card_tags",
             "learning_cards",
             "learning_decks",
+            "review_states",
             "tags",
             "users",
         }
@@ -84,6 +86,7 @@ def test_clean_postgres_database_supports_reversible_migration_cycle(
             "learning_card_tags",
             "learning_cards",
             "learning_decks",
+            "review_states",
             "tags",
             "users",
         }

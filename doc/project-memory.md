@@ -25,8 +25,9 @@ explicit short-lived transaction ownership, an empty reversible Alembic baseline
 integration patterns, stable safe API errors, and independent frontend/backend CI definitions. The
 first production domain migration now adds database-constrained users, owned English/Japanese
 learning decks, confirmed language-aware cards with optional embedded learning content, and reusable
-owned tags with same-owner card associations. Review tables do not exist yet, and the backend remains
-disconnected from the frontend.
+owned tags with same-owner card associations. It also adds one database-constrained current review
+state per card; immutable review batches and events remain pending. The backend remains disconnected
+from the frontend.
 
 ## Current User Experience
 

@@ -38,7 +38,8 @@ Last updated: 2026-09-03
   correlation, and future structured logs.
 - `apps/api/app/health.py`: database-independent liveness and database-aware readiness contracts.
 - `apps/api/migrations/`: Alembic environment and reversible migration history; the empty baseline
-  is followed by the first production domain revision for users, decks, and confirmed cards.
+  is followed by the first production domain revision for users, decks, confirmed cards, tags, and
+  current review state.
 - `apps/api/tests/unit/`: API configuration, lifecycle, probe, and HTTP contract tests.
 - `apps/api/tests/integration/`: opt-in real PostgreSQL readiness, migration lifecycle, transaction,
   and domain-constraint tests.
@@ -96,6 +97,14 @@ FastAPI service.
   physical card deletion is restricted while an association remains.
 - `(tag_id, card_id)` supports filtering cards by tag because the association primary key begins
   with `card_id`. Its definition is tested; query-plan effectiveness remains unmeasured.
+- `review_states` uses `card_id` as its primary key, directly enforcing at most one current row per
+  card. Its composite `(card_id, owner_id)` foreign key rejects cross-owner state.
+- Review scheduling fields are required without database defaults, so the future backend must write
+  the initial stage, ease, interval, next-review time, and version explicitly. Checks enforce stage
+  1-5, ease 1.30-2.50, nonnegative intervals, positive versions, and next review not before a present
+  last review.
+- `(owner_id, next_review_at, card_id)` supports stable owner-scoped due retrieval. Its definition is
+  tested; archived-card/deck joins and query-plan effectiveness remain future work.
 - The migration is persistence-only. No API route reads or writes these tables yet.
 
 ## API Error Contract

@@ -208,3 +208,36 @@ Use precise language such as “project,” “local load test,” or “deploye
   pending. One existing upstream FastAPI `TestClient` warning remains.
 - Five-minute explanation practiced: Not yet for the implemented tag constraints.
 - Candidate resume bullet: Not yet; wait for the complete domain and API boundary.
+
+### Owned current review-state integrity
+
+- Date: 2026-09-03
+- Status: Verified locally
+- Problem: Persist one authoritative current schedule per card without allowing missing, invalid, or
+  cross-owner state.
+- Constraints and invariants: Each card has at most one state; stage is 1-5, ease is 1.30-2.50,
+  interval is nonnegative, version is positive, next review is required, and a present last review
+  cannot be later than next review.
+- Decision: Use `card_id` as the primary key, repeat owner ID under a composite owned-card foreign
+  key, require scheduling values without database defaults, restrict physical card deletion, and
+  index `(owner_id, next_review_at, card_id)` for stable due retrieval.
+- Alternatives considered: An unrelated review-state ID was rejected because state identity is the
+  card; independent owner/card foreign keys were rejected because they allow invalid ownership
+  combinations; database scheduling defaults were rejected because the backend must explicitly own
+  initial schedule creation.
+- Implementation references:
+  `apps/api/migrations/versions/20260902_0002_add_multilingual_learning_domain.py`,
+  `apps/api/tests/integration/test_review_states.py`, and
+  `apps/api/tests/integration/test_migrations.py`.
+- Verification and failure cases: Real PostgreSQL tests accept a valid initial state and reject five
+  individually omitted scheduling fields, duplicate and cross-owner states, every range boundary
+  violation, invalid last/next ordering, and physical card deletion while state remains. The full
+  backend suite passed 86 tests, and the development migration completed upgrade, baseline
+  downgrade, and re-upgrade.
+- Measured result: The due index definition matches the named access pattern. No query-plan,
+  latency, scale, deployment, or user-impact claim exists.
+- Limitations: Archived card/deck filtering is a future query concern; review batches/events, API
+  transactions, authentication, `EXPLAIN`, remote CI, and deployment remain pending. One existing
+  upstream FastAPI `TestClient` warning remains.
+- Five-minute explanation practiced: Not yet for the implemented review-state constraints.
+- Candidate resume bullet: Not yet; wait for the complete domain and API boundary.

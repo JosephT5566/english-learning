@@ -1,7 +1,7 @@
 # Issue #8 Implementation Design
 
 - Date: 2026-09-03
-- Status: Accepted design; users, decks, cards, and tags verified locally
+- Status: Accepted design; users, decks, cards, tags, and review state verified locally
 - Dependency: Issue #7 persistence foundations are merged on `main` at `b1227ae`
 
 ## Boundary
@@ -130,6 +130,13 @@ This boundary proves that Alembic creates the expected PostgreSQL tables, defaul
 and checks. It does not by itself prove ORM metadata agreement, API behavior, authentication,
 production-data import, or deployment behavior.
 
+The current lifecycle assertions inspect both head and the reverted Issue #7 baseline. Because that
+baseline intentionally has no domain tables, confirming that only `alembic_version` remains is an
+appropriate structural check. This is not a universal proof that `upgrade()` and `downgrade()` are
+exact inverses: Alembic can record the expected revision even if unasserted columns, constraints,
+indexes, defaults, or transformed data are wrong. Once older revisions contain real schema or data,
+important adjacent revision boundaries require their own expected-schema and data assertions.
+
 ## First implementation slice
 
 Add `users` and `learning_decks` in the new domain migration, then prove that a deck requires an
@@ -170,3 +177,16 @@ foreign key restricts physical deletion while tagged, consistent with archive-fi
 The reverse `(tag_id, card_id)` index supports the named tag-filtering access pattern; only its
 definition is verified so far. The maximum 20 tags per card remains a future transaction rule that
 must lock the card before counting and inserting associations.
+
+## Fourth implementation slice
+
+Revision `20260902_0002` now includes `review_states`. Primary key `card_id` directly limits each
+card to one current row, while `(card_id, owner_id)` references the owned card and restricts physical
+card deletion. Stage, ease, interval, next-review time, and version are required without database
+defaults, preserving the backend as the explicit scheduling authority. `last_reviewed_at` remains
+nullable for a new card, and a present value cannot follow `next_review_at`.
+
+Focused PostgreSQL tests reject every omitted scheduling field, cross-owner state, duplicate state,
+out-of-range stage/ease/interval/version values, invalid review-time ordering, and physical card
+deletion while state remains. The `(owner_id, next_review_at, card_id)` index definition matches the
+named due-review pattern; archived card/deck filtering and query-plan evidence remain pending.

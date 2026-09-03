@@ -38,6 +38,10 @@ Last updated: 2026-09-03
 - Model tags as reusable per-owner resources with normalized identity. Card/tag associations repeat
   owner ID and use two composite owned foreign keys; deleting a tag cascades only to association
   rows, while cards retain archive-first deletion semantics.
+- Use `review_states.card_id` as the current-state primary key and a composite owned card foreign key.
+  Require scheduling values without database defaults so the backend explicitly supplies its
+  calculated initial state; constrain ranges and last/next ordering in PostgreSQL. Retain state by
+  restricting physical card deletion.
 
 ## Known Follow-Up Areas
 
@@ -60,3 +64,5 @@ Last updated: 2026-09-03
   composite deck ownership, embedded example content, and a named active-card listing index.
 - 2026-09-03: Added owned reusable tags and database-enforced same-owner card/tag associations with
   duplicate prevention and association-only tag deletion cascade.
+- 2026-09-03: Added one owned current review state per card with explicit required scheduling data,
+  range/time checks, restricted card deletion, and the owner/due-time index.
