@@ -53,7 +53,8 @@ uv run alembic upgrade head
 Use `uv run alembic current` to inspect the applied revision. Downgrades are a development
 verification and recovery tool, not an assumed production rollback strategy. The initial Issue #7
 baseline is intentionally empty. Issue #8 revision `20260902_0002` begins the production domain
-schema with owned users, multilingual learning decks, and confirmed learning cards.
+schema with owned users, multilingual learning decks, confirmed learning cards, and reusable
+per-owner tags.
 
 ## Local PostgreSQL
 

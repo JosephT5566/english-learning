@@ -1,7 +1,7 @@
 # Issue #8 - Multilingual Domain Schema
 
 - Date: 2026-09-03
-- Status: Users, decks, and confirmed cards implemented and verified locally
+- Status: Users, decks, confirmed cards, and tags implemented and verified locally
 - Outcome: Represent English and Japanese learning with database-enforced integrity
 
 ## Start here
@@ -29,8 +29,8 @@ Detailed artifacts:
 
 ## Verified progress
 
-- Revision `20260902_0002` adds `users`, `learning_decks`, and `learning_cards` after the empty
-  Issue #7 baseline.
+- Revision `20260902_0002` adds users, decks, confirmed cards, tags, and card/tag associations after
+  the empty Issue #7 baseline.
 - PostgreSQL enforces user identity, required deck ownership, supported languages, title/version/time
   checks, paired per-owner creation replay data, and restricted owner deletion.
 - Confirmed cards require nonblank term/meaning and a valid owned `(deck_id, owner_id)` pair.
@@ -40,12 +40,16 @@ Detailed artifacts:
   bounds, part-of-speech values, replay data, versions, and timestamps.
 - The active-card listing index shape is verified against its named access pattern; no query-plan
   effectiveness claim exists yet.
+- Tags are unique by normalized name per owner but can be reused by different owners. Composite
+  foreign keys reject cross-owner associations, and `(card_id, tag_id)` rejects duplicates.
+- Tag deletion removes only association rows; it does not delete cards. The reverse tag-filtering
+  index definition is verified. The 20-tag card limit remains a future locked transaction rule.
 - A temporary database and the development database both passed upgrade, baseline downgrade, and
-  re-upgrade. The full local backend suite passes 56 tests with one existing upstream warning.
-- Tags, review tables, the ER diagram, complete domain fixtures, and query-plan inspection remain
+  re-upgrade. The full local backend suite passes 69 tests with one existing upstream warning.
+- Review tables, the ER diagram, complete domain fixtures, and query-plan inspection remain
   unimplemented.
 
 ## Next action
 
-Implement `tags` and `learning_card_tags`, including normalized per-owner uniqueness, same-owner
-card/tag associations, duplicate prevention, and association-only cascade deletion.
+Implement `review_states`, including one current row per card, composite ownership, scheduling
+checks, timestamp relationships, and the owner/due-time index.

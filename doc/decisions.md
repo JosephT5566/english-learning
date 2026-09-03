@@ -35,6 +35,9 @@ Last updated: 2026-09-03
   AI output will use separate future draft tables. Cards derive language through a required owned
   deck, share nullable language-specific fields, embed one optional example, and expose unique
   `(id, owner_id)` for later owned relationships.
+- Model tags as reusable per-owner resources with normalized identity. Card/tag associations repeat
+  owner ID and use two composite owned foreign keys; deleting a tag cascades only to association
+  rows, while cards retain archive-first deletion semantics.
 
 ## Known Follow-Up Areas
 
@@ -55,3 +58,5 @@ Last updated: 2026-09-03
   multilingual learning decks; no API route or frontend flow uses it yet.
 - 2026-09-03: Extended the unshipped domain migration with confirmed English/Japanese cards,
   composite deck ownership, embedded example content, and a named active-card listing index.
+- 2026-09-03: Added owned reusable tags and database-enforced same-owner card/tag associations with
+  duplicate prevention and association-only tag deletion cascade.

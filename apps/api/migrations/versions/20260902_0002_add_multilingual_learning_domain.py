@@ -18,7 +18,7 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    """Create users, language-aware decks, and confirmed cards."""
+    """Create users, decks, confirmed cards, and owned tags."""
 
     op.create_table(
         "users",
@@ -358,9 +358,116 @@ def upgrade() -> None:
         postgresql_where=sa.text("creation_idempotency_key IS NOT NULL"),
     )
 
+    op.create_table(
+        "tags",
+        sa.Column(
+            "id",
+            postgresql.UUID(as_uuid=True),
+            server_default=sa.text("gen_random_uuid()"),
+            nullable=False,
+        ),
+        sa.Column("owner_id", sa.BigInteger(), nullable=False),
+        sa.Column("display_name", sa.Text(), nullable=False),
+        sa.Column("normalized_name", sa.Text(), nullable=False),
+        sa.Column(
+            "version",
+            sa.Integer(),
+            server_default=sa.text("1"),
+            nullable=False,
+        ),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("CURRENT_TIMESTAMP"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("CURRENT_TIMESTAMP"),
+            nullable=False,
+        ),
+        sa.CheckConstraint(
+            "char_length(btrim(display_name)) BETWEEN 1 AND 50",
+            name="ck_tags_display_name_length",
+        ),
+        sa.CheckConstraint(
+            "char_length(btrim(normalized_name)) BETWEEN 1 AND 100",
+            name="ck_tags_normalized_name_length",
+        ),
+        sa.CheckConstraint(
+            "version >= 1",
+            name="ck_tags_version_positive",
+        ),
+        sa.CheckConstraint(
+            "updated_at >= created_at",
+            name="ck_tags_timestamps_ordered",
+        ),
+        sa.ForeignKeyConstraint(
+            ["owner_id"],
+            ["users.id"],
+            name="fk_tags_owner_id_users",
+            ondelete="RESTRICT",
+        ),
+        sa.PrimaryKeyConstraint("id", name="pk_tags"),
+        sa.UniqueConstraint(
+            "owner_id",
+            "normalized_name",
+            name="uq_tags_owner_id_normalized_name",
+        ),
+        sa.UniqueConstraint(
+            "id",
+            "owner_id",
+            name="uq_tags_id_owner_id",
+        ),
+    )
+
+    op.create_table(
+        "learning_card_tags",
+        sa.Column("owner_id", sa.BigInteger(), nullable=False),
+        sa.Column("card_id", postgresql.UUID(as_uuid=True), nullable=False),
+        sa.Column("tag_id", postgresql.UUID(as_uuid=True), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("CURRENT_TIMESTAMP"),
+            nullable=False,
+        ),
+        sa.ForeignKeyConstraint(
+            ["card_id", "owner_id"],
+            ["learning_cards.id", "learning_cards.owner_id"],
+            name="fk_learning_card_tags_card_id_owner_id_learning_cards",
+            ondelete="RESTRICT",
+        ),
+        sa.ForeignKeyConstraint(
+            ["tag_id", "owner_id"],
+            ["tags.id", "tags.owner_id"],
+            name="fk_learning_card_tags_tag_id_owner_id_tags",
+            ondelete="CASCADE",
+        ),
+        sa.PrimaryKeyConstraint(
+            "card_id",
+            "tag_id",
+            name="pk_learning_card_tags",
+        ),
+    )
+    op.create_index(
+        "ix_learning_card_tags_tag_id_card_id",
+        "learning_card_tags",
+        ["tag_id", "card_id"],
+        unique=False,
+    )
+
 
 def downgrade() -> None:
-    """Remove cards, learning decks, and users in dependency order."""
+    """Remove tags, cards, decks, and users in dependency order."""
+
+    op.drop_index(
+        "ix_learning_card_tags_tag_id_card_id",
+        table_name="learning_card_tags",
+    )
+    op.drop_table("learning_card_tags")
+    op.drop_table("tags")
 
     op.drop_index(
         "uq_learning_cards_owner_creation_idempotency_key",

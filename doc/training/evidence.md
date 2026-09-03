@@ -174,3 +174,37 @@ Use precise language such as “project,” “local load test,” or “deploye
   deployment remain pending. One existing upstream FastAPI `TestClient` warning remains.
 - Five-minute explanation practiced: Not yet for the implemented card constraints.
 - Candidate resume bullet: Not yet; wait for the complete domain and API boundary.
+
+### Same-owner reusable card tags
+
+- Date: 2026-09-03
+- Status: Verified locally
+- Problem: Support reusable tag organization without allowing a valid tag and valid card from
+  different users to form an invalid association.
+- Constraints and invariants: Tag identity is normalized per owner; duplicate card/tag attachment is
+  forbidden; deleting a tag removes only its metadata associations; cards retain archive-first
+  deletion behavior.
+- Decision: Store tags as owned UUID resources, expose unique `(id, owner_id)` parent keys, repeat
+  owner ID on the association, enforce two composite foreign keys, use `(card_id, tag_id)` as the
+  association primary key, and add the reverse `(tag_id, card_id)` filtering index.
+- Alternatives considered: Global tag uniqueness was rejected because tags are private per-user
+  organization; independent card/tag foreign keys were rejected because they do not prove shared
+  ownership; embedded tag arrays were rejected because reuse, rename, filtering, and normalized
+  identity require a relational resource.
+- Implementation references:
+  `apps/api/migrations/versions/20260902_0002_add_multilingual_learning_domain.py`,
+  `apps/api/tests/integration/test_tags.py`, and
+  `apps/api/tests/integration/test_migrations.py`.
+- Verification and failure cases: Real PostgreSQL tests accept the same normalized name for
+  different owners and reject same-owner duplicates, missing/nonexistent owners, invalid content,
+  cross-owner associations through either parent, duplicate attachment, owner deletion with tags,
+  and physical card deletion with an association. Tag deletion removes the association while the
+  card remains. The combined backend suite passed 69 tests, and the development migration completed
+  downgrade and re-upgrade.
+- Measured result: The reverse index definition matches `(tag_id, card_id)`. No query-plan, latency,
+  scale, deployment, or user-impact claim exists.
+- Limitations: The 20-tag cap requires a future locked transaction; review tables, API behavior,
+  authentication, complete fixtures, ER diagram, `EXPLAIN`, remote CI, and deployment remain
+  pending. One existing upstream FastAPI `TestClient` warning remains.
+- Five-minute explanation practiced: Not yet for the implemented tag constraints.
+- Candidate resume bullet: Not yet; wait for the complete domain and API boundary.

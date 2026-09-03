@@ -24,8 +24,9 @@ Persistence foundations are implemented locally: application-scoped SQLAlchemy s
 explicit short-lived transaction ownership, an empty reversible Alembic baseline, PostgreSQL-only
 integration patterns, stable safe API errors, and independent frontend/backend CI definitions. The
 first production domain migration now adds database-constrained users, owned English/Japanese
-learning decks, and confirmed language-aware cards with optional embedded learning content. Tags and
-review tables do not exist yet, and the backend remains disconnected from the frontend.
+learning decks, confirmed language-aware cards with optional embedded learning content, and reusable
+owned tags with same-owner card associations. Review tables do not exist yet, and the backend remains
+disconnected from the frontend.
 
 ## Current User Experience
 

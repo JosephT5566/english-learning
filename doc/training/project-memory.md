@@ -102,13 +102,15 @@ meaning, cards derive language from required owned decks, optional multilingual 
 card table, one example remains embedded, review state uses `card_id` as its primary key, redundant
 constrained owner IDs enforce same-owner relationships, review history records before/after state,
 and indexes map to named list, language, due-review, and history queries. Revision `20260902_0002`
-now adds users, owned multilingual decks, and confirmed learning cards. Cards use a composite owned
-deck foreign key, require nonblank term/meaning, share optional English/Japanese fields, embed one
-example, and constrain content collections, replay data, versions, and timestamps. Representative
-English and Japanese cards pass through one table. The temporary and development databases passed
-upgrade, baseline downgrade, and re-upgrade; the full local backend suite passes 56 tests. The
-active-card index definition matches its named pattern, but query-plan effectiveness is not claimed.
-Tags, review tables, the ER diagram, complete fixtures, and query plans remain pending.
+now adds users, owned multilingual decks, confirmed learning cards, tags, and card/tag associations.
+Cards use a composite owned deck foreign key, require nonblank term/meaning, share optional
+English/Japanese fields, and embed one example. Tags have normalized per-owner identity; two
+composite foreign keys prevent cross-owner attachment, and the association primary key prevents
+duplicates. Tag deletion cascades only to associations. The temporary and development databases
+passed upgrade, baseline downgrade, and re-upgrade; the full local backend suite passes 69 tests.
+The active-card and reverse tag-filter index definitions match their named patterns, but query-plan
+effectiveness is not claimed. Review tables, the ER diagram, complete fixtures, and query plans
+remain pending.
 
 GitHub tracking:
 
@@ -161,7 +163,6 @@ documentation session.
 
 ## Next action
 
-Implement `tags` and `learning_card_tags` in revision `20260902_0002` as the next bounded slice.
-Enforce normalized per-owner tag identity, same-owner card/tag composite foreign keys, duplicate
-attachment prevention, and tag-to-association cascade behavior. Formal GitHub status for issues #4,
-#5, and #6 remains unverified.
+Implement `review_states` in revision `20260902_0002` as the next bounded slice. Enforce one current
+row per card, same-owner composite ownership, valid scheduling values and timestamp relationships,
+and the owner/due-time index. Formal GitHub status for issues #4, #5, and #6 remains unverified.

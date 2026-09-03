@@ -1,7 +1,7 @@
 # Issue #8 Implementation Design
 
 - Date: 2026-09-03
-- Status: Accepted design; users, decks, and cards verified locally
+- Status: Accepted design; users, decks, cards, and tags verified locally
 - Dependency: Issue #7 persistence foundations are merged on `main` at `b1227ae`
 
 ## Boundary
@@ -156,3 +156,17 @@ versions, timestamps, and archive ordering. Physical deck deletion is restricted
 Representative English and Japanese card tests pass through the same schema. The partial active-card
 index is verified to have `(deck_id, created_at DESC, id DESC)` and `archived_at IS NULL`; this is
 index-definition evidence only, not an `EXPLAIN` or performance result.
+
+## Third implementation slice
+
+Revision `20260902_0002` now includes owned `tags` and `learning_card_tags`. A tag's normalized name
+is unique only within its owner, so different owners can use the same tag identity. Unique
+`(tags.id, owner_id)` and the existing owned card key let the association validate both
+`(tag_id, owner_id)` and `(card_id, owner_id)` as composite foreign keys. Primary key
+`(card_id, tag_id)` rejects duplicate attachment.
+
+Deleting a tag cascades to association rows only and leaves the learning card intact. The card-side
+foreign key restricts physical deletion while tagged, consistent with archive-first card behavior.
+The reverse `(tag_id, card_id)` index supports the named tag-filtering access pattern; only its
+definition is verified so far. The maximum 20 tags per card remains a future transaction rule that
+must lock the card before counting and inserting associations.

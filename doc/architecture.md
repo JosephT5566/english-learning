@@ -89,6 +89,13 @@ FastAPI service.
   deck deletion is restricted while a card exists; user-facing deletion will archive cards/decks.
 - The partial `(deck_id, created_at DESC, id DESC)` active-card index matches the defined stable
   deck-list ordering. Its shape is tested; query-plan effectiveness remains unmeasured.
+- `tags` uses normalized per-owner identity through unique `(owner_id, normalized_name)` and exposes
+  unique `(id, owner_id)` for owned associations.
+- `learning_card_tags` uses `(card_id, tag_id)` as its primary key and validates the repeated owner
+  through composite foreign keys to both parent rows. Tag deletion cascades only to associations;
+  physical card deletion is restricted while an association remains.
+- `(tag_id, card_id)` supports filtering cards by tag because the association primary key begins
+  with `card_id`. Its definition is tested; query-plan effectiveness remains unmeasured.
 - The migration is persistence-only. No API route reads or writes these tables yet.
 
 ## API Error Contract
