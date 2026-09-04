@@ -16,6 +16,8 @@ This directory is the persistent learning context for turning English Learning i
   boundary, internal-user mapping, owner-scoped writes, and tested authorization matrix
 - [Issue #11 transactional review submissions](issues/issue-11/README.md): atomic event/state
   transitions, idempotent replay, deterministic locking, and timeout recovery
+- [Issue #12 Weeks 0-3 retrospective](issues/issue-12/README.md): exit-criteria audit, final local
+  verification, five-minute explanation, remaining risks, and evidence-based Weeks 4-8 tickets
 - [`fixtures/`](fixtures/): sanitized synthetic datasets for future contract and migration tests
 - [`logs/`](logs/): chronological weekly learning records
 - [`decisions/`](decisions/): architecture decision records for consequential choices

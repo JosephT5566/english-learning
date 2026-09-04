@@ -45,7 +45,18 @@ This is project evidence, not professional production-service experience.
 
 ## Active milestone
 
-Week 3 — transactional and idempotent review submissions, Issue #11.
+Week 4 — Google Sheets import and reconciliation. Start with the dry-run validation boundary; do
+not switch frontend reads or writes until import identity, mapping, diagnostics, and recovery are
+defined and verified.
+
+The Weeks 0-3 milestone is complete and audited locally in
+[`issues/issue-12/README.md`](issues/issue-12/README.md). GitHub shows issues #4 through #11 closed,
+and their merged implementations are present on `main`. Final closeout verification passed all 171
+backend tests against healthy PostgreSQL 17, Ruff lint/format, the uv lock check, and the frontend
+production build. Existing frontend build warnings and the upstream `TestClient` warning remain
+visible. Remote CI, live Google verification, import, frontend cutover, deployment, and production
+behavior are not claimed. Roadmap issue #12 is closed with every exit criterion checked. Ten bounded
+Weeks 4-8 tickets are published as #22 through #31 without `ai-ready`; #22 is next.
 
 Issue #4 current-state trace is documented in
 [`current-state-flow-trace.md`](current-state-flow-trace.md). It includes the three request flows,
@@ -195,13 +206,12 @@ Required outputs:
 
 ## Current blockers
 
-None for the Issue #11 local implementation. Remaining issue #4 uncertainties are documented rather
-than hidden: blank sort behavior, the exact Apps Script exception envelope, concurrency/locking
-outside the inspected function, and the absence of a repeated signed-in end-to-end update during the
-documentation session.
+No implementation blocker. Remaining evidence limits are documented rather than hidden: live Google
+verification, remote CI status, production deployment, and a repeated signed-in legacy update were
+not verified during the first four milestones.
 
 ## Next action
 
-Complete the Issue #11 transaction/idempotency learning checkpoint, then review the Week 3 milestone
-and choose the next migration ticket. Formal GitHub status for issues #4, #5, and #6 remains
-unverified.
+Begin issue #22 in design mode: settle source identity, all 21 field mappings, Unicode normalization,
+scheduling repair categories, diagnostic safety, and the dry-run no-mutation invariant before adding
+the import migration or service code.

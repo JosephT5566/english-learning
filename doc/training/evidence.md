@@ -396,3 +396,37 @@ Use precise language such as “project,” “local load test,” or “deploye
   remains.
 - Five-minute explanation practiced: Not yet; complete the Issue #11 learning checkpoint.
 - Candidate resume bullet: Not yet; revisit after frontend integration and deployed verification.
+
+### Weeks 0-3 multilingual backend core
+
+- Date: 2026-09-04
+- Status: Verified locally
+- Problem: Replace unsafe browser/Sheet trust assumptions with a coherent, testable backend core
+  while preserving the current frontend runtime path during migration.
+- Constraints and invariants: English and Japanese share one domain; identity and ownership are
+  server-derived; growing reads remain deterministic; review history and current state change
+  atomically; retries and concurrent conflicts cannot create duplicate logical transitions.
+- Decision: Use one FastAPI/PostgreSQL modular monolith with database-enforced composite ownership,
+  keyset pagination, server-verified Google identity, owner-scoped authorization, and a locked,
+  versioned, idempotent review transaction.
+- Alternatives considered: Separate language applications, email-based ownership, client-computed
+  schedules, offset pagination, SQLite integration substitution, and idempotency keys without
+  request hashes were rejected for concrete integrity or determinism reasons.
+- Implementation references: Issues #4-#11, merged revisions `d78d708` through `107ed6c`, and
+  `doc/training/issues/issue-12/README.md`.
+- Verification and failure cases: All 171 unit and PostgreSQL integration tests passed against a
+  healthy local PostgreSQL 17 service. Coverage includes constraints, migrations, deterministic
+  reads, malformed cursors, token failures, horizontal access attacks, transaction rollback, exact
+  retry, conflicting key reuse, and simultaneous review submissions. Ruff lint/format, uv lock, and
+  the frontend production build passed.
+- Measured result: The closeout backend suite took 61.73 seconds locally. Prior deterministic planner
+  evidence verified intended index selection on 40,000-card fixtures. Neither result is a production
+  latency, throughput, scale, availability, or user-impact claim.
+- Limitations: PostgreSQL is not yet the application's source of truth. Sheet import/reconciliation,
+  frontend cutover, live Google verification, remote CI confirmation, deployment, observability,
+  backup/restore, and production behavior remain unverified. Existing frontend warnings and one
+  upstream `TestClient` warning remain.
+- Five-minute explanation practiced: A complete script is checked in and delivered with the Issue
+  #12 retrospective; independent spoken practice remains for Joseph.
+- Candidate resume bullet: Not yet. Revisit only after import, frontend cutover, and deployed
+  verification create an honest end-to-end outcome.
