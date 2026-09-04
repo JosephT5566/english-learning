@@ -1,6 +1,6 @@
 # English Learning Project Memory
 
-Last updated: 2026-09-03
+Last updated: 2026-09-04
 
 ## Purpose
 
@@ -45,7 +45,7 @@ This is project evidence, not professional production-service experience.
 
 ## Active milestone
 
-Week 2 — multilingual read APIs, Issue #9.
+Week 3 — backend authentication and authorization, Issue #10.
 
 Issue #4 current-state trace is documented in
 [`current-state-flow-trace.md`](current-state-flow-trace.md). It includes the three request flows,
@@ -131,6 +131,17 @@ dependency keeps clients from selecting identity until Issue #10 replaces it wit
 Revision `20260903_0003` adds owner/update indexes, and the PostgreSQL planner test now covers nine
 patterns. The full local backend suite passes 122 tests; Ruff format/lint and lock checks pass.
 
+Issue #10 is implemented and verified locally. All `/v1` product routes now require a Google ID
+token verified server-side for signature, issuer, configured audience, expiry, and verified-email
+status. Verified Google `sub` values map to stable generated internal users; normalized email is
+refreshable profile data rather than an ownership key. The reusable authenticated-user dependency
+replaces temporary owner `1`, and every deck, card, and due-review read binds the internal owner ID.
+Deck/card create, optimistic edit, and archive operations derive ownership from authenticated
+context. Cross-owner IDs are masked as not found, including foreign deck IDs on card creation. The
+authorization matrix matches unit and PostgreSQL horizontal-escalation tests. The full backend suite
+passes 152 tests; Ruff format/lint and lock checks pass. Live Google verification, remote CI,
+frontend cutover, and review-write transactions remain unverified or out of scope.
+
 GitHub tracking:
 
 - [Weeks 0–3 roadmap issue](https://github.com/JosephT5566/english-learning/issues/12)
@@ -175,13 +186,12 @@ Required outputs:
 
 ## Current blockers
 
-None for the Issue #9 local implementation. Remaining issue #4 uncertainties are documented rather
+None for the Issue #10 local implementation. Remaining issue #4 uncertainties are documented rather
 than hidden: blank sort behavior, the exact Apps Script exception envelope, concurrency/locking
 outside the inspected function, and the absence of a repeated signed-in end-to-end update during the
 documentation session.
 
 ## Next action
 
-Complete the Issue #9 design-defense checkpoint, then begin Issue #10 authentication and replace the
-temporary owner dependency before any user-facing backend integration. Formal GitHub status for
-issues #4, #5, and #6 remains unverified.
+Complete the Issue #10 learning checkpoint, then begin Issue #11's atomic, idempotent review-write
+transaction. Formal GitHub status for issues #4, #5, and #6 remains unverified.

@@ -3,7 +3,13 @@
 from enum import StrEnum
 from typing import Annotated
 
-from pydantic import Field, SecretStr, ValidationError, field_validator
+from pydantic import (
+    Field,
+    SecretStr,
+    StringConstraints,
+    ValidationError,
+    field_validator,
+)
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic_settings.exceptions import SettingsError
 from sqlalchemy.engine import make_url
@@ -13,6 +19,7 @@ DEFAULT_DATABASE_URL = (
     "postgresql+psycopg://"
     "english_learning:english_learning@localhost:5432/english_learning"
 )
+DEFAULT_GOOGLE_OAUTH_CLIENT_ID = "local-development-client-id"
 
 
 class AppEnvironment(StrEnum):
@@ -52,6 +59,9 @@ class Settings(BaseSettings):
     log_level: LogLevel = LogLevel.INFO
     database_url: SecretStr = SecretStr(DEFAULT_DATABASE_URL)
     database_connect_timeout_seconds: Annotated[int, Field(gt=0, le=10)] = 2
+    google_oauth_client_id: Annotated[
+        str, StringConstraints(strip_whitespace=True, min_length=1)
+    ] = DEFAULT_GOOGLE_OAUTH_CLIENT_ID
 
     @field_validator("database_url")
     @classmethod
@@ -112,6 +122,14 @@ def load_settings() -> Settings:
     ):
         raise ConfigurationError(
             "Invalid configuration for DATABASE_URL; production requires an explicit value."
+        )
+
+    if (
+        settings.app_env is AppEnvironment.PRODUCTION
+        and settings.google_oauth_client_id == DEFAULT_GOOGLE_OAUTH_CLIENT_ID
+    ):
+        raise ConfigurationError(
+            "Invalid configuration for GOOGLE_OAUTH_CLIENT_ID; production requires an explicit value."
         )
 
     return settings

@@ -3,6 +3,7 @@
 from fastapi.testclient import TestClient
 from sqlalchemy.exc import OperationalError
 
+from app.auth import VerifiedGoogleIdentity
 from app.main import create_app
 
 
@@ -19,11 +20,22 @@ class FailingSession:
     def close(self) -> None:
         pass
 
+    def rollback(self) -> None:
+        pass
+
+
+class ValidTokenVerifier:
+    def verify(self, _token: str) -> VerifiedGoogleIdentity:
+        return VerifiedGoogleIdentity("test-subject", "user@example.test")
+
 
 def test_database_failure_is_retryable_and_does_not_expose_details() -> None:
     with TestClient(create_app(), raise_server_exceptions=False) as client:
         client.app.state.database_session_factory = FailingSession
-        response = client.get("/v1/decks")
+        client.app.state.token_verifier = ValidTokenVerifier()
+        response = client.get(
+            "/v1/decks", headers={"Authorization": "Bearer safe-test-token"}
+        )
 
     assert response.status_code == 503
     body = response.json()

@@ -3,12 +3,14 @@
 from collections.abc import Iterator
 from contextlib import contextmanager
 
+from fastapi import Request
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.config import Settings
+from app.errors import ApiError
 
 
 def create_database_engine(settings: Settings) -> Engine:
@@ -47,6 +49,35 @@ def create_database_session_factory(engine: Engine) -> sessionmaker[Session]:
     """
 
     return sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
+
+
+def database_session(request: Request) -> Iterator[Session]:
+    """Own one request transaction and sanitize database failures."""
+
+    session = request.app.state.database_session_factory()
+    try:
+        yield session
+        session.commit()
+    except IntegrityError:
+        session.rollback()
+        raise ApiError(
+            status_code=422,
+            code="validation_failed",
+            message="The request did not pass validation.",
+        ) from None
+    except SQLAlchemyError:
+        session.rollback()
+        raise ApiError(
+            status_code=503,
+            code="database_unavailable",
+            message="The database is temporarily unavailable.",
+            retryable=True,
+        ) from None
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        session.close()
 
 
 @contextmanager
