@@ -360,3 +360,39 @@ Use precise language such as “project,” “local load test,” or “deploye
   warning remains.
 - Five-minute explanation practiced: Not yet; complete the Issue #10 learning checkpoint.
 - Candidate resume bullet: Not yet; revisit after frontend integration and remote verification.
+
+### Transactional and idempotent review submissions
+
+- Date: 2026-09-04
+- Status: Verified locally
+- Problem: Make a review command safe when clients retry after an ambiguous response or submit
+  against state that another request changes concurrently.
+- Constraints and invariants: One logical review creates one immutable event and one current-state
+  transition; a bounded multi-card request is all-or-nothing; ownership and active status are
+  rechecked in the write transaction; clients cannot supply resulting schedules; the same retry key
+  cannot identify different content.
+- Decision: Identify the owned command with a UUID key plus canonical SHA-256 request hash, acquire
+  pessimistic target-row locks in deterministic card-ID order, validate optimistic state versions,
+  calculate `srs-v1` transitions from one server clock, and commit the batch, events, and states in
+  one PostgreSQL transaction. Reconstruct exact retries from stored event snapshots.
+- Alternatives considered: Client-calculated schedules were rejected because they cross the trust
+  boundary; idempotency key without a content hash was rejected because conflicting reuse would be
+  ambiguous; optimistic checks without locks were rejected because multi-card races could partially
+  validate; serializable isolation was not selected because targeted row locks express the current
+  contention boundary more directly.
+- Implementation references: `apps/api/app/reviews.py`, `apps/api/app/writes.py`,
+  `apps/api/tests/unit/test_review_submissions.py`,
+  `apps/api/tests/integration/test_review_submission_transactions.py`, and
+  `doc/training/issues/issue-11/README.md`.
+- Verification and failure cases: Real PostgreSQL HTTP tests cover successful one- and two-card
+  commits, exact response replay without duplicate effects, conflicting key reuse, validation,
+  cross-owner and inactive targets, stale whole-batch rollback, simultaneous same-key replay,
+  simultaneous different-key stale conflict, and injected failure between event and state writes.
+  The complete backend suite passed 171 tests; Ruff lint and formatting passed.
+- Measured result: Local correctness and concurrency evidence only; no latency, throughput, scale,
+  deployed reliability, or user-impact claim.
+- Limitations: Frontend cutover, Google Sheets import, transient-deadlock retry policy, live Google
+  verification, remote CI, and deployment remain unverified; one upstream `TestClient` warning
+  remains.
+- Five-minute explanation practiced: Not yet; complete the Issue #11 learning checkpoint.
+- Candidate resume bullet: Not yet; revisit after frontend integration and deployed verification.

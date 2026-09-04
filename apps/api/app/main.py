@@ -17,6 +17,7 @@ from app.errors import register_error_handlers
 from app.health import router as health_router
 from app.reads import router as reads_router
 from app.request_context import add_request_id
+from app.reviews import router as reviews_router
 from app.writes import router as writes_router
 
 
@@ -60,4 +61,5 @@ def create_app() -> FastAPI:
     app.include_router(auth_router)
     app.include_router(reads_router)
     app.include_router(writes_router)
+    app.include_router(reviews_router)
     return app

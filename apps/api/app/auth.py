@@ -117,27 +117,69 @@ def current_user(
     """Verify identity, upsert by Google subject, and return internal ownership."""
 
     identity = request.app.state.token_verifier.verify(token)
-    row = (
+    existing = (
         session.execute(
             text(
                 """
-                INSERT INTO users (google_subject, normalized_email)
-                VALUES (:subject, :email)
-                ON CONFLICT (google_subject) DO UPDATE
-                SET normalized_email = EXCLUDED.normalized_email,
-                    updated_at = CASE
-                        WHEN users.normalized_email IS DISTINCT FROM EXCLUDED.normalized_email
-                        THEN CURRENT_TIMESTAMP
-                        ELSE users.updated_at
-                    END
-                RETURNING id, google_subject, normalized_email
+                SELECT id, google_subject, normalized_email
+                FROM users
+                WHERE google_subject = :subject
                 """
             ),
-            {"subject": identity.subject, "email": identity.email},
+            {"subject": identity.subject},
         )
         .mappings()
-        .one()
+        .one_or_none()
     )
+    if existing is not None and existing.normalized_email == identity.email:
+        row = existing
+    elif existing is not None:
+        row = (
+            session.execute(
+                text(
+                    """
+                    UPDATE users
+                    SET normalized_email = :email, updated_at = CURRENT_TIMESTAMP
+                    WHERE id = :id
+                    RETURNING id, google_subject, normalized_email
+                    """
+                ),
+                {"id": existing.id, "email": identity.email},
+            )
+            .mappings()
+            .one()
+        )
+    else:
+        row = (
+            session.execute(
+                text(
+                    """
+                    INSERT INTO users (google_subject, normalized_email)
+                    VALUES (:subject, :email)
+                    ON CONFLICT (google_subject) DO NOTHING
+                    RETURNING id, google_subject, normalized_email
+                    """
+                ),
+                {"subject": identity.subject, "email": identity.email},
+            )
+            .mappings()
+            .one_or_none()
+        )
+        if row is None:
+            row = (
+                session.execute(
+                    text(
+                        """
+                        SELECT id, google_subject, normalized_email
+                        FROM users
+                        WHERE google_subject = :subject
+                        """
+                    ),
+                    {"subject": identity.subject},
+                )
+                .mappings()
+                .one()
+            )
     return AuthenticatedUser(
         id=row.id,
         google_subject=row.google_subject,
