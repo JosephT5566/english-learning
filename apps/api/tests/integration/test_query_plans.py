@@ -1,4 +1,4 @@
-"""Representative PostgreSQL query-plan checks for Issue #8 access patterns."""
+"""Representative PostgreSQL query-plan checks for Issues #8 and #9."""
 
 import os
 from collections.abc import Iterator
@@ -353,6 +353,28 @@ def test_named_access_patterns_use_their_deliberate_indexes(
     identifiers = seed_representative_dataset(migrated_database_engine)
 
     access_patterns = {
+        "deck management list": (
+            """
+            SELECT id, title, updated_at
+            FROM learning_decks
+            WHERE owner_id = :owner_id
+            ORDER BY updated_at DESC, id DESC
+            LIMIT 20
+            """,
+            {"owner_id": identifiers["owner_id"]},
+            "ix_learning_decks_owner_updated_id",
+        ),
+        "card management list": (
+            """
+            SELECT id, term, meaning, updated_at
+            FROM learning_cards
+            WHERE owner_id = :owner_id
+            ORDER BY updated_at DESC, id DESC
+            LIMIT 20
+            """,
+            {"owner_id": identifiers["owner_id"]},
+            "ix_learning_cards_owner_updated_id",
+        ),
         "active cards in a deck": (
             """
             SELECT id, term, meaning, created_at

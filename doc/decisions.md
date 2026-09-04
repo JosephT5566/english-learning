@@ -46,6 +46,13 @@ Last updated: 2026-09-03
   retain one event per `(batch_id, card_id)`. Events repeat constrained owner IDs and complete
   before/after scheduling values for explainable history; cross-row count/state agreement and atomic
   transitions remain explicit review-service transaction rules.
+- Use keyset cursors for deck, card, and due-review collections. Bind each opaque versioned cursor
+  to its endpoint, normalized filters, effective limit, and last unique sort tuple; due cursors also
+  retain the first page's server `as_of` time. Reject malformed or shape-incompatible cursors rather
+  than interpreting them loosely.
+- Until authentication is implemented, resolve owner `1` only through a named server dependency and
+  keep all read SQL owner-scoped. Never accept owner identity as a query or path parameter; replace
+  this dependency with verified identity before user-facing deployment.
 
 ## Known Follow-Up Areas
 
@@ -72,3 +79,6 @@ Last updated: 2026-09-03
   range/time checks, restricted card deletion, and the owner/due-time index.
 - 2026-09-03: Added owned idempotent review batches and retained review events with composite
   ownership, complete transition checks, deletion restriction, and named history/replay indexes.
+- 2026-09-03: Added deterministic multilingual deck/card/due-review reads, query-bound keyset
+  cursors, safe database failure translation, and owner/update indexes; frontend integration and
+  authenticated identity remain pending.

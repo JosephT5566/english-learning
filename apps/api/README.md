@@ -58,6 +58,8 @@ per-owner tags. It also stores one current review state per card with database-e
 scheduling ranges, timestamp ordering, and due-review indexing. Owned review batches provide
 per-user retry-key uniqueness, while review events retain complete constrained before/after
 snapshots for history and response reconstruction.
+Issue #9 revision `20260903_0003` adds the owner/update ordering indexes used by deck and card
+management reads.
 
 ## Local PostgreSQL
 
@@ -82,6 +84,23 @@ uv run uvicorn app.main:create_app --factory --reload
 
 The development server listens on `http://127.0.0.1:8000` by default. `--reload` is for local
 development only.
+
+## Read APIs
+
+The current read-only endpoints are:
+
+```text
+GET /v1/decks
+GET /v1/decks/{deck_id}
+GET /v1/cards
+GET /v1/cards/{card_id}
+GET /v1/reviews/due
+```
+
+Authentication is intentionally pending. These routes currently use the explicit temporary owner
+boundary in `app/reads.py` and must not be treated as production user isolation. The complete filter,
+pagination, response, and error examples are in
+[`doc/training/issues/issue-9/api-examples.md`](../../doc/training/issues/issue-9/api-examples.md).
 
 ## Verify liveness
 
@@ -176,13 +195,13 @@ and before/after review history. It is intentionally not a production seed or Go
 
 ### Representative query plans
 
-Run the Issue #8 planner evidence independently with:
+Run the Issue #8 and #9 planner evidence independently with:
 
 ```bash
 RUN_POSTGRES_INTEGRATION_TESTS=1 uv run pytest tests/integration/test_query_plans.py -q
 ```
 
-The test loads deterministic representative-volume data, runs `ANALYZE`, then executes the seven
+The test loads deterministic representative-volume data, runs `ANALYZE`, then executes nine
 named access patterns with `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)`. It asserts that PostgreSQL 17
 selects each deliberate index without forcing planner settings. It does not assert timings, costs,
 buffer counts, or a complete plan shape and is not a production benchmark.
