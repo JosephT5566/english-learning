@@ -1,6 +1,6 @@
 # Architecture Memory
 
-Last updated: 2026-09-03
+Last updated: 2026-09-04
 
 ## Stack
 
@@ -37,8 +37,11 @@ Last updated: 2026-09-03
 - `apps/api/app/request_context.py`: per-request UUID generation for response headers, error
   correlation, and future structured logs.
 - `apps/api/app/health.py`: database-independent liveness and database-aware readiness contracts.
-- `apps/api/app/reads.py`: temporary-owner-scoped deck/card/due-review routes, response models,
+- `apps/api/app/auth.py`: Google ID-token verification, verified-claim allowlisting, stable subject
+  to internal-user mapping, and the reusable authenticated-user dependency.
+- `apps/api/app/reads.py`: authenticated owner-scoped deck/card/due-review routes, response models,
   filtering, stable tuple ordering, and safe database-failure translation.
+- `apps/api/app/writes.py`: server-owned deck/card create, optimistic edit, and archive operations.
 - `apps/api/app/pagination.py`: versioned opaque cursor encoding, strict parsing, and normalized
   query-shape binding.
 - `apps/api/migrations/`: Alembic environment and reversible migration history; the empty baseline
@@ -78,8 +81,9 @@ FastAPI service.
 
 ## Backend Read Flow
 
-1. The `/v1` router resolves owner `1` through an explicit temporary dependency; authentication and
-   verified identity replacement remain Issue #10 work.
+1. Every product route under `/v1` verifies a Google bearer token for signature, issuer, configured
+   audience, expiry, and verified-email status. Google `sub` resolves a generated internal user ID;
+   email remains mutable profile data.
 2. Request validation rejects unsupported languages, invalid resource IDs, unsupported filters,
    and malformed or query-incompatible cursors before running the list query.
 3. Every SQL statement scopes by the resolved owner. Explicit deck, card, and tag lookups return the
@@ -90,6 +94,19 @@ FastAPI service.
    exists. Empty collections return `items: []` and `next_cursor: null`.
 6. SQLAlchemy failures become retryable `503 database_unavailable` errors through the common safe
    envelope; internal database details are never serialized.
+
+## Backend Write And Authorization Flow
+
+1. The reusable current-user dependency verifies the bearer token and upserts `users` by unique
+   `google_subject` in the request transaction.
+2. Reads and mutations combine client-addressable resource IDs with the server-derived internal
+   owner ID. Missing and cross-owner details both return the same non-disclosing `404`.
+3. Deck and card creates bind ownership from authenticated context. Extra request fields are
+   forbidden, so a body-supplied owner ID or email is rejected before SQL.
+4. Edits use an owner predicate plus the last-seen version and increment the version atomically;
+   stale owned writes return `409 version_conflict`.
+5. Deletes archive rather than physically removing decks or cards. Review writes remain a separate
+   future transaction boundary.
 
 English and Japanese travel through the same routes, response models, ownership checks, and tables.
 The frontend is not connected to these reads yet and its Google Apps Script behavior is unchanged.

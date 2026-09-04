@@ -1,6 +1,6 @@
 # Decisions And Known Issues
 
-Last updated: 2026-09-03
+Last updated: 2026-09-04
 
 ## Durable Decisions
 
@@ -50,9 +50,14 @@ Last updated: 2026-09-03
   to its endpoint, normalized filters, effective limit, and last unique sort tuple; due cursors also
   retain the first page's server `as_of` time. Reject malformed or shape-incompatible cursors rather
   than interpreting them loosely.
-- Until authentication is implemented, resolve owner `1` only through a named server dependency and
-  keep all read SQL owner-scoped. Never accept owner identity as a query or path parameter; replace
-  this dependency with verified identity before user-facing deployment.
+- Verify Google ID tokens with Google's supported Python library and one configured OAuth audience.
+  Require verified email but key durable identity by Google `sub`; upsert that subject to an internal
+  user and treat normalized email only as refreshable profile data.
+- Require authentication for all `/v1` product operations. Authorize with resource ID plus the
+  server-derived internal owner ID, mask cross-owner resources as not found, and derive create
+  ownership exclusively from authenticated context.
+- Use optimistic versions for deck/card edits and archive-first deletion. A stale owned edit returns
+  conflict; an archive replay by the owner succeeds without another state transition.
 
 ## Known Follow-Up Areas
 
@@ -82,3 +87,6 @@ Last updated: 2026-09-03
 - 2026-09-03: Added deterministic multilingual deck/card/due-review reads, query-bound keyset
   cursors, safe database failure translation, and owner/update indexes; frontend integration and
   authenticated identity remain pending.
+- 2026-09-04: Replaced the temporary owner with server-verified Google identity, internal user
+  mapping, authenticated owner-scoped reads, and owner-derived deck/card create, edit, and archive
+  operations. Added a tested authorization matrix; review writes and frontend cutover remain pending.

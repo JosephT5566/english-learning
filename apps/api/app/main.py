@@ -5,6 +5,8 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from app.auth import GoogleTokenVerifier
+from app.auth import router as auth_router
 from app.config import load_settings
 from app.database import (
     create_database_engine,
@@ -15,6 +17,7 @@ from app.errors import register_error_handlers
 from app.health import router as health_router
 from app.reads import router as reads_router
 from app.request_context import add_request_id
+from app.writes import router as writes_router
 
 
 @asynccontextmanager
@@ -37,6 +40,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         app.state.settings = settings
         app.state.database_engine = database_engine
         app.state.database_session_factory = database_session_factory
+        app.state.token_verifier = GoogleTokenVerifier(settings.google_oauth_client_id)
         yield
     finally:
         dispose_database_engine(database_engine)
@@ -53,5 +57,7 @@ def create_app() -> FastAPI:
     app.middleware("http")(add_request_id)
     register_error_handlers(app)
     app.include_router(health_router)
+    app.include_router(auth_router)
     app.include_router(reads_router)
+    app.include_router(writes_router)
     return app

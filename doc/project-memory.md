@@ -1,6 +1,6 @@
 # Project Memory
 
-Last updated: 2026-09-03
+Last updated: 2026-09-04
 
 ## Product
 
@@ -28,9 +28,10 @@ learning decks, confirmed language-aware cards with optional embedded learning c
 owned tags with same-owner card associations. It also adds one database-constrained current review
 state per card, owned idempotent review batches, and retained before/after review events. The
 complete synthetic integration fixture exercises English and Japanese through that same relational
-model. Owner-scoped deck/card/due-review reads now expose deterministic shared English/Japanese
-contracts behind an explicit temporary owner dependency. Authentication, write APIs, and frontend
-integration remain pending, so the backend remains disconnected from the user experience.
+model. Authenticated deck/card/due-review reads now expose deterministic shared English/Japanese
+contracts. The backend verifies Google ID tokens, maps Google subject to an internal user, enforces
+owned SQL scope, and provides owner-derived deck/card create, edit, and archive APIs. Review writes
+and frontend integration remain pending, so the backend remains disconnected from the user experience.
 
 ## Current User Experience
 

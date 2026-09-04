@@ -12,6 +12,8 @@ This directory is the persistent learning context for turning English Learning i
 - [Issue #5 multilingual backend design](issues/issue-5/README.md): completed MVP domain, API, schema, recovery, trust-boundary, AI-safety, and alternatives index
 - [Issue #8 multilingual domain schema](issues/issue-8/README.md): active implementation design,
   invariants, index rationale, fixtures, and PostgreSQL verification plan
+- [Issue #10 backend authentication and authorization](issues/issue-10/README.md): verified token
+  boundary, internal-user mapping, owner-scoped writes, and tested authorization matrix
 - [`fixtures/`](fixtures/): sanitized synthetic datasets for future contract and migration tests
 - [`logs/`](logs/): chronological weekly learning records
 - [`decisions/`](decisions/): architecture decision records for consequential choices

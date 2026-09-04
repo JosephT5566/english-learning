@@ -331,3 +331,32 @@ Use precise language such as “project,” “local load test,” or “deploye
   tests do not promise a full database snapshot under concurrent content updates.
 - Five-minute explanation practiced: Not yet; complete at the Issue #9 checkpoint.
 - Candidate resume bullet: Not yet; wait for authentication and frontend integration.
+
+### Backend authentication and horizontal owner isolation
+
+- Date: 2026-09-04
+- Status: Verified locally
+- Problem: Move identity and ownership guarantees out of the browser before exposing PostgreSQL-backed
+  learning data or mutations to a frontend.
+- Constraints and invariants: Tokens must be verified for Google signature, issuer, audience, expiry,
+  and verified email; durable identity uses Google subject rather than mutable email; all resource
+  access requires the authenticated internal owner; clients cannot select create ownership.
+- Decision: Use Google's Python verifier behind a replaceable boundary, upsert internal users by
+  unique subject, inject an authenticated user into handlers, mask cross-owner resources as not
+  found, bind ownership on create, and use optimistic versions plus archive-first deletion.
+- Implementation references: `apps/api/app/auth.py`, `apps/api/app/writes.py`,
+  `apps/api/app/reads.py`, `apps/api/tests/unit/test_auth.py`,
+  `apps/api/tests/integration/test_auth_and_authorization.py`, and
+  `doc/training/issues/issue-10/README.md`.
+- Verification and failure cases: Unit tests cover missing, expired, invalid-audience, malformed,
+  invalid-signature, missing-claim, and unverified-email cases without token disclosure. Real
+  PostgreSQL HTTP tests prove stable subject mapping, owner-derived deck/card creation, cross-owner
+  read/due/mutation denial, foreign-parent denial, successful owner edits/archives, and stale-version
+  conflicts. The full suite passed 152 tests; Ruff and lock checks passed.
+- Measured result: Local correctness evidence only; no live Google, production, latency, throughput,
+  user-impact, or remote-CI claim.
+- Limitations: The frontend still uses Google Apps Script and Sheets; review writes are not yet
+  implemented; deployment and live token verification remain untested; one upstream `TestClient`
+  warning remains.
+- Five-minute explanation practiced: Not yet; complete the Issue #10 learning checkpoint.
+- Candidate resume bullet: Not yet; revisit after frontend integration and remote verification.

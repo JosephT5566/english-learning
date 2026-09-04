@@ -17,6 +17,7 @@ CONFIG_ENVIRONMENT_VARIABLES = (
     "LOG_LEVEL",
     "DATABASE_URL",
     "DATABASE_CONNECT_TIMEOUT_SECONDS",
+    "GOOGLE_OAUTH_CLIENT_ID",
 )
 
 
@@ -65,6 +66,7 @@ def test_production_accepts_explicit_database_url(
     )
     monkeypatch.setenv("APP_ENV", "production")
     monkeypatch.setenv("DATABASE_URL", database_url)
+    monkeypatch.setenv("GOOGLE_OAUTH_CLIENT_ID", "production-client-id")
 
     settings = load_settings()
 
@@ -83,6 +85,28 @@ def test_production_rejects_disposable_local_database_url(
     message = str(captured_error.value)
     assert "DATABASE_URL" in message
     assert DEFAULT_DATABASE_URL not in message
+
+
+def test_production_requires_explicit_google_oauth_client_id(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setenv(
+        "DATABASE_URL",
+        "postgresql+psycopg://api_user:password@db.example:5432/app",
+    )
+
+    with pytest.raises(ConfigurationError, match="GOOGLE_OAUTH_CLIENT_ID"):
+        load_settings()
+
+
+def test_google_oauth_client_id_must_not_be_blank(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("GOOGLE_OAUTH_CLIENT_ID", "   ")
+
+    with pytest.raises(ConfigurationError, match="GOOGLE_OAUTH_CLIENT_ID"):
+        load_settings()
 
 
 @pytest.mark.parametrize(

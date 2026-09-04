@@ -1,6 +1,5 @@
 """Owner-scoped multilingual deck, card, and due-review read APIs."""
 
-from collections.abc import Iterator
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Annotated, Literal
@@ -9,9 +8,10 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Query, Request
 from pydantic import BaseModel
 from sqlalchemy import bindparam, text
-from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from app.auth import CurrentUserDependency
+from app.database import database_session
 from app.errors import ApiError
 from app.pagination import (
     cursor_datetime,
@@ -24,9 +24,6 @@ from app.pagination import (
 
 router = APIRouter(prefix="/v1")
 
-# Authentication is Issue #10. Keeping the temporary owner at one named composition
-# boundary prevents clients from choosing it and keeps every SQL query owner-scoped.
-TEMPORARY_TEST_OWNER_ID = 1
 MANAGEMENT_LIMIT = Annotated[int, Query(ge=1, le=100)]
 DUE_LIMIT = Annotated[int, Query(ge=1, le=10)]
 TargetLanguage = Literal["en", "ja"]
@@ -109,31 +106,7 @@ class DueCard(CardDetail):
     review_state: ReviewState
 
 
-def current_owner_id() -> int:
-    """Return the explicit temporary owner until server authentication lands."""
-
-    return TEMPORARY_TEST_OWNER_ID
-
-
-def database_session(request: Request) -> Iterator[Session]:
-    """Yield one read session and translate database errors at the API boundary."""
-
-    session = request.app.state.database_session_factory()
-    try:
-        yield session
-    except SQLAlchemyError:
-        raise ApiError(
-            status_code=503,
-            code="database_unavailable",
-            message="The database is temporarily unavailable.",
-            retryable=True,
-        ) from None
-    finally:
-        session.close()
-
-
 SessionDependency = Annotated[Session, Depends(database_session)]
-OwnerDependency = Annotated[int, Depends(current_owner_id)]
 
 
 def _reject_unknown_filters(request: Request, allowed: set[str]) -> None:
@@ -189,7 +162,7 @@ DECK_COLUMNS = """
 def list_decks(
     request: Request,
     session: SessionDependency,
-    owner_id: OwnerDependency,
+    user: CurrentUserDependency,
     target_language: Annotated[TargetLanguage | None, Query()] = None,
     status: Annotated[ArchiveStatus, Query()] = "active",
     limit: MANAGEMENT_LIMIT = 20,
@@ -228,7 +201,7 @@ def list_decks(
             """
             ),
             {
-                "owner_id": owner_id,
+                "owner_id": user.id,
                 "target_language": target_language,
                 "cursor_updated_at": cursor_updated_at,
                 "cursor_id": cursor_id,
@@ -246,7 +219,7 @@ def get_deck(
     deck_id: UUID,
     request: Request,
     session: SessionDependency,
-    owner_id: OwnerDependency,
+    user: CurrentUserDependency,
 ) -> Deck:
     """Return one owned deck without disclosing cross-owner existence."""
 
@@ -256,7 +229,7 @@ def get_deck(
             text(
                 f"SELECT {DECK_COLUMNS} FROM learning_decks AS d WHERE d.id = :id AND d.owner_id = :owner_id"
             ),
-            {"id": deck_id, "owner_id": owner_id},
+            {"id": deck_id, "owner_id": user.id},
         )
         .mappings()
         .one_or_none()
@@ -305,7 +278,7 @@ CARD_DETAIL_COLUMNS = (
 def list_cards(
     request: Request,
     session: SessionDependency,
-    owner_id: OwnerDependency,
+    user: CurrentUserDependency,
     deck_id: Annotated[UUID | None, Query()] = None,
     target_language: Annotated[TargetLanguage | None, Query()] = None,
     status: Annotated[ArchiveStatus, Query()] = "active",
@@ -324,7 +297,7 @@ def list_cards(
             session,
             table="learning_decks",
             resource_id=deck_id,
-            owner_id=owner_id,
+            owner_id=user.id,
             resource="deck",
         )
     if tag_id is not None:
@@ -332,7 +305,7 @@ def list_cards(
             session,
             table="tags",
             resource_id=tag_id,
-            owner_id=owner_id,
+            owner_id=user.id,
             resource="tag",
         )
     filters = {
@@ -380,7 +353,7 @@ def list_cards(
             """
             ),
             {
-                "owner_id": owner_id,
+                "owner_id": user.id,
                 "deck_id": deck_id,
                 "target_language": target_language,
                 "tag_id": tag_id,
@@ -400,7 +373,7 @@ def get_card(
     card_id: UUID,
     request: Request,
     session: SessionDependency,
-    owner_id: OwnerDependency,
+    user: CurrentUserDependency,
 ) -> CardDetail:
     """Return complete multilingual content for one owned card."""
 
@@ -418,7 +391,7 @@ def get_card(
             WHERE c.id = :id AND c.owner_id = :owner_id
             """
             ),
-            {"id": card_id, "owner_id": owner_id},
+            {"id": card_id, "owner_id": user.id},
         )
         .mappings()
         .one_or_none()
@@ -432,7 +405,7 @@ def get_card(
 def list_due_reviews(
     request: Request,
     session: SessionDependency,
-    owner_id: OwnerDependency,
+    user: CurrentUserDependency,
     target_language: Annotated[TargetLanguage, Query()],
     deck_id: Annotated[list[UUID] | None, Query()] = None,
     limit: DUE_LIMIT = 10,
@@ -456,7 +429,7 @@ def list_due_reviews(
                 WHERE owner_id = :owner_id AND id IN :deck_ids
                 """
                 ).bindparams(bindparam("deck_ids", expanding=True)),
-                {"owner_id": owner_id, "deck_ids": deck_ids},
+                {"owner_id": user.id, "deck_ids": deck_ids},
             )
             .mappings()
             .all()
@@ -524,7 +497,7 @@ def list_due_reviews(
         session.execute(
             query,
             {
-                "owner_id": owner_id,
+                "owner_id": user.id,
                 "target_language": target_language,
                 "as_of": as_of,
                 "deck_ids": deck_ids,

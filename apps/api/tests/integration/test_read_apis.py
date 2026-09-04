@@ -9,6 +9,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import Engine, text
 
+from app.auth import VerifiedGoogleIdentity
 from app.main import create_app
 from tests.integration.test_multilingual_domain_fixture import (
     load_multilingual_fixture,
@@ -29,6 +30,14 @@ JAPANESE_CARD_ID = "20000000-0000-0000-0000-000000000002"
 CORE_TAG_ID = "30000000-0000-0000-0000-000000000001"
 
 
+class FixtureTokenVerifier:
+    def verify(self, _token: str) -> VerifiedGoogleIdentity:
+        return VerifiedGoogleIdentity(
+            subject="fixture-google-subject",
+            email="fixture.user@example.test",
+        )
+
+
 @pytest.fixture
 def api_client(
     migrated_database_engine: Engine,
@@ -40,6 +49,8 @@ def api_client(
         migrated_database_engine.url.render_as_string(hide_password=False),
     )
     with TestClient(create_app(), raise_server_exceptions=False) as client:
+        client.app.state.token_verifier = FixtureTokenVerifier()
+        client.headers["Authorization"] = "Bearer fixture-token"
         yield client
 
 

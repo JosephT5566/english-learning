@@ -26,8 +26,10 @@ file beside `pyproject.toml`; use `.env.example` as the field reference.
 | `LOG_LEVEL` | `INFO` | `DEBUG`, `INFO`, `WARNING`, `ERROR`, or `CRITICAL` |
 | `DATABASE_URL` | Local disposable PostgreSQL URL | Must use the `postgresql+psycopg` driver |
 | `DATABASE_CONNECT_TIMEOUT_SECONDS` | `2` | Integer from 1 through 10 |
+| `GOOGLE_OAUTH_CLIENT_ID` | Local placeholder | Google web OAuth client ID used as the accepted token audience |
 
-Production must explicitly override `DATABASE_URL`; the disposable local default is rejected.
+Production must explicitly override `DATABASE_URL` and `GOOGLE_OAUTH_CLIENT_ID`; their local defaults
+are rejected.
 Database URLs are treated as secrets and must not be printed or logged.
 
 FastAPI creates the SQLAlchemy engine during lifespan startup and disposes its connection pool during
@@ -85,22 +87,31 @@ uv run uvicorn app.main:create_app --factory --reload
 The development server listens on `http://127.0.0.1:8000` by default. `--reload` is for local
 development only.
 
-## Read APIs
+## Authenticated product APIs
 
-The current read-only endpoints are:
+All `/v1` endpoints require a Google ID token in `Authorization: Bearer <token>`. The backend verifies
+the token and derives ownership from the stable Google subject; request bodies cannot select an
+owner.
 
 ```text
+GET /v1/me
 GET /v1/decks
+POST /v1/decks
 GET /v1/decks/{deck_id}
+PATCH /v1/decks/{deck_id}
+DELETE /v1/decks/{deck_id}
 GET /v1/cards
+POST /v1/cards
 GET /v1/cards/{card_id}
+PATCH /v1/cards/{card_id}
+DELETE /v1/cards/{card_id}
 GET /v1/reviews/due
 ```
 
-Authentication is intentionally pending. These routes currently use the explicit temporary owner
-boundary in `app/reads.py` and must not be treated as production user isolation. The complete filter,
-pagination, response, and error examples are in
-[`doc/training/issues/issue-9/api-examples.md`](../../doc/training/issues/issue-9/api-examples.md).
+The read filter and pagination examples are in
+[`doc/training/issues/issue-9/api-examples.md`](../../doc/training/issues/issue-9/api-examples.md). The
+implemented authorization matrix and write boundary are in
+[`doc/training/issues/issue-10/README.md`](../../doc/training/issues/issue-10/README.md).
 
 ## Verify liveness
 
