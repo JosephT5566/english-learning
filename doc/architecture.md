@@ -37,6 +37,10 @@ Last updated: 2026-09-03
 - `apps/api/app/request_context.py`: per-request UUID generation for response headers, error
   correlation, and future structured logs.
 - `apps/api/app/health.py`: database-independent liveness and database-aware readiness contracts.
+- `apps/api/app/reads.py`: temporary-owner-scoped deck/card/due-review routes, response models,
+  filtering, stable tuple ordering, and safe database-failure translation.
+- `apps/api/app/pagination.py`: versioned opaque cursor encoding, strict parsing, and normalized
+  query-shape binding.
 - `apps/api/migrations/`: Alembic environment and reversible migration history; the empty baseline
   is followed by the first production domain revision for users, decks, confirmed cards, tags,
   current review state, and review history.
@@ -71,6 +75,24 @@ Last updated: 2026-09-03
 
 The frontend still uses Google Apps Script at runtime. No frontend request currently targets this
 FastAPI service.
+
+## Backend Read Flow
+
+1. The `/v1` router resolves owner `1` through an explicit temporary dependency; authentication and
+   verified identity replacement remain Issue #10 work.
+2. Request validation rejects unsupported languages, invalid resource IDs, unsupported filters,
+   and malformed or query-incompatible cursors before running the list query.
+3. Every SQL statement scopes by the resolved owner. Explicit deck, card, and tag lookups return the
+   same not-found result for missing and cross-owner resources.
+4. Deck/card lists seek after `(updated_at, id)` in descending order. Due reviews seek after
+   `(next_review_at, card_id)` in ascending order and retain one server `as_of` time in the cursor.
+5. Queries fetch `limit + 1`, return only `limit`, and emit a next cursor only when another record
+   exists. Empty collections return `items: []` and `next_cursor: null`.
+6. SQLAlchemy failures become retryable `503 database_unavailable` errors through the common safe
+   envelope; internal database details are never serialized.
+
+English and Japanese travel through the same routes, response models, ownership checks, and tables.
+The frontend is not connected to these reads yet and its Google Apps Script behavior is unchanged.
 
 ## Initial Domain Schema
 
@@ -125,7 +147,8 @@ evidence is recorded in the [Issue #8 query-plan report](training/issues/issue-8
 - The checked-in bilingual fixture uses one owner with English and Japanese decks/cards, shared
   reusable tags, current states, and one two-card review batch. It is test evidence, not a production
   seed or import path.
-- The migration is persistence-only. No API route reads or writes these tables yet.
+- Read-only `/v1` routes now query these tables, but write routes, authentication, and frontend
+  integration remain pending.
 - Query-plan evidence comes from a deterministic local dataset with 40,000 cards, states, tag links,
   and events. It verifies planner selection, not production latency, throughput, or future planner
   behavior.

@@ -45,7 +45,7 @@ This is project evidence, not professional production-service experience.
 
 ## Active milestone
 
-Week 2 — multilingual domain schema, Issue #8.
+Week 2 — multilingual read APIs, Issue #9.
 
 Issue #4 current-state trace is documented in
 [`current-state-flow-trace.md`](current-state-flow-trace.md). It includes the three request flows,
@@ -122,6 +122,15 @@ composite ownership constraint, cardinality, and deletion rule while separating 
 guarantees. Planner evidence is local and distribution-specific, not a performance benchmark;
 atomic review behavior remains a future service responsibility.
 
+Issue #9 is implemented and verified locally. The FastAPI service now exposes owner-scoped deck
+list/detail, card list/detail with target-language and tag filtering, and due-review retrieval through
+one English/Japanese contract. Management lists use `updated_at DESC, id DESC`; due review uses
+`next_review_at ASC, card_id ASC` and carries a server-captured `as_of` instant across pages. Opaque
+versioned cursors are bound to endpoint, filters, limit, and last sort tuple. A named temporary owner
+dependency keeps clients from selecting identity until Issue #10 replaces it with verified auth.
+Revision `20260903_0003` adds owner/update indexes, and the PostgreSQL planner test now covers nine
+patterns. The full local backend suite passes 122 tests; Ruff format/lint and lock checks pass.
+
 GitHub tracking:
 
 - [Weeks 0–3 roadmap issue](https://github.com/JosephT5566/english-learning/issues/12)
@@ -166,12 +175,13 @@ Required outputs:
 
 ## Current blockers
 
-None for the active Issue #8 implementation. Remaining issue #4 uncertainties are documented rather
+None for the Issue #9 local implementation. Remaining issue #4 uncertainties are documented rather
 than hidden: blank sort behavior, the exact Apps Script exception envelope, concurrency/locking
 outside the inspected function, and the absence of a repeated signed-in end-to-end update during the
 documentation session.
 
 ## Next action
 
-Audit the Issue #8 acceptance criteria and complete the learning-checkpoint defense. Formal GitHub
-status for issues #4, #5, and #6 remains unverified.
+Complete the Issue #9 design-defense checkpoint, then begin Issue #10 authentication and replace the
+temporary owner dependency before any user-facing backend integration. Formal GitHub status for
+issues #4, #5, and #6 remains unverified.

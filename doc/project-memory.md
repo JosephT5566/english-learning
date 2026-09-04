@@ -28,8 +28,9 @@ learning decks, confirmed language-aware cards with optional embedded learning c
 owned tags with same-owner card associations. It also adds one database-constrained current review
 state per card, owned idempotent review batches, and retained before/after review events. The
 complete synthetic integration fixture exercises English and Japanese through that same relational
-model. The transactional review service and API remain pending, and the backend remains disconnected
-from the frontend.
+model. Owner-scoped deck/card/due-review reads now expose deterministic shared English/Japanese
+contracts behind an explicit temporary owner dependency. Authentication, write APIs, and frontend
+integration remain pending, so the backend remains disconnected from the user experience.
 
 ## Current User Experience
 

@@ -299,3 +299,35 @@ Use precise language such as “project,” “local load test,” or “deploye
   Real data skew and growth can change plans; remote CI and deployment remain unverified.
 - Five-minute explanation practiced: Not yet; complete during the Issue #8 learning checkpoint.
 - Candidate resume bullet: Not yet; wait for the complete issue audit and later API usage.
+
+### Deterministic multilingual read contracts
+
+- Date: 2026-09-03
+- Status: Verified locally
+- Problem: Expose growing deck, card, and due-review collections without nondeterministic pages,
+  language-specific APIs, ownership parameters, or internal database disclosure.
+- Constraints and invariants: English and Japanese share contracts; every query remains owner-scoped;
+  cursors must reject changed query shapes; due eligibility uses server time; internal failures stay
+  behind the established safe envelope; authentication and writes remain out of scope.
+- Decision: Use unique-tuple keyset ordering, opaque versioned cursors bound to normalized filters and
+  limit, a cursor-retained due `as_of` snapshot, compact card summaries plus complete details, and an
+  explicit temporary owner dependency that Issue #10 can replace without changing routes.
+- Alternatives considered: Offset pagination was rejected because inserts can shift later pages;
+  language-specific routes were rejected because domain behavior is shared; accepting owner IDs was
+  rejected because identity must come from the server; returning raw SQLAlchemy failures was rejected
+  as an information disclosure.
+- Implementation references: `apps/api/app/reads.py`, `apps/api/app/pagination.py`, revision
+  `20260903_0003`, `apps/api/tests/integration/test_read_apis.py`, and
+  `doc/training/issues/issue-9/`.
+- Verification and failure cases: Real PostgreSQL HTTP tests cover English/Japanese list/detail,
+  language/tag/deck filters, empty results, exact multi-page traversal, malformed and incompatible
+  cursors, invalid filters, non-disclosing resource lookup, and database-failure redaction. Planner
+  tests verify management and due index selection. The full suite passed 122 tests; Ruff and lock
+  checks passed.
+- Measured result: Local correctness and index-selection evidence only; the full suite took 45.82
+  seconds including isolated database creation/migrations. This is not endpoint latency evidence.
+- Limitations: Owner `1` is a temporary local boundary, not authentication. No write API, frontend
+  integration, production workload, remote CI, or deployment has been verified. Stable-dataset cursor
+  tests do not promise a full database snapshot under concurrent content updates.
+- Five-minute explanation practiced: Not yet; complete at the Issue #9 checkpoint.
+- Candidate resume bullet: Not yet; wait for authentication and frontend integration.

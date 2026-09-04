@@ -13,6 +13,7 @@ from app.database import (
 )
 from app.errors import register_error_handlers
 from app.health import router as health_router
+from app.reads import router as reads_router
 from app.request_context import add_request_id
 
 
@@ -52,4 +53,5 @@ def create_app() -> FastAPI:
     app.middleware("http")(add_request_id)
     register_error_handlers(app)
     app.include_router(health_router)
+    app.include_router(reads_router)
     return app
