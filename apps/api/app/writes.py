@@ -325,6 +325,20 @@ def create_card(
         ),
         {"owner_id": user.id, **values},
     ).scalar_one()
+    session.execute(
+        text(
+            """
+            INSERT INTO review_states (
+                card_id, owner_id, review_stage, ease_factor, interval_days,
+                last_reviewed_at, next_review_at, version
+            ) VALUES (
+                :card_id, :owner_id, 1, 2.50, 0,
+                NULL, CURRENT_TIMESTAMP, 1
+            )
+            """
+        ),
+        {"card_id": card_id, "owner_id": user.id},
+    )
     return _card_detail(session, card_id, user.id)
 
 

@@ -42,6 +42,8 @@ Last updated: 2026-09-04
 - `apps/api/app/reads.py`: authenticated owner-scoped deck/card/due-review routes, response models,
   filtering, stable tuple ordering, and safe database-failure translation.
 - `apps/api/app/writes.py`: server-owned deck/card create, optimistic edit, and archive operations.
+- `apps/api/app/reviews.py`: authenticated atomic review submissions, scheduling transitions,
+  idempotent replay, and deterministic row-lock concurrency control.
 - `apps/api/app/pagination.py`: versioned opaque cursor encoding, strict parsing, and normalized
   query-shape binding.
 - `apps/api/migrations/`: Alembic environment and reversible migration history; the empty baseline
@@ -105,8 +107,22 @@ FastAPI service.
    forbidden, so a body-supplied owner ID or email is rejected before SQL.
 4. Edits use an owner predicate plus the last-seen version and increment the version atomically;
    stale owned writes return `409 version_conflict`.
-5. Deletes archive rather than physically removing decks or cards. Review writes remain a separate
-   future transaction boundary.
+5. Deletes archive rather than physically removing decks or cards. Card creation also creates the
+   required initial review state in the same transaction.
+
+## Backend Review Write Flow
+
+1. `POST /v1/reviews` requires the authenticated owner and a UUID `Idempotency-Key`; one to ten
+   unique items carry only card ID, decision, and expected state version.
+2. The API hashes the canonical validated item sequence and inserts an owned batch under the
+   database unique key. A matching conflict replays stored events; different content returns a
+   conflict.
+3. A new batch locks every owned card, deck, and current-state row in sorted card-ID order. It then
+   verifies active status and optimistic versions for the complete request before writing an event.
+4. The backend uses one UTC review instant and `srs-v1` to derive every transition, inserts immutable
+   before/after events in request order, and updates current states with previous-version predicates.
+5. The request transaction commits the batch, all events, and all states together. Any exception or
+   item failure rolls the complete request back.
 
 English and Japanese travel through the same routes, response models, ownership checks, and tables.
 The frontend is not connected to these reads yet and its Google Apps Script behavior is unchanged.
@@ -144,7 +160,7 @@ evidence is recorded in the [Issue #8 query-plan report](training/issues/issue-8
   with `card_id`; PostgreSQL selects it for the representative reverse traversal.
 - `review_states` uses `card_id` as its primary key, directly enforcing at most one current row per
   card. Its composite `(card_id, owner_id)` foreign key rejects cross-owner state.
-- Review scheduling fields are required without database defaults, so the future backend must write
+- Review scheduling fields are required without database defaults, so the backend writes
   the initial stage, ease, interval, next-review time, and version explicitly. Checks enforce stage
   1-5, ease 1.30-2.50, nonnegative intervals, positive versions, and next review not before a present
   last review.
@@ -159,13 +175,12 @@ evidence is recorded in the [Issue #8 query-plan report](training/issues/issue-8
 - Review-event indexes support owner history, card history, and batch response reconstruction. Their
   definitions and representative PostgreSQL planner use are tested.
 - Event-count agreement with a batch, consistency with current state, atomic state/event writes,
-  request-hash replay handling, and the no-mutation application contract remain responsibilities of
-  the future review transaction service.
+  request-hash replay handling, and the no-mutation application contract are enforced by the review
+  service transaction and its PostgreSQL integration tests.
 - The checked-in bilingual fixture uses one owner with English and Japanese decks/cards, shared
   reusable tags, current states, and one two-card review batch. It is test evidence, not a production
   seed or import path.
-- Read-only `/v1` routes now query these tables, but write routes, authentication, and frontend
-  integration remain pending.
+- Authenticated `/v1` routes now read and write these tables; frontend integration remains pending.
 - Query-plan evidence comes from a deterministic local dataset with 40,000 cards, states, tag links,
   and events. It verifies planner selection, not production latency, throughput, or future planner
   behavior.

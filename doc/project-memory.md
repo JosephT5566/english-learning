@@ -31,7 +31,9 @@ complete synthetic integration fixture exercises English and Japanese through th
 model. Authenticated deck/card/due-review reads now expose deterministic shared English/Japanese
 contracts. The backend verifies Google ID tokens, maps Google subject to an internal user, enforces
 owned SQL scope, and provides owner-derived deck/card create, edit, and archive APIs. Review writes
-and frontend integration remain pending, so the backend remains disconnected from the user experience.
+now commit idempotent batches, immutable events, and current-state transitions atomically with
+deterministic concurrency control. Frontend integration remains pending, so the backend remains
+disconnected from the user experience.
 
 ## Current User Experience
 

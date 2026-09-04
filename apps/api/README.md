@@ -106,12 +106,15 @@ GET /v1/cards/{card_id}
 PATCH /v1/cards/{card_id}
 DELETE /v1/cards/{card_id}
 GET /v1/reviews/due
+POST /v1/reviews
 ```
 
 The read filter and pagination examples are in
 [`doc/training/issues/issue-9/api-examples.md`](../../doc/training/issues/issue-9/api-examples.md). The
 implemented authorization matrix and write boundary are in
 [`doc/training/issues/issue-10/README.md`](../../doc/training/issues/issue-10/README.md).
+The atomic review contract, idempotency behavior, concurrency policy, and timeout recovery are in
+[`doc/training/issues/issue-11/README.md`](../../doc/training/issues/issue-11/README.md).
 
 ## Verify liveness
 

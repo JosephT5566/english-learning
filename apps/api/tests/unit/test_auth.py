@@ -93,6 +93,7 @@ def test_google_verifier_requires_subject_email_and_verified_email(
         ("PATCH", "/v1/cards/20000000-0000-0000-0000-000000000001", {"json": {}}),
         ("DELETE", "/v1/cards/20000000-0000-0000-0000-000000000001", {}),
         ("GET", "/v1/reviews/due", {"params": {"target_language": "en"}}),
+        ("POST", "/v1/reviews", {"json": {}}),
     ],
 )
 def test_protected_endpoints_reject_missing_authentication_consistently(

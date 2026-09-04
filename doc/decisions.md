@@ -58,6 +58,11 @@ Last updated: 2026-09-04
   ownership exclusively from authenticated context.
 - Use optimistic versions for deck/card edits and archive-first deletion. A stale owned edit returns
   conflict; an archive replay by the owner succeeds without another state transition.
+- Treat a review submission as one owned command identified by a UUID idempotency key and canonical
+  request hash. Lock all target states in sorted card-ID order, validate every item before mutation,
+  calculate `srs-v1` transitions from one backend clock, and commit the batch, immutable events, and
+  current states in one transaction. Replay matching content from stored events; reject conflicting
+  key reuse.
 
 ## Known Follow-Up Areas
 
@@ -90,3 +95,6 @@ Last updated: 2026-09-04
 - 2026-09-04: Replaced the temporary owner with server-verified Google identity, internal user
   mapping, authenticated owner-scoped reads, and owner-derived deck/card create, edit, and archive
   operations. Added a tested authorization matrix; review writes and frontend cutover remain pending.
+- 2026-09-04: Added atomic and idempotent review submissions with deterministic pessimistic locking,
+  optimistic state versions, server-derived scheduling, exact replay, conflict detection, and
+  failure rollback. Frontend cutover remains pending.

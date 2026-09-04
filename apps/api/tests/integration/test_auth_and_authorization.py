@@ -147,6 +147,7 @@ def test_create_derives_owner_and_rejects_client_identity_and_foreign_parent(
         headers=headers,
     )
     assert card.status_code == 201
+    card_id = card.json()["id"]
 
     with migrated_database_engine.connect() as connection:
         owners = connection.execute(
@@ -161,7 +162,19 @@ def test_create_derives_owner_and_rejects_client_identity_and_foreign_parent(
             ),
             {"deck_id": deck_id, "subject": "attacker-google-subject"},
         ).one()
+        initial_review_state = connection.execute(
+            text(
+                """
+                SELECT review_stage, ease_factor, interval_days,
+                       last_reviewed_at, version
+                FROM review_states
+                WHERE card_id = :card_id AND owner_id = :owner_id
+                """
+            ),
+            {"card_id": card_id, "owner_id": owners[0]},
+        ).one()
     assert owners[0] == owners[1]
+    assert initial_review_state == (1, 2.50, 0, None, 1)
 
 
 def test_other_user_cannot_edit_or_archive_resources_by_changing_ids(

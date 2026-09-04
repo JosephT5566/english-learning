@@ -32,6 +32,7 @@ failure returns retryable `503 identity_provider_unavailable`.
 | `PATCH /v1/cards/{id}` | Required | Card owner and matching version | `404 card_not_found` | Cross-user mutation test |
 | `DELETE /v1/cards/{id}` | Required | Card owner | `404 card_not_found` | Cross-user mutation test |
 | `GET /v1/reviews/due` | Required | Owned state joined to owned card and deck | Empty result or `404 deck_not_found` for a selected foreign deck | Cross-user due-read test |
+| `POST /v1/reviews` | Required | Every card belongs to authenticated owner | `404 card_not_found`; no batch/event/state effect | Cross-user review transaction test |
 | `GET /health/live`, `GET /health/ready` | Not required | Service health only | Not applicable | Existing health tests |
 
 Detail and mutation endpoints intentionally use the same `404` for missing and cross-owner IDs. This

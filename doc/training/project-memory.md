@@ -45,7 +45,7 @@ This is project evidence, not professional production-service experience.
 
 ## Active milestone
 
-Week 3 — backend authentication and authorization, Issue #10.
+Week 3 — transactional and idempotent review submissions, Issue #11.
 
 Issue #4 current-state trace is documented in
 [`current-state-flow-trace.md`](current-state-flow-trace.md). It includes the three request flows,
@@ -138,9 +138,19 @@ refreshable profile data rather than an ownership key. The reusable authenticate
 replaces temporary owner `1`, and every deck, card, and due-review read binds the internal owner ID.
 Deck/card create, optimistic edit, and archive operations derive ownership from authenticated
 context. Cross-owner IDs are masked as not found, including foreign deck IDs on card creation. The
-authorization matrix matches unit and PostgreSQL horizontal-escalation tests. The full backend suite
-passes 152 tests; Ruff format/lint and lock checks pass. Live Google verification, remote CI,
-frontend cutover, and review-write transactions remain unverified or out of scope.
+authorization matrix matches unit and PostgreSQL horizontal-escalation tests. At that checkpoint the
+full backend suite passed 152 tests; Ruff format/lint and lock checks passed. Live Google
+verification, remote CI, and frontend cutover remain unverified or out of scope.
+
+Issue #11 is implemented and verified locally. `POST /v1/reviews` accepts a bounded unique-card
+batch plus a UUID idempotency key, derives all scheduling values from one backend clock, and commits
+the owned batch, immutable before/after events, and current states in one transaction. Canonical
+request hashes distinguish exact replay from conflicting key reuse. Target rows are locked in sorted
+card-ID order, while optimistic versions make a racing different-key request stale; same-key races
+replay one committed result. PostgreSQL tests cover multi-item success, authorization, validation,
+exact and conflicting retries, simultaneous requests, and injected rollback. The full backend suite
+passes 171 tests; Ruff checks pass. Frontend cutover, transient-deadlock retry policy, live traffic,
+remote CI, and deployment remain unverified or out of scope.
 
 GitHub tracking:
 
@@ -160,7 +170,6 @@ Required outputs:
 ## Open decisions
 
 - Exact Unicode normalization/case-fold implementation and test vectors
-- Canonical idempotency request serialization and scheduling algorithm version/test vectors
 - Per-category repair policy for malformed imported scheduling rows
 - Production API host and managed PostgreSQL provider
 - AI provider and model
@@ -186,12 +195,13 @@ Required outputs:
 
 ## Current blockers
 
-None for the Issue #10 local implementation. Remaining issue #4 uncertainties are documented rather
+None for the Issue #11 local implementation. Remaining issue #4 uncertainties are documented rather
 than hidden: blank sort behavior, the exact Apps Script exception envelope, concurrency/locking
 outside the inspected function, and the absence of a repeated signed-in end-to-end update during the
 documentation session.
 
 ## Next action
 
-Complete the Issue #10 learning checkpoint, then begin Issue #11's atomic, idempotent review-write
-transaction. Formal GitHub status for issues #4, #5, and #6 remains unverified.
+Complete the Issue #11 transaction/idempotency learning checkpoint, then review the Week 3 milestone
+and choose the next migration ticket. Formal GitHub status for issues #4, #5, and #6 remains
+unverified.
