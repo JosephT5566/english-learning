@@ -584,12 +584,9 @@ A feature is complete only when:
 | Operations            | Health checks, structured logs, metrics, alerts, deployment, and incident report      |
 | Performance           | Reproducible load test and evidence-based optimization                                |
 
-## Immediate next action
+## Execution routing
 
-Create the Week 0 baseline issue. Its first deliverable is a current-state document tracing these three flows:
-
-1. Google login and client-side token handling
-2. vocabulary retrieval from Google Apps Script
-3. review-state update to Google Sheets
-
-The same issue should inventory the proposed Japanese fields and write the AI draft-to-confirm flow at a conceptual level. Do not scaffold FastAPI until the current contracts, data fields, ownership assumptions, multilingual requirements, and migration risks are recorded.
+This plan defines durable scope, sequencing, and milestone criteria; it does not track the currently
+active ticket. Use [`project-memory.md`](project-memory.md) for the active milestone, current issue,
+verified baseline, blockers, and single next action. Keep completed ticket details in their issue
+artifacts and the evidence ledger so this roadmap can remain stable as the project continues.

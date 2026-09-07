@@ -13,10 +13,26 @@ Before training work, read:
 
 1. `AGENTS.md`
 2. `doc/training/README.md`
-3. `doc/training/full-stack-backend-plan.md`
-4. `doc/training/project-memory.md`
+3. `doc/training/project-memory.md`
 
-Read the current weekly log when continuing active work. Read `doc/training/evidence.md` when recording evidence or preparing resume/interview material. Read an architecture decision record only when it affects the current task.
+Use project memory to discover the active milestone, issue, and next action. Then load the current
+issue artifact or issue-tracker ticket, if the task depends on it. Load only the relevant section of
+`doc/training/full-stack-backend-plan.md` when the task depends on roadmap scope, sequencing,
+milestone criteria, or the definition of done. Do not read the entire plan for a bounded
+implementation or review when the active issue already defines the acceptance boundary.
+
+Weekly logs are opt-in historical sources, not default context. Search them by issue, date, decision,
+failure, or verification term and read the smallest useful excerpt only when:
+
+- the user explicitly asks to trace or compare prior work;
+- a retrospective needs the original sequence, failure, or correction;
+- an evidence or interview claim cannot be verified from implementation, tests, and issue artifacts;
+- current sources conflict and the historical record may resolve the conflict.
+
+Do not read a weekly log merely because active work is continuing. When appending a new checkpoint,
+inspect only the log tail and any directly related entry rather than loading the full file. Read
+`doc/training/evidence.md` when recording evidence or preparing resume/interview material. Read an
+architecture decision record only when it affects the current task.
 
 Treat the implementation and test results as authoritative. Treat plans and memory as maintained context that may be stale.
 
@@ -45,8 +61,11 @@ During interactive coaching, ask one substantial question at a time. Do not reve
 When a material training task is completed:
 
 1. Run checks proportional to the change and record actual results.
-2. Update `doc/training/project-memory.md` with the new state and next action.
-3. Add a concise entry to the current weekly log covering decisions, failures, corrections, and remaining uncertainty.
+2. Update `doc/training/project-memory.md` with the active state and one next action. Keep it bounded:
+   compress completed milestones to short summaries with links instead of retaining session history.
+3. Add a concise checkpoint to the current weekly log only for a completed acceptance boundary or a
+   material decision, failure, correction, or uncertainty. Do not log every command or intermediate
+   implementation step.
 4. Add to `doc/training/evidence.md` only when a claim has concrete implementation, verification, and links or file references.
 5. Add an architecture decision record only for a consequential choice with credible alternatives.
 

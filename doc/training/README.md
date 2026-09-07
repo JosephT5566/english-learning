@@ -8,18 +8,11 @@ This directory is the persistent learning context for turning English Learning i
 - [Project memory](project-memory.md): concise current state, active milestone, decisions, blockers, and next action
 - [Evidence ledger](evidence.md): verified implementation evidence for interviews and future resume work
 - [Current-state flow trace](current-state-flow-trace.md): issue #4 auth, vocabulary, review, Sheet contract, trust-boundary, and baseline evidence
-- [`issues/`](issues/): per-ticket design and implementation artifacts grouped to keep the training root concise
-- [Issue #5 multilingual backend design](issues/issue-5/README.md): completed MVP domain, API, schema, recovery, trust-boundary, AI-safety, and alternatives index
-- [Issue #8 multilingual domain schema](issues/issue-8/README.md): active implementation design,
-  invariants, index rationale, fixtures, and PostgreSQL verification plan
-- [Issue #10 backend authentication and authorization](issues/issue-10/README.md): verified token
-  boundary, internal-user mapping, owner-scoped writes, and tested authorization matrix
-- [Issue #11 transactional review submissions](issues/issue-11/README.md): atomic event/state
-  transitions, idempotent replay, deterministic locking, and timeout recovery
-- [Issue #12 Weeks 0-3 retrospective](issues/issue-12/README.md): exit-criteria audit, final local
-  verification, five-minute explanation, remaining risks, and evidence-based Weeks 4-8 tickets
+- [`issues/`](issues/): per-ticket design, implementation, and milestone artifacts; follow the active
+  issue link in project memory rather than maintaining a permanent issue list here
 - [`fixtures/`](fixtures/): sanitized synthetic datasets for future contract and migration tests
-- [`logs/`](logs/): chronological weekly learning records
+- [`logs/`](logs/): chronological weekly learning archive, searched on demand rather than loaded as
+  default training context
 - [`decisions/`](decisions/): architecture decision records for consequential choices
 
 Product proposals that are not active training priorities live under [`../product/`](../product/).
@@ -27,19 +20,30 @@ Product proposals that are not active training priorities live under [`../produc
 ## Update rules
 
 - Update the plan only when scope or sequencing changes.
-- Update project memory after a material milestone or change of direction.
-- Use one log file per ISO week; append concise session entries rather than creating one file per session.
-- Record failures and corrected misunderstandings in logs because they are useful learning evidence.
+- Update project memory after a material milestone or change of direction. Keep it as a bounded
+  active-state index: compress completed milestones and link to issue artifacts instead of copying
+  their detailed histories.
+- Use one log file per ISO week. Add a concise checkpoint only for a completed acceptance boundary
+  or a material decision, failure, correction, or remaining uncertainty; do not log every command
+  or intermediate step.
+- Treat logs as historical sources. Do not read them at session startup. Search and read the smallest
+  relevant excerpt only for explicit history tracing, retrospectives, unresolved context conflicts,
+  or evidence that cannot be established from code, tests, and issue artifacts.
+- When appending a checkpoint, inspect only the log tail and any directly related entry; appending
+  does not require loading the complete weekly log.
 - Add an evidence entry only after the implementation exists and relevant verification has run.
 - Link evidence to files, tests, issues, pull requests, reports, or measurements.
 - Keep private career assessments, credentials, tokens, and personal learning data out of the repository.
 
 ## Starting a training session
 
-1. Read the project memory and the active week in the plan.
-2. Choose one issue or acceptance boundary.
-3. State requirements, invariants, trust boundaries, and failure behavior before coding.
-4. Define how the result will be verified.
+1. Read project memory to identify the active milestone, issue, and next action.
+2. Read the active local issue artifact or issue-tracker ticket when it is relevant and available.
+   Read only the relevant plan section when roadmap scope, sequencing, milestone criteria, or the
+   definition of done affects the task.
+3. Choose one acceptance boundary.
+4. State requirements, invariants, trust boundaries, and failure behavior before coding.
+5. Define how the result will be verified.
 
 ## Using GitHub tickets with Codex
 
@@ -105,6 +109,9 @@ Before using the GitHub Action, commit and push `AGENTS.md`, `.agents/skills/`, 
 ## Ending a training session
 
 1. Run the relevant checks.
-2. Record what changed, what failed, and what remains uncertain in the weekly log.
-3. Update project memory if the repository state or next action changed.
+2. If the session completed an acceptance boundary or produced a material decision, failure,
+   correction, or uncertainty, append one concise weekly-log checkpoint after inspecting only the
+   relevant tail or prior entry.
+3. Update project memory if the repository state or next action changed, keeping completed history
+   behind links to issue artifacts.
 4. Add verified evidence only when the work is complete enough to defend.
