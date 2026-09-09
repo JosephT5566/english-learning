@@ -174,6 +174,11 @@ evidence is recorded in the [Issue #8 query-plan report](training/issues/issue-8
   scheduling ranges, version progression, and timestamp relationships.
 - Review-event indexes support owner history, card history, and batch response reconstruction. Their
   definitions and representative PostgreSQL planner use are tested.
+- A local one-time CSV dry-run CLI feeds a pure bounded validator, verifies an existing target deck
+  through `(deck_id, owner_id)`, and persists only `import_runs` plus `import_items`. Canonical
+  snapshot/content hashes and validator version make unchanged replay deterministic. Diagnostic
+  JSON contains safe codes and field names rather than raw legacy learning content. This path has no
+  HTTP route and cannot write cards, tags, review state, batches, or events.
 - Event-count agreement with a batch, consistency with current state, atomic state/event writes,
   request-hash replay handling, and the no-mutation application contract are enforced by the review
   service transaction and its PostgreSQL integration tests.

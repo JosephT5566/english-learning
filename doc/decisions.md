@@ -63,6 +63,11 @@ Last updated: 2026-09-04
   calculate `srs-v1` transitions from one backend clock, and commit the batch, immutable events, and
   current states in one transaction. Replay matching content from stored events; reject conflicting
   key reuse.
+- Perform the one-time Google Sheet migration from a private UTF-8 CSV snapshot through a local CLI,
+  not a permanent HTTP or Google API integration. Use trimmed NFC content and case-sensitive source
+  IDs, NFKC plus case-folded collection identity, canonical SHA-256 hashes, and versioned replay.
+  Persist only bounded content-safe dry-run diagnostics. Start every later imported card with fresh
+  backend scheduling; legacy scheduling fields are validated and explained but never authoritative.
 
 ## Known Follow-Up Areas
 
@@ -98,3 +103,6 @@ Last updated: 2026-09-04
 - 2026-09-04: Added atomic and idempotent review submissions with deterministic pessimistic locking,
   optimistic state versions, server-derived scheduling, exact replay, conflict detection, and
   failure rollback. Frontend cutover remains pending.
+- 2026-09-09: Added the one-time CSV dry-run validation boundary with owner/deck checks, deterministic
+  source and content hashing, fresh-schedule diagnostics, persisted import audit records, and no
+  confirmed learning-data mutations.

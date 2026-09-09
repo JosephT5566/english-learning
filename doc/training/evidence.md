@@ -430,3 +430,31 @@ Use precise language such as “project,” “local load test,” or “deploye
   #12 retrospective; independent spoken practice remains for Joseph.
 - Candidate resume bullet: Not yet. Revisit only after import, frontend cutover, and deployed
   verification create an honest end-to-end outcome.
+
+### Read-only legacy CSV import validation
+
+- Date: 2026-09-09
+- Status: Verified locally
+- Problem: Explain whether every legacy Sheet row can enter the shared English/Japanese model before
+  any confirmed learning data is created.
+- Constraints and invariants: The private snapshot cannot be committed or echoed; all 21 fields need
+  an explicit outcome; identity and hashes must be stable; ownership is server-side; dry-run retries
+  are idempotent; no card, tag, review-state, batch, or event mutation is allowed.
+- Decision: Use a bounded local CSV CLI with a fixed namespace and snapshot timestamp, NFC content,
+  case-sensitive NFC source IDs, NFKC/case-fold collection keys, canonical SHA-256 hashes, and
+  versioned audit replay. Reset later imported cards to fresh scheduling while retaining safe
+  diagnostics about ignored legacy scheduling quality.
+- Implementation references: `apps/api/app/imports.py`, revision `20260909_0004`,
+  `apps/api/tests/unit/test_imports.py`, `apps/api/tests/integration/test_import_dry_runs.py`, and
+  `doc/training/issues/issue-22/`.
+- Verification and failure cases: Deterministic synthetic English/Japanese reports, header/type/range
+  failures, duplicate IDs, Unicode/collection repairs, private-content exclusion, cross-owner and
+  language conflicts, unchanged replay, changed content, no-learning-mutation assertions, and full
+  upgrade/downgrade/re-upgrade pass. The complete suite passed 187 tests against local PostgreSQL
+  17; Ruff lint/format and the uv lock check passed.
+- Measured result: Local correctness evidence only. The full suite took 71.33 seconds. This is not
+  import throughput, production reliability, or user-impact evidence.
+- Limitations: The private snapshot still has three rejected rows to resolve. No confirmed import,
+  reconciliation, frontend cutover, remote CI, or deployment has been performed.
+- Five-minute explanation practiced: Not yet; an explanation is delivered with the Issue #22 handoff.
+- Candidate resume bullet: Not yet. Wait for confirmed import, reconciliation, and frontend cutover.

@@ -1,0 +1,50 @@
+{
+  "fixture": "synthetic multilingual import fixtures; no private Sheet content",
+  "reports": {
+    "en": {
+      "accepted_rows": 1,
+      "diagnostic_count": 1,
+      "items": [
+        {
+          "content_hash": "a581bf109f99b990ed7f366dcf52b8bfb5548c803dd34ee10e04bf29921a9d51",
+          "diagnostics": [
+            {"code": "legacy_schedule_reset", "field": "$schedule", "severity": "info"}
+          ],
+          "outcome": "accepted",
+          "row_number": 2,
+          "source_identity_hash": "16a4460eab5029414401c70ecd96c092c7d8d48be8a9b6039834554f326f24af"
+        }
+      ],
+      "rejected_rows": 0,
+      "repaired_rows": 0,
+      "source_snapshot_hash": "dc43d9fbda607d1c7936aa8a42b0c83fe9c9a7279e765845103dee59b3db8d62",
+      "status": "completed",
+      "target_language": "en",
+      "total_rows": 1
+    },
+    "ja": {
+      "accepted_rows": 1,
+      "diagnostic_count": 1,
+      "items": [
+        {
+          "content_hash": "4f36df4154fde0ef7eb26cdd8ac8ac124eca79c746737763dedd1d0a8bc38f9c",
+          "diagnostics": [
+            {"code": "legacy_schedule_reset", "field": "$schedule", "severity": "info"}
+          ],
+          "outcome": "accepted",
+          "row_number": 2,
+          "source_identity_hash": "a3513f8a235f2e3e7200dc4dbcd80709068d1aa3ede71ef28f8fa9ee487b3198"
+        }
+      ],
+      "rejected_rows": 0,
+      "repaired_rows": 0,
+      "source_snapshot_hash": "5ff9cfdb7e28a49743c94fa69ae6d7df9ce1e9f9f7a69b780f06ce962100f808",
+      "status": "completed",
+      "target_language": "ja",
+      "total_rows": 1
+    }
+  },
+  "snapshot_captured_at": "2026-09-09T04:00:00+00:00",
+  "source_namespace": "sanitized-cutover-fixture-v1",
+  "validator_version": "csv-dry-run-v1"
+}

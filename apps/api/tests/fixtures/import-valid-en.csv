@@ -1,0 +1,2 @@
+id,lessonDate,content,type,phonics,chineseExplain,engExplain,synonyms,antonyms,tags,note,supplementary,example,status,reviewStage,easeFactor,intervalDays,lastReview,nextReview,createdDate,overdueDays
+synthetic-en-001,2026-08-01,synthetic phrase,phrase,/synthetic/,synthetic meaning,A synthetic definition,similar phrase,opposite phrase,fixture,,,A synthetic example,active,2,2.4,7,2026-08-20T04:00:00Z,2026-08-27T04:00:00Z,2026-08-01T04:00:00Z,1

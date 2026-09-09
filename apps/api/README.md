@@ -62,6 +62,30 @@ per-user retry-key uniqueness, while review events retain complete constrained b
 snapshots for history and response reconstruction.
 Issue #9 revision `20260903_0003` adds the owner/update ordering indexes used by deck and card
 management reads.
+Issue #22 revision `20260909_0004` adds owner/deck-scoped dry-run audit records and bounded per-row
+diagnostics. It stores hashes and safe codes, not raw legacy learning content.
+
+## One-time legacy CSV dry run
+
+The ignored private Sheet export is validated through a local CLI; there is no permanent import HTTP
+endpoint. The target user and matching English or Japanese deck must already exist. Keep private
+reports outside the repository:
+
+```bash
+uv run python -m app.imports \
+  --csv legacy-google-sheet-cutover-v1.csv \
+  --source-namespace legacy-google-sheet-cutover-v1 \
+  --owner-id OWNER_ID \
+  --deck-id DECK_UUID \
+  --target-language en \
+  --snapshot-captured-at 2026-09-09T00:00:00+08:00 \
+  --report /tmp/legacy-google-sheet-dry-run.json
+```
+
+The command persists only `import_runs` and `import_items`. Replaying an unchanged snapshot returns
+the existing run. It never creates confirmed cards, tags, review states, batches, or events. See the
+[Issue #22 artifact](../../doc/training/issues/issue-22/README.md) for mapping, normalization,
+scheduling-reset, and diagnostic-safety rules.
 
 ## Local PostgreSQL
 
