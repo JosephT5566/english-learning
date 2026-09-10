@@ -1,6 +1,6 @@
 # English Learning Project Memory
 
-Last updated: 2026-09-04
+Last updated: 2026-09-09
 
 ## Purpose
 
@@ -163,6 +163,19 @@ exact and conflicting retries, simultaneous requests, and injected rollback. The
 passes 171 tests; Ruff checks pass. Frontend cutover, transient-deadlock retry policy, live traffic,
 remote CI, and deployment remain unverified or out of scope.
 
+Issue #22 is implemented and verified locally. A local one-time CSV CLI validates the complete
+21-field legacy contract through trimmed NFC content, case-sensitive NFC source IDs, NFKC/case-fold
+collection identity, canonical versioned SHA-256 hashes, and bounded content-safe diagnostics.
+Revision `20260909_0004` persists only owner/deck-scoped `import_runs` and `import_items`; unchanged
+snapshots replay the existing audit run. English and Japanese synthetic reports are deterministic,
+and PostgreSQL tests prove cross-owner/language rejection plus zero card, tag, review-state, batch,
+or event mutations. All later imported cards will start with fresh backend scheduling. The ignored
+private 596-row CSV produced content-free aggregates of 11 accepted, 582 repairable, and 3 rejected:
+one missing required meaning and one duplicate legacy ID affecting two rows. No private values or
+report were committed. The full backend suite passed 187 tests against PostgreSQL 17; Ruff, format,
+lock, migration-cycle, and whitespace checks passed. See
+[`issues/issue-22/README.md`](issues/issue-22/README.md).
+
 GitHub tracking:
 
 - [Weeks 0–3 roadmap issue](https://github.com/JosephT5566/english-learning/issues/12)
@@ -180,8 +193,6 @@ Required outputs:
 
 ## Open decisions
 
-- Exact Unicode normalization/case-fold implementation and test vectors
-- Per-category repair policy for malformed imported scheduling rows
 - Production API host and managed PostgreSQL provider
 - AI provider and model
 - Whether initial AI generation meets synchronous latency requirements
@@ -212,6 +223,6 @@ not verified during the first four milestones.
 
 ## Next action
 
-Begin issue #22 in design mode: settle source identity, all 21 field mappings, Unicode normalization,
-scheduling repair categories, diagnostic safety, and the dry-run no-mutation invariant before adding
-the import migration or service code.
+Resolve the three private-snapshot row diagnostics locally, then define the next bounded Week 4
+acceptance boundary for transactional confirmed import. Do not create cards until its apply,
+rollback, and reconciliation semantics are designed and reviewed.

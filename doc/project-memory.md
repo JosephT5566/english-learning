@@ -1,6 +1,6 @@
 # Project Memory
 
-Last updated: 2026-09-04
+Last updated: 2026-09-09
 
 ## Product
 
@@ -34,6 +34,10 @@ owned SQL scope, and provides owner-derived deck/card create, edit, and archive 
 now commit idempotent batches, immutable events, and current-state transitions atomically with
 deterministic concurrency control. Frontend integration remains pending, so the backend remains
 disconnected from the user experience.
+
+A local one-time CSV dry-run boundary now validates the legacy 21-field Sheet snapshot and persists
+only safe import audit hashes and diagnostic codes. It does not create cards or review data; the
+frontend and Google Apps Script runtime remain unchanged.
 
 ## Current User Experience
 
