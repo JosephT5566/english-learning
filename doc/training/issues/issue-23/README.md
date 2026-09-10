@@ -88,6 +88,7 @@ credentials, SQL parameters, or database URLs.
 - [`unchanged-replay-proof.json`](unchanged-replay-proof.json)
 - [`failure-recovery-evidence.json`](failure-recovery-evidence.json)
 - [`runbook.md`](runbook.md)
+- [`learning-notes.md`](learning-notes.md)（繁體中文實作與操作筆記）
 
 All artifacts use the checked-in synthetic English fixture and placeholder database identifiers.
 They contain no private Sheet values.
