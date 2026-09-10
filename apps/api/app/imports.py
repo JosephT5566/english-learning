@@ -160,6 +160,12 @@ def _sha256(value: object) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
+def canonical_content_hash(candidate: dict[str, object]) -> str:
+    """Hash one canonical card candidate using the shared versioned contract."""
+
+    return _sha256(candidate)
+
+
 def _normalize(value: str) -> str:
     return unicodedata.normalize("NFC", value.strip())
 
@@ -514,7 +520,7 @@ def _validate_row(
             "version": 1,
         },
     }
-    result.content_hash = _sha256(canonical_candidate)
+    result.content_hash = canonical_content_hash(canonical_candidate)
 
     return CanonicalImportRow(report=result, card_candidate=canonical_candidate)
 
