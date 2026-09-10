@@ -168,6 +168,12 @@ def _identity_key(value: str) -> str:
     return unicodedata.normalize("NFKC", value).casefold()
 
 
+def normalize_collection_identity(value: str) -> str:
+    """Return the shared normalized identity used by tags and list values."""
+
+    return _identity_key(value)
+
+
 def _append_diagnostic(row: RowReport, diagnostic: Diagnostic) -> None:
     row.diagnostic_count += 1
     if diagnostic.severity == "error":
