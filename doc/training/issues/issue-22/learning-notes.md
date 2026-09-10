@@ -463,7 +463,7 @@ Hashes 與 allowlisted diagnostic codes 能提供 replay 和 debugging evidence�
 
 ### Dry run 成功不代表 migration 已完成
 
-目前持久化結果證明全部 596 rows 都能 accepted 或 deterministically repaired，但不代表 `learning_cards` 已經建立。必須等 confirmed import 與 frontend cutover 完成後，產品資料來源才真正改變。
+Issue #22 完成時，dry run 只證明 CSV 可以被安全驗證，當時仍有 3 個 rejected rows，並不代表 `learning_cards` 已經建立。這些 source diagnostics 後來已修正，Issue #23 也已完成 596-row confirmed import 與 reconciliation；但 frontend 尚未 cut over，所以 PostgreSQL 目前仍只是 verified migration candidate，產品 runtime source of truth 尚未改變。
 
 ### Local-to-cloud transfer 需要乾淨的 boundary
 
@@ -484,4 +484,10 @@ Confirmed-import ticket 應該：
 9. Commit 後核對 source、card、tag 與 review-state counts。
 10. 記錄 rollback window，以及最終停用 CSV/import tooling 的方式。
 
-在這個 ticket 完成前，不要手動將 CSV rows 寫入 `learning_cards`。
+> 2026-09-10 update: Issue #23 已實作上述 confirmed-import boundary。修正後的 final
+> zero-rejection snapshot 已在 local database 匯入並通過 reconciliation：596 cards、596
+> mappings、596 fresh review states、184 tags、885 associations，且沒有建立 review batches 或
+> review events。私人 CSV 與 operational reports 仍保持 untracked；frontend cutover 尚未發生。
+
+在 Issue #22 checkpoint 時，不應手動將 CSV rows 寫入 `learning_cards`；後續寫入必須經過
+Issue #23 的 transaction、mapping 與 reconciliation boundary。

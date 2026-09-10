@@ -92,6 +92,21 @@ credentials, SQL parameters, or database URLs.
 All artifacts use the checked-in synthetic English fixture and placeholder database identifiers.
 They contain no private Sheet values.
 
+## Local migration result
+
+After the three Issue #22 source diagnostics were corrected, the operator approved a final
+zero-rejection dry run and applied the private 596-row snapshot locally. The untracked reconciliation
+report recorded matching expected and actual counts:
+
+- 596 eligible rows, cards, source mappings, and fresh review states;
+- 184 normalized owned tags and 885 card/tag associations;
+- zero archived cards, review batches, and review events;
+- all reconciliation comparison booleans true and no diagnostic codes.
+
+The private CSV and operational reports remain outside version control. This result verifies the
+database as a migration candidate; it does not perform frontend cutover or change the runtime source
+of truth.
+
 ## Verification
 
 - Complete backend suite with PostgreSQL integration enabled: 220 passed, one existing upstream
@@ -103,6 +118,5 @@ They contain no private Sheet values.
   pass against PostgreSQL 17.
 - Ruff lint/format, `uv lock --check`, and whitespace checks pass.
 
-The ignored real 596-row CSV has not been applied because its last recorded dry run still contained
-three rejected rows. No production, remote CI, frontend cutover, or source-of-truth transition is
-claimed.
+The operator has not recorded an unchanged replay of the private snapshot or a backup/restore drill.
+No production, remote CI, frontend cutover, or source-of-truth transition is claimed.

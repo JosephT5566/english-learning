@@ -43,8 +43,12 @@ A separate local confirmed-import CLI now requires and reproduces one eligible d
 atomically creating cards, normalized tags, associations, fresh review states, and durable
 source-to-card mappings in an existing owned deck. Exact and concurrent replay return the completed
 result without new mutations. Post-commit reconciliation persists only safe counts, hashes,
-booleans, row numbers, and diagnostic codes. The private 596-row snapshot has not been applied, and
-the frontend still uses Google Apps Script, so PostgreSQL is not yet the runtime source of truth.
+booleans, row numbers, and diagnostic codes. After the three Issue #22 source diagnostics were
+corrected, the final zero-rejection 596-row snapshot was applied locally and reconciliation passed:
+596 cards, mappings, and fresh review states; 184 tags; 885 card/tag associations; zero archived
+cards; and no review batches or events. The private CSV and operational reports remain untracked.
+The frontend still uses Google Apps Script, so PostgreSQL is a verified migration candidate rather
+than the runtime source of truth.
 
 ## Current User Experience
 

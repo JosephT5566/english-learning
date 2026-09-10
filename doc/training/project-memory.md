@@ -175,22 +175,26 @@ private 596-row CSV produced content-free aggregates of 11 accepted, 582 repaira
 one missing required meaning and one duplicate legacy ID affecting two rows. No private values or
 report were committed. The full backend suite passed 187 tests against PostgreSQL 17; Ruff, format,
 lock, migration-cycle, and whitespace checks passed. See
-[`issues/issue-22/README.md`](issues/issue-22/README.md).
+[`issues/issue-22/README.md`](issues/issue-22/README.md). These counts describe the Issue #22
+checkpoint; the source diagnostics were subsequently corrected before the final Issue #23 dry run.
 
-Issue #23 is implemented and verified locally against synthetic data. Revision `20260910_0005`
-adds confirmed-import runs plus composite, owner-constrained source-to-card mappings. The local CLI
-rereads and reproduces the approved Issue #22 snapshot, locks the dry run and existing active deck,
-and commits cards, normalized owned tags, associations, deterministic fresh review states, mappings,
-and the completed apply record in one transaction. Exact sequential and concurrent replay perform
-no product mutations. Seven pre-commit failure points roll back completely; a post-commit client
-failure is recovered by unchanged replay. Post-commit reconciliation checks counts, ownership,
-deck, hashes, tags, archived state, fresh states, deterministic samples, and review history while
-persisting no duplicate private content. The full backend suite passed 220 tests against PostgreSQL
-17 with the existing upstream warning; Ruff, format, lock, migration-cycle, and whitespace checks
-passed. The runbook and sanitized evidence are indexed in
-[`issues/issue-23/README.md`](issues/issue-23/README.md). The real private 596-row import has not run
-because the last recorded dry run still had three rejected rows; frontend cutover and source-of-truth
-transition are not claimed.
+Issue #23 is implemented and verified locally. Revision `20260910_0005` adds confirmed-import runs
+plus composite, owner-constrained source-to-card mappings. The local CLI rereads and reproduces the
+approved Issue #22 snapshot, locks the dry run and existing active deck, and commits cards,
+normalized owned tags, associations, deterministic fresh review states, mappings, and the completed
+apply record in one transaction. Exact sequential and concurrent replay perform no product
+mutations. Seven pre-commit failure points roll back completely; a post-commit client failure is
+recovered by unchanged replay. Post-commit reconciliation checks counts, ownership, deck, hashes,
+tags, archived state, fresh states, deterministic samples, and review history while persisting no
+duplicate private content. The full backend suite passed 220 tests against PostgreSQL 17 with the
+existing upstream warning; Ruff, format, lock, migration-cycle, and whitespace checks passed. After
+the Issue #22 source diagnostics were corrected, the final zero-rejection private snapshot was
+applied locally. Reconciliation reported matching expected and actual counts for 596 cards,
+mappings, and fresh review states, 184 tags, 885 card/tag associations, zero archived cards, and no
+review batches or events; every boolean check passed and no diagnostic codes were reported. The
+private CSV and operational reports remain untracked. The runbook and sanitized evidence are
+indexed in [`issues/issue-23/README.md`](issues/issue-23/README.md). Frontend cutover and the
+source-of-truth transition are not claimed.
 
 GitHub tracking:
 
@@ -233,13 +237,15 @@ Required outputs:
 
 ## Current blockers
 
-No implementation blocker. Remaining evidence limits are documented rather than hidden: live Google
-verification, remote CI status, production deployment, and a repeated signed-in legacy update were
-not verified during the first four milestones.
+No Issue #23 implementation or import blocker remains. Remaining evidence limits are documented
+rather than hidden: an operator result for exact replay of the private snapshot and a backup/restore
+drill have not been recorded. Live Google verification, remote CI status, production deployment,
+frontend cutover, and a repeated signed-in legacy update also remain unverified or out of scope.
 
 ## Next action
 
-Resolve the three private-snapshot row diagnostics, freeze and export the final CSV, run and approve
-a zero-rejection dry run, then execute Issue #23 against a clean cutover database and inspect the
-untracked confirmed-import and reconciliation reports. Do not switch frontend traffic or declare
-PostgreSQL authoritative during this operational step.
+Open and review the Issue #23 pull request, including the dependent Issue #22 commits. Preserve the
+private CSV, operational reports, and any database dump outside version control during the rollback
+window. If the operator has not already done so, repeat the unchanged apply command and record only
+content-free proof that it returned the completed result without mutations. Do not switch frontend
+traffic or declare PostgreSQL authoritative until the later frontend-cutover gate is explicitly met.
