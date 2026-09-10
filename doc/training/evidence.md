@@ -458,3 +458,35 @@ Use precise language such as “project,” “local load test,” or “deploye
   reconciliation, frontend cutover, remote CI, or deployment has been performed.
 - Five-minute explanation practiced: Not yet; an explanation is delivered with the Issue #22 handoff.
 - Candidate resume bullet: Not yet. Wait for confirmed import, reconciliation, and frontend cutover.
+
+### Transactional confirmed CSV import and reconciliation
+
+- Date: 2026-09-10
+- Status: Verified locally with synthetic data
+- Problem: Apply one approved private CSV snapshot exactly once without duplicate cards, silent
+  source drift, partial product mutations, or an unrecoverable post-commit client outcome.
+- Constraints and invariants: The importer must reread rather than reconstruct private content from
+  audit rows; owner/deck/language and every snapshot/item hash must match; one owner/source namespace
+  and source identity can be applied once; cards, tags, associations, fresh states, mappings, and
+  the apply record commit together; reconciliation remains content-free.
+- Decision: Lock the approved dry run and existing deck, bind source mappings through composite
+  PostgreSQL foreign keys and unique constraints, perform the bounded import in one transaction,
+  and persist reconciliation in a separate post-commit transaction. Exact retry returns the
+  completed run; a pending reconciliation can be completed after an ambiguous client interruption.
+- Implementation references: `apps/api/app/confirmed_imports.py`, revision `20260910_0005`,
+  `apps/api/tests/integration/test_confirmed_import_*.py`, and
+  `doc/training/issues/issue-23/`.
+- Verification and failure cases: Tests cover first apply, existing-tag reuse behavior, exact and
+  simultaneous replay, foreign/archived/language-conflicting targets, changed and deleted source
+  rows, rejected input, audit hash drift, seven pre-commit rollback points, post-commit recovery,
+  reconciliation mismatches, safe reports, and clean migration cycling. The full PostgreSQL-backed
+  suite passed 220 tests in 77.81 seconds with one existing upstream warning; Ruff lint/format,
+  `uv lock --check`, and whitespace checks passed.
+- Measured result: Local deterministic correctness and recovery evidence only. The synthetic suite
+  timing is not an import throughput, production reliability, or scale claim.
+- Limitations: The private 596-row snapshot has not been applied because the last dry run still had
+  three rejected rows. Frontend cutover, source-of-truth transition, remote CI, deployment, and
+  production behavior remain unverified.
+- Five-minute explanation practiced: In progress through the Issue #23 transaction walkthrough.
+- Candidate resume bullet: Not yet. Revisit after the private import, frontend cutover, and deployed
+  verification support an honest end-to-end claim.

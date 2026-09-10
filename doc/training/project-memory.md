@@ -1,6 +1,6 @@
 # English Learning Project Memory
 
-Last updated: 2026-09-09
+Last updated: 2026-09-10
 
 ## Purpose
 
@@ -56,7 +56,8 @@ backend tests against healthy PostgreSQL 17, Ruff lint/format, the uv lock check
 production build. Existing frontend build warnings and the upstream `TestClient` warning remain
 visible. Remote CI, live Google verification, import, frontend cutover, deployment, and production
 behavior are not claimed. Roadmap issue #12 is closed with every exit criterion checked. Ten bounded
-Weeks 4-8 tickets are published as #22 through #31 without `ai-ready`; #22 is next.
+Weeks 4-8 tickets are published as #22 through #31 without `ai-ready`; #22 and the synthetic
+implementation boundary for #23 are complete locally.
 
 Issue #4 current-state trace is documented in
 [`current-state-flow-trace.md`](current-state-flow-trace.md). It includes the three request flows,
@@ -176,6 +177,21 @@ report were committed. The full backend suite passed 187 tests against PostgreSQ
 lock, migration-cycle, and whitespace checks passed. See
 [`issues/issue-22/README.md`](issues/issue-22/README.md).
 
+Issue #23 is implemented and verified locally against synthetic data. Revision `20260910_0005`
+adds confirmed-import runs plus composite, owner-constrained source-to-card mappings. The local CLI
+rereads and reproduces the approved Issue #22 snapshot, locks the dry run and existing active deck,
+and commits cards, normalized owned tags, associations, deterministic fresh review states, mappings,
+and the completed apply record in one transaction. Exact sequential and concurrent replay perform
+no product mutations. Seven pre-commit failure points roll back completely; a post-commit client
+failure is recovered by unchanged replay. Post-commit reconciliation checks counts, ownership,
+deck, hashes, tags, archived state, fresh states, deterministic samples, and review history while
+persisting no duplicate private content. The full backend suite passed 220 tests against PostgreSQL
+17 with the existing upstream warning; Ruff, format, lock, migration-cycle, and whitespace checks
+passed. The runbook and sanitized evidence are indexed in
+[`issues/issue-23/README.md`](issues/issue-23/README.md). The real private 596-row import has not run
+because the last recorded dry run still had three rejected rows; frontend cutover and source-of-truth
+transition are not claimed.
+
 GitHub tracking:
 
 - [Weeks 0–3 roadmap issue](https://github.com/JosephT5566/english-learning/issues/12)
@@ -223,6 +239,7 @@ not verified during the first four milestones.
 
 ## Next action
 
-Resolve the three private-snapshot row diagnostics locally, then define the next bounded Week 4
-acceptance boundary for transactional confirmed import. Do not create cards until its apply,
-rollback, and reconciliation semantics are designed and reviewed.
+Resolve the three private-snapshot row diagnostics, freeze and export the final CSV, run and approve
+a zero-rejection dry run, then execute Issue #23 against a clean cutover database and inspect the
+untracked confirmed-import and reconciliation reports. Do not switch frontend traffic or declare
+PostgreSQL authoritative during this operational step.

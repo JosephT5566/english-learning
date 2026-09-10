@@ -32,3 +32,5 @@ __pycache__/
 # Private one-time migration input
 /apps/api/legacy-google-sheet-cutover-v1.csv
 /apps/api/legacy-google-sheet-cutover-v1.numbers
+/apps/api/legacy-google-sheet-confirmed-import.json
+/apps/api/legacy-google-sheet-reconciliation.json

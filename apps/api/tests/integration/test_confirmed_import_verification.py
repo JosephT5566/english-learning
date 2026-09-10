@@ -179,6 +179,71 @@ def test_changed_csv_is_rejected_before_product_writes(
     assert _product_counts(migrated_database_engine) == before
 
 
+def test_deleted_source_row_is_rejected_before_product_writes(
+    migrated_database_engine: Engine,
+    tmp_path: Path,
+) -> None:
+    owner_id = _insert_user(migrated_database_engine)
+    deck_id = _insert_deck(migrated_database_engine, owner_id)
+    dry_run_id = _persist_approved_dry_run(
+        migrated_database_engine, owner_id=owner_id, deck_id=deck_id
+    )
+    deleted_path = tmp_path / "deleted.csv"
+    deleted_path.write_text(
+        (FIXTURES / "import-valid-en.csv")
+        .read_text(encoding="utf-8")
+        .splitlines(keepends=True)[0],
+        encoding="utf-8",
+    )
+    before = _product_counts(migrated_database_engine)
+
+    with (
+        pytest.raises(ConfirmedImportError, match="source_snapshot_hash_mismatch"),
+        Session(migrated_database_engine) as session,
+        session.begin(),
+    ):
+        _verify(
+            session,
+            snapshot=_snapshot(deleted_path),
+            dry_run_id=dry_run_id,
+            owner_id=owner_id,
+            deck_id=deck_id,
+        )
+
+    assert _product_counts(migrated_database_engine) == before
+
+
+def test_persisted_item_hash_change_is_rejected_even_when_snapshot_hash_matches(
+    migrated_database_engine: Engine,
+) -> None:
+    owner_id = _insert_user(migrated_database_engine)
+    deck_id = _insert_deck(migrated_database_engine, owner_id)
+    dry_run_id = _persist_approved_dry_run(
+        migrated_database_engine, owner_id=owner_id, deck_id=deck_id
+    )
+    with migrated_database_engine.begin() as connection:
+        connection.execute(
+            text(
+                "UPDATE import_items SET content_hash = :hash "
+                "WHERE run_id = :dry_run_id"
+            ),
+            {"hash": "0" * 64, "dry_run_id": dry_run_id},
+        )
+
+    with (
+        pytest.raises(ConfirmedImportError, match="canonical_content_hash_mismatch"),
+        Session(migrated_database_engine) as session,
+        session.begin(),
+    ):
+        _verify(
+            session,
+            snapshot=_snapshot(),
+            dry_run_id=dry_run_id,
+            owner_id=owner_id,
+            deck_id=deck_id,
+        )
+
+
 def test_foreign_owner_and_archived_deck_are_rejected(
     migrated_database_engine: Engine,
 ) -> None:
@@ -216,6 +281,40 @@ def test_foreign_owner_and_archived_deck_are_rejected(
 
     with (
         pytest.raises(ConfirmedImportError, match="target_deck_archived"),
+        Session(migrated_database_engine) as session,
+        session.begin(),
+    ):
+        _verify(
+            session,
+            snapshot=_snapshot(),
+            dry_run_id=dry_run_id,
+            owner_id=owner_id,
+            deck_id=deck_id,
+        )
+
+
+def test_target_deck_language_change_is_rejected(
+    migrated_database_engine: Engine,
+) -> None:
+    owner_id = _insert_user(migrated_database_engine)
+    deck_id = _insert_deck(migrated_database_engine, owner_id)
+    dry_run_id = _persist_approved_dry_run(
+        migrated_database_engine, owner_id=owner_id, deck_id=deck_id
+    )
+    with migrated_database_engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                UPDATE learning_decks
+                SET target_language = 'ja', updated_at = CURRENT_TIMESTAMP
+                WHERE id = :deck_id
+                """
+            ),
+            {"deck_id": deck_id},
+        )
+
+    with (
+        pytest.raises(ConfirmedImportError, match="target_language_conflict"),
         Session(migrated_database_engine) as session,
         session.begin(),
     ):

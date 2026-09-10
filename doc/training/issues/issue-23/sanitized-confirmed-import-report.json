@@ -1,0 +1,22 @@
+{
+  "approved_dry_run_id": "22222222-2222-4222-8222-222222222222",
+  "completed_at": "2026-09-10T04:00:00+00:00",
+  "confirmed_import_run_id": "23232323-2323-4323-8323-232323232323",
+  "counts": {
+    "archived_cards": 0,
+    "card_tag_associations": 1,
+    "eligible_rows": 1,
+    "imported_cards": 1,
+    "review_states": 1,
+    "source_mappings": 1,
+    "tags": 1
+  },
+  "deck_id": "33333333-3333-4333-8333-333333333333",
+  "owner_id": 1,
+  "reconciliation_status": "passed",
+  "replayed": false,
+  "schema_version": "confirmed-import-report-v1",
+  "source_namespace": "sanitized-cutover-fixture-v1",
+  "source_snapshot_hash": "dc43d9fbda607d1c7936aa8a42b0c83fe9c9a7279e765845103dee59b3db8d62",
+  "status": "completed"
+}

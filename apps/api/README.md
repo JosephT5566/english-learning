@@ -64,6 +64,10 @@ Issue #9 revision `20260903_0003` adds the owner/update ordering indexes used by
 management reads.
 Issue #22 revision `20260909_0004` adds owner/deck-scoped dry-run audit records and bounded per-row
 diagnostics. It stores hashes and safe codes, not raw legacy learning content.
+Issue #23 revision `20260910_0005` adds one-time confirmed-import runs and database-constrained
+source-to-card mappings. One transaction creates cards, normalized owned tags, associations, fresh
+review states, mappings, and the completed apply record; reconciliation is persisted separately
+after commit so an interrupted client can recover by exact replay.
 
 ## One-time legacy CSV dry run
 
@@ -86,6 +90,33 @@ The command persists only `import_runs` and `import_items`. Replaying an unchang
 the existing run. It never creates confirmed cards, tags, review states, batches, or events. See the
 [Issue #22 artifact](../../doc/training/issues/issue-22/README.md) for mapping, normalization,
 scheduling-reset, and diagnostic-safety rules.
+
+## One-time confirmed legacy CSV import
+
+Only apply a final dry run with zero rejected rows after reviewing its sanitized report. The command
+must repeat the exact owner, existing deck, namespace, language, snapshot timestamp, and validator
+version used by that dry run. Keep both operational reports outside the repository:
+
+```bash
+uv run python -m app.confirmed_imports \
+  --csv legacy-google-sheet-cutover-v1.csv \
+  --approved-dry-run-id DRY_RUN_UUID \
+  --owner-id OWNER_ID \
+  --deck-id DECK_UUID \
+  --source-namespace legacy-google-sheet-cutover-v1 \
+  --target-language en \
+  --snapshot-captured-at 2026-09-09T00:00:00+08:00 \
+  --validator-version csv-dry-run-v1 \
+  --report /tmp/legacy-google-sheet-confirmed-import.json \
+  --reconciliation-report /tmp/legacy-google-sheet-reconciliation.json
+```
+
+Exit code `0` means apply/replay and reconciliation passed. Validation, apply, database, or report
+failures return `2`; a persisted reconciliation mismatch returns `3`. An unchanged retry after a
+commit or report-writing interruption returns the existing apply without changing product rows,
+then completes or reconstructs reconciliation. Never use a newer or edited CSV with an older dry
+run ID. See the [Issue #23 runbook](../../doc/training/issues/issue-23/runbook.md) before operating
+on the private snapshot.
 
 ## Local PostgreSQL
 

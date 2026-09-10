@@ -65,11 +65,14 @@ def _insert_deck(engine: Engine, owner_id: int) -> UUID:
         ).scalar_one()
 
 
-def _arrange_approved_import(engine: Engine):
+def _arrange_approved_import(
+    engine: Engine,
+    csv_path: Path = FIXTURES / "import-valid-en.csv",
+):
     owner_id = _insert_user(engine)
     deck_id = _insert_deck(engine, owner_id)
     snapshot = read_validated_csv_snapshot(
-        FIXTURES / "import-valid-en.csv",
+        csv_path,
         source_namespace=SOURCE_NAMESPACE,
         target_language="en",
         snapshot_captured_at=SNAPSHOT_AT,
@@ -248,6 +251,75 @@ def test_exact_replay_returns_existing_result_without_any_mutation(
     assert replay.run_id == first.run_id
     assert replay.completed_at == first.completed_at
     assert _mutation_snapshot(migrated_database_engine) == before_replay
+
+
+def test_apply_reuses_existing_normalized_owned_tag_without_modifying_it(
+    migrated_database_engine: Engine,
+) -> None:
+    owner_id, deck_id, snapshot, dry_run_id = _arrange_approved_import(
+        migrated_database_engine
+    )
+    with migrated_database_engine.begin() as connection:
+        existing = connection.execute(
+            text(
+                """
+                INSERT INTO tags (owner_id, display_name, normalized_name)
+                VALUES (:owner_id, 'Existing fixture label', 'fixture')
+                RETURNING id, display_name, version, created_at, updated_at
+                """
+            ),
+            {"owner_id": owner_id},
+        ).one()
+
+    _apply(migrated_database_engine, owner_id, deck_id, snapshot, dry_run_id)
+
+    with migrated_database_engine.connect() as connection:
+        persisted = connection.execute(
+            text(
+                """
+                SELECT id, display_name, version, created_at, updated_at
+                FROM tags WHERE owner_id = :owner_id
+                """
+            ),
+            {"owner_id": owner_id},
+        ).one()
+        association_tag_id = connection.execute(
+            text("SELECT tag_id FROM learning_card_tags")
+        ).scalar_one()
+        tag_count = connection.execute(text("SELECT count(*) FROM tags")).scalar_one()
+
+    assert persisted == existing
+    assert association_tag_id == existing.id
+    assert tag_count == 1
+
+
+def test_apply_preserves_archived_source_state(
+    migrated_database_engine: Engine,
+    tmp_path: Path,
+) -> None:
+    archived_path = tmp_path / "archived.csv"
+    archived_path.write_text(
+        (FIXTURES / "import-valid-en.csv")
+        .read_text(encoding="utf-8")
+        .replace(",active,", ",inactive,"),
+        encoding="utf-8",
+    )
+    owner_id, deck_id, snapshot, dry_run_id = _arrange_approved_import(
+        migrated_database_engine,
+        archived_path,
+    )
+
+    result = _apply(migrated_database_engine, owner_id, deck_id, snapshot, dry_run_id)
+
+    assert result.archived_card_count == 1
+    with migrated_database_engine.connect() as connection:
+        archived_at = connection.execute(
+            text("SELECT archived_at FROM learning_cards")
+        ).scalar_one()
+    assert archived_at is not None
+    assert archived_at >= datetime.fromisoformat(
+        str(snapshot.rows[0].card_candidate["created_at"])
+    )
 
 
 def test_concurrent_exact_apply_creates_one_result_and_one_replay(
