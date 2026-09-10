@@ -134,6 +134,22 @@ class DryRunReport:
     items: list[RowReport]
 
 
+@dataclass(frozen=True, repr=False)
+class CanonicalImportRow:
+    """Private in-memory canonical content paired with its safe row report."""
+
+    report: RowReport
+    card_candidate: dict[str, object]
+
+
+@dataclass(frozen=True, repr=False)
+class ValidatedCsvSnapshot:
+    """Validated report plus private candidates that must never be persisted as audit."""
+
+    report: DryRunReport
+    rows: list[CanonicalImportRow]
+
+
 def _sha256(value: object) -> str:
     encoded = json.dumps(
         value,
@@ -144,12 +160,24 @@ def _sha256(value: object) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
+def canonical_content_hash(candidate: dict[str, object]) -> str:
+    """Hash one canonical card candidate using the shared versioned contract."""
+
+    return _sha256(candidate)
+
+
 def _normalize(value: str) -> str:
     return unicodedata.normalize("NFC", value.strip())
 
 
 def _identity_key(value: str) -> str:
     return unicodedata.normalize("NFKC", value).casefold()
+
+
+def normalize_collection_identity(value: str) -> str:
+    """Return the shared normalized identity used by tags and list values."""
+
+    return _identity_key(value)
 
 
 def _append_diagnostic(row: RowReport, diagnostic: Diagnostic) -> None:
@@ -339,7 +367,7 @@ def _validate_row(
     target_language: str,
     snapshot_captured_at: datetime,
     header_is_valid: bool,
-) -> RowReport:
+) -> CanonicalImportRow:
     normalized_cells = [_normalize(value) for value in cells]
     first_values: dict[str, str] = {}
     first_raw_values: dict[str, str] = {}
@@ -492,19 +520,19 @@ def _validate_row(
             "version": 1,
         },
     }
-    result.content_hash = _sha256(canonical_candidate)
+    result.content_hash = canonical_content_hash(canonical_candidate)
 
-    return result
+    return CanonicalImportRow(report=result, card_candidate=canonical_candidate)
 
 
-def validate_csv_snapshot(
+def read_validated_csv_snapshot(
     path: Path,
     *,
     source_namespace: str,
     target_language: str,
     snapshot_captured_at: datetime,
-) -> DryRunReport:
-    """Validate a bounded CSV snapshot without retaining raw row content."""
+) -> ValidatedCsvSnapshot:
+    """Validate a bounded CSV and retain private candidates only in process memory."""
 
     namespace = _normalize(source_namespace)
     if not namespace or len(namespace) > 100:
@@ -575,7 +603,7 @@ def validate_csv_snapshot(
         "rows": [[_normalize(cell) for cell in row] for row in rows],
     }
     snapshot_hash = _sha256(canonical_snapshot)
-    items = [
+    validated_rows = [
         _validate_row(
             index,
             normalized_header,
@@ -587,6 +615,7 @@ def validate_csv_snapshot(
         )
         for index, row in enumerate(rows, start=2)
     ]
+    items = [row.report for row in validated_rows]
 
     identities = Counter(item.source_identity_hash for item in items)
     for item in items:
@@ -597,22 +626,42 @@ def validate_csv_snapshot(
     diagnostic_count = run_diagnostic_count + sum(
         item.diagnostic_count for item in items
     )
-    return DryRunReport(
-        validator_version=VALIDATOR_VERSION,
-        source_namespace=namespace,
-        source_snapshot_hash=snapshot_hash,
-        target_language=target_language,
-        snapshot_captured_at=snapshot_captured_at.astimezone(UTC).isoformat(),
-        status="completed" if header_is_valid else "rejected",
-        total_rows=len(items),
-        accepted_rows=outcome_counts["accepted"],
-        repaired_rows=outcome_counts["repaired"],
-        rejected_rows=outcome_counts["rejected"],
-        diagnostic_count=diagnostic_count,
-        diagnostics=run_diagnostics,
-        diagnostics_truncated=run_truncated,
-        items=items,
+    return ValidatedCsvSnapshot(
+        report=DryRunReport(
+            validator_version=VALIDATOR_VERSION,
+            source_namespace=namespace,
+            source_snapshot_hash=snapshot_hash,
+            target_language=target_language,
+            snapshot_captured_at=snapshot_captured_at.astimezone(UTC).isoformat(),
+            status="completed" if header_is_valid else "rejected",
+            total_rows=len(items),
+            accepted_rows=outcome_counts["accepted"],
+            repaired_rows=outcome_counts["repaired"],
+            rejected_rows=outcome_counts["rejected"],
+            diagnostic_count=diagnostic_count,
+            diagnostics=run_diagnostics,
+            diagnostics_truncated=run_truncated,
+            items=items,
+        ),
+        rows=validated_rows,
     )
+
+
+def validate_csv_snapshot(
+    path: Path,
+    *,
+    source_namespace: str,
+    target_language: str,
+    snapshot_captured_at: datetime,
+) -> DryRunReport:
+    """Validate a bounded CSV and return only its content-safe report."""
+
+    return read_validated_csv_snapshot(
+        path,
+        source_namespace=source_namespace,
+        target_language=target_language,
+        snapshot_captured_at=snapshot_captured_at,
+    ).report
 
 
 def persist_dry_run(

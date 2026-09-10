@@ -68,6 +68,12 @@ Last updated: 2026-09-04
   IDs, NFKC plus case-folded collection identity, canonical SHA-256 hashes, and versioned replay.
   Persist only bounded content-safe dry-run diagnostics. Start every later imported card with fresh
   backend scheduling; legacy scheduling fields are validated and explained but never authoritative.
+- Treat confirmed CSV application as a distinct state transition from dry-run validation. Passing
+  the exact dry-run ID is the operator approval; the importer must reproduce its complete snapshot
+  and per-row hashes before writes. Allow one successful apply per owner/source namespace and one
+  per dry run, map each source identity to exactly one owned card, and commit all product rows plus
+  mappings in one PostgreSQL transaction. Persist post-commit reconciliation separately so a
+  successful commit followed by client/report failure is recoverable through mutation-free replay.
 
 ## Known Follow-Up Areas
 
@@ -106,3 +112,6 @@ Last updated: 2026-09-04
 - 2026-09-09: Added the one-time CSV dry-run validation boundary with owner/deck checks, deterministic
   source and content hashing, fresh-schedule diagnostics, persisted import audit records, and no
   confirmed learning-data mutations.
+- 2026-09-10: Added the confirmed CSV import boundary with database-constrained source mappings,
+  atomic card/tag/fresh-state creation, concurrent exact replay, safe post-commit reconciliation,
+  and an operator-only local CLI. Frontend cutover remains explicitly out of scope.

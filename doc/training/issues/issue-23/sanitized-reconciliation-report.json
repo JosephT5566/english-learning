@@ -1,0 +1,57 @@
+{
+  "actual_counts": {
+    "archived_cards": 0,
+    "card_tag_associations": 1,
+    "cards": 1,
+    "eligible_rows": 1,
+    "mappings": 1,
+    "review_batches": 0,
+    "review_events": 0,
+    "review_states": 1,
+    "tags": 1
+  },
+  "approved_dry_run_id": "22222222-2222-4222-8222-222222222222",
+  "checks": {
+    "archived_card_count_matches": true,
+    "canonical_content_hashes_match": true,
+    "eligible_rows_match_mappings": true,
+    "fresh_review_states_match": true,
+    "mappings_match_cards": true,
+    "no_review_history_created": true,
+    "ownership_and_deck_match": true,
+    "sample_fields_match": true,
+    "tag_association_count_matches": true,
+    "tag_count_matches": true
+  },
+  "confirmed_import_run_id": "23232323-2323-4323-8323-232323232323",
+  "diagnostic_codes": [],
+  "expected_counts": {
+    "archived_cards": 0,
+    "card_tag_associations": 1,
+    "cards": 1,
+    "eligible_rows": 1,
+    "mappings": 1,
+    "review_batches": 0,
+    "review_events": 0,
+    "review_states": 1,
+    "tags": 1
+  },
+  "samples": [
+    {
+      "canonical_content_hash": "a581bf109f99b990ed7f366dcf52b8bfb5548c803dd34ee10e04bf29921a9d51",
+      "fields": {
+        "archived": true,
+        "canonical_content_hash": true,
+        "fresh_review_state": true,
+        "meaning": true,
+        "tags": true,
+        "term": true
+      },
+      "row_number": 2,
+      "source_identity_hash": "16a4460eab5029414401c70ecd96c092c7d8d48be8a9b6039834554f326f24af"
+    }
+  ],
+  "schema_version": "confirmed-import-reconciliation-v1",
+  "source_snapshot_hash": "dc43d9fbda607d1c7936aa8a42b0c83fe9c9a7279e765845103dee59b3db8d62",
+  "status": "passed"
+}

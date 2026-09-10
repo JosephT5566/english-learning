@@ -1,0 +1,31 @@
+{
+  "fixture": "sanitized synthetic English import",
+  "pre_commit_failure_points": [
+    "before_product_writes",
+    "after_card",
+    "after_tags",
+    "after_review_state",
+    "before_apply_record",
+    "after_mapping",
+    "before_commit"
+  ],
+  "pre_commit_result": {
+    "all_product_mutations_rolled_back": true,
+    "confirmed_import_mappings_created": 0,
+    "confirmed_import_runs_created": 0
+  },
+  "post_commit_interruption": {
+    "first_apply_committed": true,
+    "initial_reconciliation_status": "pending",
+    "retry_created_new_product_rows": false,
+    "retry_replayed_existing_run": true,
+    "retry_reconciliation_status": "passed"
+  },
+  "reconciliation_mismatch_cases": [
+    "canonical_content_hashes_match",
+    "fresh_review_states_match",
+    "tag_association_count_matches",
+    "eligible_rows_match_mappings"
+  ],
+  "reports_contained_raw_learning_content": false
+}

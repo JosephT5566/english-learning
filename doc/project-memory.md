@@ -1,6 +1,6 @@
 # Project Memory
 
-Last updated: 2026-09-09
+Last updated: 2026-09-10
 
 ## Product
 
@@ -38,6 +38,17 @@ disconnected from the user experience.
 A local one-time CSV dry-run boundary now validates the legacy 21-field Sheet snapshot and persists
 only safe import audit hashes and diagnostic codes. It does not create cards or review data; the
 frontend and Google Apps Script runtime remain unchanged.
+
+A separate local confirmed-import CLI now requires and reproduces one eligible dry run before
+atomically creating cards, normalized tags, associations, fresh review states, and durable
+source-to-card mappings in an existing owned deck. Exact and concurrent replay return the completed
+result without new mutations. Post-commit reconciliation persists only safe counts, hashes,
+booleans, row numbers, and diagnostic codes. After the three Issue #22 source diagnostics were
+corrected, the final zero-rejection 596-row snapshot was applied locally and reconciliation passed:
+596 cards, mappings, and fresh review states; 184 tags; 885 card/tag associations; zero archived
+cards; and no review batches or events. The private CSV and operational reports remain untracked.
+The frontend still uses Google Apps Script, so PostgreSQL is a verified migration candidate rather
+than the runtime source of truth.
 
 ## Current User Experience
 

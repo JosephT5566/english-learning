@@ -454,7 +454,45 @@ Use precise language such as “project,” “local load test,” or “deploye
   17; Ruff lint/format and the uv lock check passed.
 - Measured result: Local correctness evidence only. The full suite took 71.33 seconds. This is not
   import throughput, production reliability, or user-impact evidence.
-- Limitations: The private snapshot still has three rejected rows to resolve. No confirmed import,
-  reconciliation, frontend cutover, remote CI, or deployment has been performed.
+- Limitations: At the Issue #22 checkpoint, the private snapshot still had three rejected rows and
+  no confirmed import had been performed. Those source diagnostics were corrected before the final
+  dry run and Issue #23 apply; frontend cutover, remote CI, and deployment remained outside this
+  checkpoint.
 - Five-minute explanation practiced: Not yet; an explanation is delivered with the Issue #22 handoff.
 - Candidate resume bullet: Not yet. Wait for confirmed import, reconciliation, and frontend cutover.
+
+### Transactional confirmed CSV import and reconciliation
+
+- Date: 2026-09-10
+- Status: Verified locally; corrected private snapshot applied and reconciled
+- Problem: Apply one approved private CSV snapshot exactly once without duplicate cards, silent
+  source drift, partial product mutations, or an unrecoverable post-commit client outcome.
+- Constraints and invariants: The importer must reread rather than reconstruct private content from
+  audit rows; owner/deck/language and every snapshot/item hash must match; one owner/source namespace
+  and source identity can be applied once; cards, tags, associations, fresh states, mappings, and
+  the apply record commit together; reconciliation remains content-free.
+- Decision: Lock the approved dry run and existing deck, bind source mappings through composite
+  PostgreSQL foreign keys and unique constraints, perform the bounded import in one transaction,
+  and persist reconciliation in a separate post-commit transaction. Exact retry returns the
+  completed run; a pending reconciliation can be completed after an ambiguous client interruption.
+- Implementation references: `apps/api/app/confirmed_imports.py`, revision `20260910_0005`,
+  `apps/api/tests/integration/test_confirmed_import_*.py`, and
+  `doc/training/issues/issue-23/`.
+- Verification and failure cases: Tests cover first apply, existing-tag reuse behavior, exact and
+  simultaneous replay, foreign/archived/language-conflicting targets, changed and deleted source
+  rows, rejected input, audit hash drift, seven pre-commit rollback points, post-commit recovery,
+  reconciliation mismatches, safe reports, and clean migration cycling. The full PostgreSQL-backed
+  suite passed 220 tests in 77.81 seconds with one existing upstream warning; Ruff lint/format,
+  `uv lock --check`, and whitespace checks passed.
+- Measured result: The corrected final snapshot reconciled with 596 eligible rows, cards, mappings,
+  and fresh review states; 184 tags; 885 card/tag associations; zero archived cards; and zero review
+  batches or events. Expected and actual counts matched, all reconciliation booleans were true, and
+  no diagnostic codes were reported. The synthetic suite timing is not an import-throughput,
+  production-reliability, or scale claim.
+- Limitations: The reported private-data run proves the first apply and reconciliation, but no
+  operator result for an unchanged replay or backup/restore drill has been recorded. Frontend
+  cutover, source-of-truth transition, remote CI, deployment, and production behavior remain
+  unverified. The private CSV and operational reports remain untracked.
+- Five-minute explanation practiced: In progress through the Issue #23 transaction walkthrough.
+- Candidate resume bullet: Not yet. Revisit after the private import, frontend cutover, and deployed
+  verification support an honest end-to-end claim.

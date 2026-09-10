@@ -116,3 +116,6 @@ names are reported only as an aggregate `unknown_headers` code.
 
 See [`sanitized-dry-run-report.json`](sanitized-dry-run-report.json) for deterministic synthetic
 English and Japanese output.
+
+完整的問題解析、commands 說明、學習重點與 confirmed-import handoff，請參考
+[`learning-notes.md`](learning-notes.md)。

@@ -19,11 +19,13 @@ pytestmark = [
 
 ALEMBIC_CONFIG_PATH = Path(__file__).parents[2] / "alembic.ini"
 BASELINE_REVISION = "20260901_0001"
-IMPORT_DRY_RUN_REVISION = "20260909_0004"
+CONFIRMED_IMPORT_REVISION = "20260910_0005"
 
 
 EXPECTED_HEAD_TABLES = {
     "alembic_version",
+    "confirmed_import_mappings",
+    "confirmed_import_runs",
     "import_items",
     "import_runs",
     "learning_card_tags",
@@ -61,7 +63,7 @@ def test_clean_postgres_database_supports_reversible_migration_cycle(
         command.upgrade(alembic_config, "head")
 
         assert set(inspect(database_engine).get_table_names()) == EXPECTED_HEAD_TABLES
-        assert current_revision(database_engine) == IMPORT_DRY_RUN_REVISION
+        assert current_revision(database_engine) == CONFIRMED_IMPORT_REVISION
 
         command.downgrade(alembic_config, BASELINE_REVISION)
 
@@ -71,7 +73,7 @@ def test_clean_postgres_database_supports_reversible_migration_cycle(
         command.upgrade(alembic_config, "head")
 
         assert set(inspect(database_engine).get_table_names()) == EXPECTED_HEAD_TABLES
-        assert current_revision(database_engine) == IMPORT_DRY_RUN_REVISION
+        assert current_revision(database_engine) == CONFIRMED_IMPORT_REVISION
 
         command.downgrade(alembic_config, "base")
 
@@ -81,6 +83,6 @@ def test_clean_postgres_database_supports_reversible_migration_cycle(
         command.upgrade(alembic_config, "head")
 
         assert set(inspect(database_engine).get_table_names()) == EXPECTED_HEAD_TABLES
-        assert current_revision(database_engine) == IMPORT_DRY_RUN_REVISION
+        assert current_revision(database_engine) == CONFIRMED_IMPORT_REVISION
     finally:
         database_engine.dispose()

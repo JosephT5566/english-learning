@@ -1,0 +1,18 @@
+{
+  "fixture": "sanitized synthetic English import",
+  "first_apply_replayed": false,
+  "replay_replayed": true,
+  "same_confirmed_import_run_id": true,
+  "same_completed_at": true,
+  "product_rows_unchanged": true,
+  "timestamps_unchanged": true,
+  "versions_unchanged": true,
+  "counts_after_replay": {
+    "cards": 1,
+    "card_tag_associations": 1,
+    "confirmed_import_mappings": 1,
+    "confirmed_import_runs": 1,
+    "review_states": 1,
+    "tags": 1
+  }
+}

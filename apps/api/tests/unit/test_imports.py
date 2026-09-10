@@ -12,6 +12,7 @@ from app.imports import (
     EXPECTED_FIELDS,
     LEGACY_FIELD_MAPPING,
     ImportBoundaryError,
+    read_validated_csv_snapshot,
     validate_csv_snapshot,
 )
 
@@ -195,6 +196,36 @@ def test_report_never_contains_raw_private_learning_content(tmp_path: Path) -> N
     serialized = json.dumps(asdict(_validate(path)), ensure_ascii=False)
 
     assert all(value not in serialized for value in private_values.values())
+
+
+def test_confirmed_import_can_reuse_private_canonical_candidates_in_memory(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "private.csv"
+    _write_csv(
+        path,
+        list(EXPECTED_FIELDS),
+        [
+            _blank_row(
+                content=" private term ",
+                chineseExplain=" private meaning ",
+                tags=" Fixture, fixture, Second ",
+            )
+        ],
+    )
+
+    snapshot = read_validated_csv_snapshot(
+        path,
+        source_namespace="legacy-google-sheet-cutover-v1",
+        target_language="en",
+        snapshot_captured_at=SNAPSHOT_AT,
+    )
+
+    assert snapshot.rows[0].card_candidate["term"] == "private term"
+    assert snapshot.rows[0].card_candidate["meaning"] == "private meaning"
+    assert snapshot.rows[0].card_candidate["tags"] == ["Fixture", "Second"]
+    assert snapshot.rows[0].report is snapshot.report.items[0]
+    assert "private term" not in json.dumps(asdict(snapshot.report))
 
 
 def test_content_hash_tracks_mapped_content_not_ignored_legacy_schedule(

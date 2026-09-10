@@ -44,6 +44,10 @@ Last updated: 2026-09-04
 - `apps/api/app/writes.py`: server-owned deck/card create, optimistic edit, and archive operations.
 - `apps/api/app/reviews.py`: authenticated atomic review submissions, scheduling transitions,
   idempotent replay, and deterministic row-lock concurrency control.
+- `apps/api/app/imports.py`: bounded CSV reading, validation, canonicalization, hashing, dry-run
+  audit persistence, and private in-memory confirmed-import candidates.
+- `apps/api/app/confirmed_imports.py`: approved-snapshot verification, atomic confirmed import,
+  exact replay, post-commit reconciliation, safe reports, and the local operator CLI.
 - `apps/api/app/pagination.py`: versioned opaque cursor encoding, strict parsing, and normalized
   query-shape binding.
 - `apps/api/migrations/`: Alembic environment and reversible migration history; the empty baseline
@@ -179,6 +183,17 @@ evidence is recorded in the [Issue #8 query-plan report](training/issues/issue-8
   snapshot/content hashes and validator version make unchanged replay deterministic. Diagnostic
   JSON contains safe codes and field names rather than raw legacy learning content. This path has no
   HTTP route and cannot write cards, tags, review state, batches, or events.
+- A separate confirmed-import CLI rereads the private CSV and locks the approved dry run and target
+  deck before comparing all metadata, snapshot hashes, source identities, content hashes, and row
+  outcomes. A single transaction creates cards in the existing deck, reuses or creates normalized
+  owned tags, creates associations and deterministic fresh review states, persists source-to-card
+  mappings, and records the completed apply. Unique owner/namespace and dry-run constraints make
+  exact and concurrent replay return one committed result without new mutations.
+- Reconciliation runs only after the apply commits. It verifies approved/applied counts, ownership,
+  deck membership, canonical content hashes, tags, associations, archived state, fresh scheduling,
+  deterministic content-free samples, and the absence of review history for imported cards. Its
+  passed or failed result is persisted as counts, hashes, booleans, row numbers, and safe codes, so
+  retry can recover after a post-commit CLI interruption without retaining duplicate card content.
 - Event-count agreement with a batch, consistency with current state, atomic state/event writes,
   request-hash replay handling, and the no-mutation application contract are enforced by the review
   service transaction and its PostgreSQL integration tests.
