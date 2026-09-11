@@ -5,9 +5,9 @@ Last updated: 2026-09-12
 ## Status
 
 Parts 1 and 2 are implemented and verified locally: bilingual reads plus failure-safe deck/card
-create, edit, and archive now use FastAPI. The full ticket remains open for final cutover/rollback
-execution, removal of legacy runtime configuration, remote CI, deployment, and post-deployment
-verification.
+create, edit, and archive now use FastAPI. Part 3 has removed Apps Script from normal frontend build
+configuration and added a production API configuration gate. The full ticket remains open for the
+real API/CORS setup, remote CI, deployment, and post-deployment read/write verification.
 
 ## Agreed Product Shape
 
@@ -94,6 +94,35 @@ Part 2 verification on 2026-09-12:
 - Manual Chrome inspection confirmed the compact deck drawer remains visually consistent with the
   established learning-library design.
 
+## Part 3 Configuration Cutover
+
+- Removed `PUBLIC_APP_SCRIPT_URL` from frontend CI and GitHub Pages deployment. The ignored local
+  environment entry was also removed so SvelteKit cannot serialize the endpoint into a local static
+  production artifact.
+- Added `PUBLIC_API_BASE_URL` to deployment and fail the build unless all public runtime values are
+  present and the API value is an HTTPS URL without credentials, a query, or a fragment.
+- Preserved `src/lib/api/sheet.ts` and the sanitized Sheet fixture as rollback evidence. The wrapper
+  has no ambient endpoint now; a caller must deliberately inject one, and normal runtime modules do
+  not import it.
+- Added source/configuration regression tests and scanned the generated static artifact for Apps
+  Script variables, hosts, and URL fragments.
+
+Part 3 local verification on 2026-09-12:
+
+- Frontend contract/state/component/configuration tests: 20 passed.
+- Svelte/TypeScript check: zero errors and warnings.
+- Static production build with `BASE_PATH=/english-learning` and a configured HTTPS API origin:
+  passed. The generated browser artifact contained the FastAPI value and no Apps Script variable,
+  host, or endpoint fragment.
+- Critical Playwright Chrome flows: 28 passed; their combined normal review/management trace still
+  contains FastAPI `/v1` traffic and no Apps Script request.
+- Deployment validation accepts a complete HTTPS configuration and rejects missing, HTTP,
+  credential-bearing, query-bearing, and fragment-bearing API values.
+
+Part 3 live verification is not complete. No production API host or backend deployment manifest is
+recorded in this repository, so the actual GitHub variable, production CORS allowlist, remote CI,
+deployed management mutation, and post-deployment network trace cannot yet be verified.
+
 This evidence is local and fixture-backed. It does not claim live authorization isolation, remote CI,
 deployment, production traffic, or management-write correctness.
 
@@ -110,6 +139,18 @@ losing newly authored management data. After that point, the Sheet snapshot beco
 frontend redeploy would hide or overwrite PostgreSQL-only changes unless the app is first put into
 downtime and data is deliberately reconciled. There is no automatic reverse sync or dual write.
 
+The local development data boundary was already crossed on 2026-09-11 when a live-token ten-card
+review wrote only to local PostgreSQL. The legacy Sheet must not be treated as a current restore
+source for that local dataset. The production boundary is unverified and must be recorded at the
+first confirmed deployed PostgreSQL-only mutation.
+
+Rollback has two levels:
+
+1. Redeploy `6059689` to remove management mutations while retaining FastAPI review and management
+   reads. This contains frontend write risk without reintroducing Sheet persistence.
+2. A legacy redeploy at `9e90e68` reintroduces Apps Script/Sheet review persistence. After the first
+   production PostgreSQL-only mutation, this is unsafe without downtime and explicit reconciliation.
+
 ## Five-Minute Explanation
 
 The UI is multilingual through data, not duplication: a language query selects English or Japanese,
@@ -123,6 +164,6 @@ reintroduce stale Sheet state, so recovery requires downtime and explicit reconc
 
 ## Next Step
 
-Complete Part 3: execute the read/write cutover checklist against the real API, record the exact
-rollback/data-consistency boundary, remove Apps Script from normal runtime configuration, and verify
-remote CI plus the deployed static base path.
+Deploy the production API and PostgreSQL first, configure its exact GitHub Pages CORS origin, then
+set the repository's `PUBLIC_API_BASE_URL` and execute the remaining remote CI, deployment, live
+read/write, and post-write rollback-boundary checks.

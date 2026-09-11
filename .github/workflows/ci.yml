@@ -13,11 +13,9 @@ jobs:
     name: Frontend checks
     runs-on: ubuntu-latest
     # SvelteKit generates named exports for $env/static/public only when the
-    # variables exist. Safe placeholders keep checks and browser-test builds
-    # deterministic on clean runners; the production-style build overrides them.
+    # variables exist. Safe placeholders keep clean-runner checks deterministic.
     env:
       PUBLIC_API_BASE_URL: http://127.0.0.1:8000
-      PUBLIC_APP_SCRIPT_URL: https://example.invalid/apps-script
       PUBLIC_GOOGLE_AUTH_CLIENT_ID: ci-google-client-id
       PUBLIC_EMAIL_WHITE_LIST: ci-user@example.invalid
     steps:
@@ -53,10 +51,6 @@ jobs:
 
       - name: Build frontend
         env:
-          PUBLIC_API_BASE_URL: ${{ vars.PUBLIC_API_BASE_URL }}
-          PUBLIC_APP_SCRIPT_URL: ${{ vars.PUBLIC_APP_SCRIPT_URL }}
-          PUBLIC_GOOGLE_AUTH_CLIENT_ID: ${{ vars.PUBLIC_GOOGLE_AUTH_CLIENT_ID }}
-          PUBLIC_EMAIL_WHITE_LIST: ${{ vars.PUBLIC_EMAIL_WHITE_LIST }}
           BASE_PATH: "/${{ github.event.repository.name }}"
         run: npm run build
 

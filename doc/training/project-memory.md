@@ -14,8 +14,8 @@ This is project evidence, not professional production-service experience.
 - GitHub Pages deployment
 - Google Identity Services sign-in in the browser
 - Legacy Google Apps Script/Sheet code retained for rollback evidence, but absent from normal review
-  and deck/card management read traffic
-- PostgreSQL-backed English review plus shared English/Japanese management reads
+  and deck/card management read/write traffic and frontend build configuration
+- PostgreSQL-backed English review plus shared English/Japanese management reads and writes
 - English review routes and shared language-aware deck/card components
 - A semantic-search proposal exists but is not an active priority
 
@@ -47,8 +47,9 @@ This is project evidence, not professional production-service experience.
 ## Active milestone
 
 Week 5 — frontend integration and cutover. Issue #24 is implemented and verified locally. Issue #25
-Parts 1 and 2 now have locally verified bilingual management reads and failure-safe mutations. Final
-cutover/rollback execution, legacy runtime cleanup, remote CI, and deployment remain pending.
+Parts 1 and 2 plus the local Part 3 runtime-configuration cutover are verified. Production API/CORS
+configuration, remote CI, deployment, live read/write checks, and the production rollback boundary
+remain pending.
 
 The Weeks 0-3 milestone is complete and audited locally in
 [`issues/issue-12/README.md`](issues/issue-12/README.md). GitHub shows issues #4 through #11 closed,
@@ -283,12 +284,14 @@ Repository-wide `npm run lint` still fails on the known Prettier baseline; touch
 and tests pass targeted ESLint. The Issue #23 operator replay and backup/restore evidence limits also
 remain documented.
 
-Issue #25's local management write boundary is complete, but production cutover remains open. The
-real API/CORS environment, deployed static build, remote CI, and rollback execution have not been
-verified. Legacy Apps Script configuration remains until that final boundary is recorded.
+Issue #25's local management write and runtime-configuration boundaries are complete. CI and Pages
+deployment no longer provide an Apps Script URL; the preserved wrapper requires explicit endpoint
+injection, and deployment now rejects a missing or non-HTTPS FastAPI origin. The configured static
+build contains no Apps Script value. The real API/CORS environment, remote CI, deployed read/write
+flows, and production rollback boundary remain unverified because no production API host is recorded.
 
 ## Next action
 
-Complete Issue #25 Part 3: run the real read/write cutover checklist, record when PostgreSQL-only
-writes make Sheets stale, remove Apps Script from normal runtime configuration, and verify remote CI
-plus the deployed static base path. Preserve rollback evidence and snapshots.
+Deploy the production API/PostgreSQL boundary, configure the exact Pages CORS origin and repository
+`PUBLIC_API_BASE_URL`, then finish Issue #25's remote CI, deployed read/write/network checks, and
+record the first production PostgreSQL-only mutation. Preserve rollback evidence and snapshots.

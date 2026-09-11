@@ -351,5 +351,9 @@ Review update payload shape is:
 - Use `$app/paths.resolve()` for internal URLs.
 - `PUBLIC_API_BASE_URL` is the external API base and is not prefixed with the static frontend's
   `paths.base`; a trailing slash is normalized by the client.
+- GitHub Pages deployment validates that the public API value is a configured HTTPS base URL before
+  building. Neither CI nor deployment supplies an Apps Script variable.
+- `src/lib/api/sheet.ts` is retained as rollback evidence, but it has no ambient endpoint. Any use
+  now requires a caller to inject an Apps Script endpoint explicitly; no normal runtime module does.
 - FastAPI's `CORS_ALLOWED_ORIGINS` is an explicit JSON array of frontend origins. Local defaults
   cover `localhost:5173` and `127.0.0.1:5173`; production must provide its real static origin.

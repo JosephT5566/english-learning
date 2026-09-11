@@ -18,8 +18,7 @@ The app is optimized for a small, personal learning flow rather than a public mu
 
 An independently runnable FastAPI service exists under `apps/api/`, with liveness, typed and
 secret-safe startup configuration, a lazy SQLAlchemy engine lifecycle, and database-aware readiness.
-The English review flow and shared English/Japanese deck/card reads now use it. Deck/card mutations
-remain the next frontend cutover boundary.
+The English review flow and shared English/Japanese deck/card reads and writes now use it.
 
 Persistence foundations are implemented locally: application-scoped SQLAlchemy session factories,
 explicit short-lived transaction ownership, an empty reversible Alembic baseline, PostgreSQL-only
@@ -57,8 +56,8 @@ Deck/card management uses the same authenticated FastAPI boundary for English an
 Japanese, and detail pages display language-relevant fields without a separate application. The
 checked-in OpenAPI schema generates the shared TypeScript contracts while runtime guards still
 validate network JSON. Browser evidence covers normal review and management navigation without an
-Apps Script call. Legacy modules remain only while the later write-cutover and rollback work is
-unfinished.
+Apps Script call. CI and deployment no longer provide an Apps Script URL. The unused legacy wrapper
+and sanitized snapshot remain as evidence, but the wrapper requires deliberate endpoint injection.
 
 ## Current User Experience
 

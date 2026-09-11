@@ -537,7 +537,7 @@ Use precise language such as “project,” “local load test,” or “deploye
 ### Shared bilingual management read and write cutover
 
 - Date: 2026-09-12
-- Status: Parts 1 and 2 verified locally; production cutover remains open
+- Status: Parts 1 and 2 plus the local Part 3 configuration cutover are verified; production remains open
 - Problem: Add owner-scoped English/Japanese deck and card management views without duplicating the
   application or allowing the legacy Sheet path back into normal read traffic.
 - Constraints and invariants: One route/client/domain boundary serves both languages; missing
@@ -554,6 +554,9 @@ Use precise language such as “project,” “local load test,” or “deploye
   retaining Bits UI underneath, and compose them behind task-specific Drawer and ConfirmDialog
   wrappers for consistent modal focus, keyboard, scroll-lock, portal, and ARIA behavior without
   splitting the visual system.
+- Runtime cutover decision: Remove the Apps Script variable from CI/deployment and require explicit
+  endpoint injection in the preserved legacy wrapper. Gate deployment on a configured HTTPS FastAPI
+  base URL rather than shipping an empty API base or an automatic fallback.
 - Implementation references: `src/routes/decks/`, `src/routes/cards/`,
   `src/lib/components/LanguageTabs.svelte`, `src/lib/components/ReadError.svelte`,
   `src/lib/management/`, `src/lib/api/client.ts`, `src/lib/api/contracts.ts`,
@@ -561,7 +564,9 @@ Use precise language such as “project,” “local load test,” or “deploye
   `tests/frontend/management-contracts.test.mjs`, `tests/browser/management-read-flow.spec.ts`, and
   `doc/training/issues/issue-25/README.md`.
 - Verification and failure cases: Local Svelte/TypeScript, targeted lint, static subpath build, 16
-  frontend tests, all 236 PostgreSQL-backed backend tests, and 28 Playwright Chrome flows passed.
+  frontend tests at the Part 2 checkpoint, all 236 PostgreSQL-backed backend tests, and 28 Playwright
+  Chrome flows passed. Part 3 increased frontend coverage to 20 tests and repeated the static build,
+  Svelte check, and browser suite.
   Browser cases cover English-default and
   Japanese navigation, conditional fields, archive filtering, loading, empty, invalid-language
   no-request, authentication cleanup, non-disclosing not-found, retryable errors, and mobile list
@@ -573,9 +578,13 @@ Use precise language such as “project,” “local load test,” or “deploye
   and one review state; focused CORS tests cover `PATCH` and `DELETE`. A keyboard case verifies that
   the shared drawer dismisses with Escape through the accessible primitive.
 - Measured result: Local correctness only; no latency, scale, reliability, or user-impact claim.
-- Limitations: Legacy Apps Script files/configuration and snapshots remain for final rollback
-  evidence. Remote CI, live management
-  authorization, deployment, production network traffic, and post-cutover rollback are unverified.
+- Part 3 artifact evidence: CI/deployment contain no Apps Script variable; the production build
+  contains the configured FastAPI base and no Apps Script variable, host, or endpoint fragment. The
+  deploy validator rejects missing, HTTP, credential-bearing, query-bearing, and fragment-bearing
+  API values.
+- Limitations: The unused legacy wrapper and sanitized snapshot remain as evidence. No production API
+  host is recorded, so remote CI, live management authorization, deployment, production network
+  traffic, and the production rollback boundary are unverified.
 - Five-minute explanation practiced: Prepared in the Issue #25 artifact; Joseph has not yet practiced
   it end to end.
 - Candidate resume bullet: Not yet. Revisit after complete write cutover and deployment evidence.

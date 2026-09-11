@@ -104,6 +104,10 @@ Last updated: 2026-09-12
   retained as their underlying accessibility primitive. Compose those repository-owned components
   behind task-specific Drawer and ConfirmDialog APIs, keeping product styling local while sharing
   focus trapping, keyboard dismissal, scroll locking, portals, and ARIA semantics.
+- Remove `PUBLIC_APP_SCRIPT_URL` from CI and deployment rather than retaining a runtime fallback
+  switch. Preserve the unused legacy wrapper and sanitized Sheet snapshot as evidence, but require
+  deliberate endpoint injection for any legacy call. Fail deployment unless the FastAPI base is a
+  configured HTTPS URL without credentials, a query, or a fragment.
 - Allow browser review calls only from exact configured HTTP(S) origins. Permit the review
   transport's `GET`/`POST` methods and `Authorization`, `Content-Type`, and `Idempotency-Key`
   headers; expose `X-Request-ID`, keep credentialed cookies disabled, and reject wildcard or
@@ -161,3 +165,6 @@ Last updated: 2026-09-12
   components backed by Bits UI. Task-specific Drawer and ConfirmDialog wrappers preserve the
   existing visual design while adding consistent modal focus, keyboard, portal, scroll-lock, and
   semantic behavior.
+- 2026-09-12: Removed Apps Script from frontend build/deployment configuration, made the preserved
+  legacy wrapper explicitly injected, and added a deployment gate for the production FastAPI base
+  URL. Live production verification remains dependent on an actual deployed API and CORS origin.

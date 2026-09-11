@@ -49,8 +49,6 @@ The app reads these public SvelteKit env vars:
 - `PUBLIC_API_BASE_URL`: FastAPI origin/base URL used by review and deck/card management. It is
   independent of the static frontend's `paths.base`; omit the trailing slash (a trailing slash is
   normalized).
-- `PUBLIC_APP_SCRIPT_URL`: legacy Google Apps Script endpoint retained temporarily for rollback
-  evidence. Normal review and management navigation does not read it.
 - `PUBLIC_GOOGLE_AUTH_CLIENT_ID`: Google Identity Services OAuth client ID.
 - `PUBLIC_EMAIL_WHITE_LIST`: comma-separated allowed Google account emails.
 
@@ -60,6 +58,11 @@ Copy `.env.example` to an ignored `.env` for local frontend development and repl
 Production static builds may also need:
 
 - `BASE_PATH`: base path for GitHub Pages-style deployments, consumed by `svelte.config.js`.
+
+The deployment workflow rejects a missing public variable and requires `PUBLIC_API_BASE_URL` to be
+an HTTPS URL without credentials, a query, or a fragment. Google Apps Script is no longer a frontend
+build variable. The unused legacy wrapper remains source evidence only and requires callers to
+inject an endpoint explicitly; normal runtime code does not import it.
 
 The API accepts these server-side variables:
 
@@ -96,6 +99,6 @@ behavior, or imports that may differ between dev and production.
 ## Known Local Setup Assumptions
 
 - Google Identity Services must be loaded in `src/app.html` for `window.google.accounts.id` to exist.
-- The legacy Sheet wrapper still depends on the Apps Script `{ ok, result/error }` shape, but it is
-  not part of normal review or management navigation.
+- The legacy Sheet wrapper still documents the Apps Script `{ ok, result/error }` shape, but it has
+  no ambient endpoint configuration and is not part of normal review or management navigation.
 - Auth state is currently initialized from local token helpers only where components call them; verify sign-in persistence when changing auth flow.
