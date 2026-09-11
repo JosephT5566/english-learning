@@ -122,9 +122,11 @@ a five-minute decision explanation.
 
 ### Week 5 - Frontend integration and cutover
 
-3. **[#24 - Cut the existing review flow over behind a fallback switch](https://github.com/JosephT5566/english-learning/issues/24).** Add the typed API/auth boundary,
+3. **[#24 - Cut the existing review flow over to FastAPI](https://github.com/JosephT5566/english-learning/issues/24).** Add the typed API/auth boundary,
    replace Sheet due reads and review writes, preserve flip-before-answer behavior, keep retry keys
-   across ambiguous failures, and test loading/empty/auth/conflict/retry/server states.
+   across ambiguous failures, and test loading/empty/auth/conflict/retry/server states. Use no
+   automatic fallback or dual write; rollback redeploys the previous frontend and accepts explicit
+   PostgreSQL/Sheet divergence.
 4. **[#25 - Add shared English/Japanese card management and remove runtime Sheet access](https://github.com/JosephT5566/english-learning/issues/25).** Reuse contracts
    and components, add create/edit/archive, verify critical end-to-end flows, perform read-before-write
    cutover, and document rollback consistency limits.

@@ -74,6 +74,19 @@ Last updated: 2026-09-04
   per dry run, map each source identity to exactly one owned card, and commit all product rows plus
   mappings in one PostgreSQL transaction. Persist post-commit reconciliation separately so a
   successful commit followed by client/report failure is recoverable through mutation-free replay.
+- Cut the English review runtime directly from Google Apps Script to FastAPI/PostgreSQL with no
+  fallback switch or dual writes. The browser sends its Google ID token only in the bearer header;
+  FastAPI remains responsible for identity, ownership, validation, and scheduling transitions.
+- Persist one exact review command and UUID idempotency key for up to 24 hours, scoped locally by
+  Google subject. Retry ambiguous/authentication/retryable failures with that same pair; delete
+  cross-account or malformed pending state, and refetch after any optimistic conflict.
+- Roll review cutover back by redeploying the previous frontend, accepting temporary downtime and
+  explicit divergence between post-cutover PostgreSQL reviews and Google Sheets. Do not attempt
+  automatic reverse synchronization.
+- Allow browser review calls only from exact configured HTTP(S) origins. Permit the review
+  transport's `GET`/`POST` methods and `Authorization`, `Content-Type`, and `Idempotency-Key`
+  headers; expose `X-Request-ID`, keep credentialed cookies disabled, and reject wildcard or
+  implicit production origins.
 
 ## Known Follow-Up Areas
 
@@ -115,3 +128,6 @@ Last updated: 2026-09-04
 - 2026-09-10: Added the confirmed CSV import boundary with database-constrained source mappings,
   atomic card/tag/fresh-state creation, concurrent exact replay, safe post-commit reconciliation,
   and an operator-only local CLI. Frontend cutover remains explicitly out of scope.
+- 2026-09-11: Cut the English due-review and batched review-submission frontend flow to the
+  authenticated FastAPI contract with persisted exact-command retries, visible conflict recovery,
+  backend-owned scheduling, and no Apps Script fallback or dual write.

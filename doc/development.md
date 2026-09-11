@@ -11,6 +11,8 @@ Last updated: 2026-09-01
 - Build static output: `npm run build`
 - Preview build: `npm run preview`
 - Type/Svelte validation: `npm run check`
+- Frontend contract/component tests: `npm run test:frontend`
+- Critical local browser tests: `npm run test:browser`
 - Format all files: `npm run format`
 - Lint and formatting check: `npm run lint`
 
@@ -42,11 +44,15 @@ PostgreSQL integration tests are explicitly opt-in and never fall back to SQLite
 
 The app reads these public SvelteKit env vars:
 
-- `PUBLIC_APP_SCRIPT_URL`: Google Apps Script endpoint used by `src/lib/api/sheet.ts`.
+- `PUBLIC_API_BASE_URL`: FastAPI origin/base URL used by the review API client. It is independent of
+  the static frontend's `paths.base`; omit the trailing slash (a trailing slash is normalized).
+- `PUBLIC_APP_SCRIPT_URL`: legacy Google Apps Script endpoint retained for non-review migration
+  history. The cut-over review flow does not read it.
 - `PUBLIC_GOOGLE_AUTH_CLIENT_ID`: Google Identity Services OAuth client ID.
 - `PUBLIC_EMAIL_WHITE_LIST`: comma-separated allowed Google account emails.
 
 Because these are `PUBLIC_` vars, they are bundled into browser code. Do not store secrets in them.
+Copy `.env.example` to an ignored `.env` for local frontend development and replace its placeholders.
 
 Production static builds may also need:
 
@@ -59,6 +65,11 @@ The API accepts these server-side variables:
 - `DATABASE_URL`: secret SQLAlchemy URL using the `postgresql+psycopg` driver. The local default is
   disposable and rejected in production.
 - `DATABASE_CONNECT_TIMEOUT_SECONDS`: integer from 1 through 10; defaults to `2`.
+- `GOOGLE_OAUTH_CLIENT_ID`: server-side audience used to verify Google ID tokens. It must match the
+  frontend's Google web client ID.
+- `CORS_ALLOWED_ORIGINS`: JSON array of exact browser origins, for example
+  `["http://localhost:5173","http://127.0.0.1:5173"]`. Wildcards, paths, credentials, duplicates,
+  and an empty list are rejected; production must set an explicit value.
 
 These API values are server-side and must never use the SvelteKit `PUBLIC_` prefix. A local
 `apps/api/.env` is optional and ignored by Git; `.env.example` contains only disposable defaults.

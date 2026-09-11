@@ -1,6 +1,6 @@
 # Project Memory
 
-Last updated: 2026-09-10
+Last updated: 2026-09-11
 
 ## Product
 
@@ -9,9 +9,10 @@ This is Joseph's personal English learning/review app. The primary workflow is:
 1. User lands on the home page.
 2. User signs in with Google if not already authenticated.
 3. User starts a daily review.
-4. App fetches due words from a Google Sheet through a Google Apps Script endpoint.
+4. App fetches due words from the authenticated FastAPI/PostgreSQL API.
 5. User reviews swipe cards, marking remembered cards to the right and forgotten cards to the left.
-6. App submits review updates back to the sheet.
+6. App submits one idempotent decision batch to FastAPI; the backend derives and commits scheduling
+   transitions in PostgreSQL.
 
 The app is optimized for a small, personal learning flow rather than a public multi-user product.
 
@@ -47,24 +48,31 @@ booleans, row numbers, and diagnostic codes. After the three Issue #22 source di
 corrected, the final zero-rejection 596-row snapshot was applied locally and reconciliation passed:
 596 cards, mappings, and fresh review states; 184 tags; 885 card/tag associations; zero archived
 cards; and no review batches or events. The private CSV and operational reports remain untracked.
-The frontend still uses Google Apps Script, so PostgreSQL is a verified migration candidate rather
-than the runtime source of truth.
+The English due-review and review-write flow now uses FastAPI/PostgreSQL exclusively. It has no
+automatic Apps Script fallback or dual write. Production deployment remains a later milestone, so
+this cutover is verified locally rather than claimed in production.
 
 ## Current User Experience
 
 - `/` shows today's date, a welcome message, and either a Google sign-in button or a `Start` button.
-- `/review` loads up to 10 words from the sheet, shuffles them, and renders `SwipeCards`.
+- `/review` loads up to 10 authenticated English due cards from FastAPI, shuffles them, and renders
+  `SwipeCards`.
 - Cards show an English-to-Chinese direction by default.
 - A card starts on the front face. The user clicks to flip it, then can drag/swipe or use action buttons on the back face.
-- Review completion shows a `Submit Results` button that posts accumulated update fields to the sheet.
+- Answer completion shows a `Submit Results` button. Only a validated FastAPI result changes the UI
+  to completed; retryable/authentication failures remain explicitly unconfirmed.
 
 ## Important Behavior To Preserve
 
 - Use `$app/paths.resolve()` for route navigation so GitHub Pages base paths keep working.
 - Google sign-in is client-side and stores the Google ID token plus expiration in `localStorage`.
-- Sheet update requests require a valid ID token from `getTokenIfValid()`.
-- Review stages are clamped between 1 and 5.
-- A forgotten card decreases stage; a remembered card increases stage.
+- API requests require a valid ID token from `getTokenIfValid()` and send it only in the bearer
+  header.
+- Browser API access is restricted to exact backend-configured origins; bearer and idempotency
+  headers are allowed while credentialed cookies remain disabled.
+- `SwipeCards` emits decisions and observed state versions; review stages, ease, and dates are now
+  backend-owned.
+- One logical submission retains the same key and body across ambiguous retries for up to 24 hours.
 
 ## Repo Memory Maintenance
 

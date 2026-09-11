@@ -1,6 +1,6 @@
 # English Learning Project Memory
 
-Last updated: 2026-09-10
+Last updated: 2026-09-11
 
 ## Purpose
 
@@ -45,9 +45,9 @@ This is project evidence, not professional production-service experience.
 
 ## Active milestone
 
-Week 4 — Google Sheets import and reconciliation. Start with the dry-run validation boundary; do
-not switch frontend reads or writes until import identity, mapping, diagnostics, and recovery are
-defined and verified.
+Week 5 — frontend integration and cutover. Issue #24 is implemented and verified locally; review
+the diff and remote CI before closing it. Production deployment and post-deployment verification
+remain part of the later deployment milestone.
 
 The Weeks 0-3 milestone is complete and audited locally in
 [`issues/issue-12/README.md`](issues/issue-12/README.md). GitHub shows issues #4 through #11 closed,
@@ -196,6 +196,16 @@ private CSV and operational reports remain untracked. The runbook and sanitized 
 indexed in [`issues/issue-23/README.md`](issues/issue-23/README.md). Frontend cutover and the
 source-of-truth transition are not claimed.
 
+Issue #24 is implemented and verified locally. The English flip/swipe flow now reads
+`GET /v1/reviews/due` and submits `POST /v1/reviews` through a typed bearer-authenticated frontend
+client. `SwipeCards` emits decisions plus observed state versions and no longer calculates
+schedules. One account-scoped command/key pair persists for 24 hours across ambiguous, retryable,
+and same-account authentication recovery; success and definite rejection retire it, while stale
+state visibly saves nothing and refetches. There is no Apps Script fallback or dual write. Ten
+frontend contract/state/component tests, nine Playwright browser tests, and the complete 220-test
+PostgreSQL-backed backend suite passed locally. See
+[`issues/issue-24/README.md`](issues/issue-24/README.md).
+
 GitHub tracking:
 
 - [Weeks 0–3 roadmap issue](https://github.com/JosephT5566/english-learning/issues/12)
@@ -237,15 +247,20 @@ Required outputs:
 
 ## Current blockers
 
-No Issue #23 implementation or import blocker remains. Remaining evidence limits are documented
-rather than hidden: an operator result for exact replay of the private snapshot and a backup/restore
-drill have not been recorded. Live Google verification, remote CI status, production deployment,
-frontend cutover, and a repeated signed-in legacy update also remain unverified or out of scope.
+The discovered browser preflight and collapsed-card-height blockers are fixed. Strict configurable
+CORS contracts and the mobile layout regression pass. Chrome then completed a live 10-card review
+through a real Google token and local FastAPI/PostgreSQL; the database contained one batch, 10
+distinct events, and 10 current states matching their recorded `srs-v1` results. The first remote
+frontend CI run exposed missing clean-runner exports for `$env/static/public`; a local workflow fix
+now supplies safe placeholders to every frontend step and passes the reproduced check/browser
+commands. The final production API/CORS values, deployment, and post-deployment behavior remain
+unverified.
+Repository-wide `npm run lint` still fails on the known Prettier baseline; touched frontend source
+and tests pass targeted ESLint. The Issue #23 operator replay and backup/restore evidence limits also
+remain documented.
 
 ## Next action
 
-Open and review the Issue #23 pull request, including the dependent Issue #22 commits. Preserve the
-private CSV, operational reports, and any database dump outside version control during the rollback
-window. If the operator has not already done so, repeat the unchanged apply command and record only
-content-free proof that it returned the completed result without mutations. Do not switch frontend
-traffic or declare PostgreSQL authoritative until the later frontend-cutover gate is explicitly met.
+Commit and push the frontend CI environment fix, then confirm the rerun passes. Before any
+production cutover, configure the real `PUBLIC_API_BASE_URL` and approved frontend CORS origin, then
+follow the later deployment milestone.

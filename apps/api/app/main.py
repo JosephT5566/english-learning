@@ -8,6 +8,7 @@ from fastapi import FastAPI
 from app.auth import GoogleTokenVerifier
 from app.auth import router as auth_router
 from app.config import load_settings
+from app.cors import ConfiguredCORSMiddleware
 from app.database import (
     create_database_engine,
     create_database_session_factory,
@@ -56,6 +57,7 @@ def create_app() -> FastAPI:
 
     app = FastAPI(title="English Learning API", lifespan=lifespan)
     app.middleware("http")(add_request_id)
+    app.add_middleware(ConfiguredCORSMiddleware)
     register_error_handlers(app)
     app.include_router(health_router)
     app.include_router(auth_router)

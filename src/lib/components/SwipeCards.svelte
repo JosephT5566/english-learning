@@ -1,13 +1,11 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
-	import type { WordItem, StudyDirection } from '$lib/types';
-	import { calNewEaseFactor } from '$lib/utils';
-	import { setNewField, newFields } from '$lib/stores/review';
-	import { updateReviewToSheet } from '$lib/api/sheet';
+	import type { DueCard, ReviewDecision, ReviewSubmissionItem } from '$lib/api/contracts';
+	import type { StudyDirection } from '$lib/types';
+	import { canAnswerCard } from '$lib/review/interaction';
 	import _clamp from 'lodash/clamp';
 	import Icon from '@iconify/svelte';
-	import AsyncButton from '$lib/components/AsyncButton.svelte';
 	import classNames from 'classnames';
 	import Modal from '$lib/components/Modal.svelte';
 
@@ -15,10 +13,15 @@
 	let {
 		wordList = [],
 		studyDirection = 'EN_ZH',
-	}: { wordList?: WordItem[]; studyDirection?: StudyDirection } = $props();
+		onAnswer,
+	}: {
+		wordList?: DueCard[];
+		studyDirection?: StudyDirection;
+		onAnswer?: (answer: ReviewSubmissionItem) => void;
+	} = $props();
 
-	let root: HTMLDivElement; // .swipe
-	let cardsWrap: HTMLDivElement; // .swipe--cards
+	let root: HTMLDivElement | undefined = $state(); // .swipe
+	let cardsWrap: HTMLDivElement | undefined = $state(); // .swipe--cards
 
 	type Scratch = {
 		x: number;
@@ -40,7 +43,7 @@
 	let isTopCardBack = $state(false);
 	let isClickAndSwiping = $state(false);
 	let currentWordIndex = $state(0);
-	let currentWord = $derived(wordList[0] || null);
+	let currentWord = $derived(wordList[currentWordIndex] ?? null);
 	let isEnded = $derived(currentWordIndex >= wordList.length);
 	const hasCards = $derived(wordList.length > 0);
 	let modalOpen = $state(false);
@@ -52,11 +55,6 @@
 
 	const yesOpacity = $derived(swipeX > 0 ? Math.min(Math.abs(swipeX) / THRESHOLD, 1) : 0);
 	const noOpacity = $derived(swipeX < 0 ? Math.min(Math.abs(swipeX) / THRESHOLD, 1) : 0);
-
-	$effect(() => {
-		// update currentWord when currentWordIndex or wordList changes
-		currentWord = wordList[currentWordIndex] ?? null;
-	});
 
 	// $effect(() => {
 	// 	console.log('isEnded', isEnded);
@@ -71,6 +69,7 @@
 
 	// Warning: this function is called when the card flips or is swiped away, make sure related logic is correct.
 	function topCardEl(): HTMLElement | null {
+		if (!cardsWrap) return null;
 		// first non-removed card (highest z) is the last child
 		const els = Array.from(cardsWrap.querySelectorAll<HTMLElement>('.swipe--card'));
 		const topCard = els.find((el) => !el.dataset.removed) || null;
@@ -79,6 +78,7 @@
 	}
 
 	function updateLayoutStack() {
+		if (!cardsWrap) return;
 		const els = Array.from(cardsWrap.querySelectorAll<HTMLElement>('.swipe--card')).filter(
 			(el) => !el.dataset.removed
 		);
@@ -94,11 +94,13 @@
 	}
 
 	function setBadge(x: number) {
+		if (!root) return;
 		root.classList.toggle('swipe_yes', x > 10);
 		root.classList.toggle('swipe_no', x < -10);
 	}
 
 	function clearBadge() {
+		if (!root) return;
 		root.classList.remove('swipe_yes', 'swipe_no');
 	}
 
@@ -132,7 +134,7 @@
 		function onDown(e: PointerEvent) {
 			const s = scratch.get(el)!;
 			// Only the top card AND only on back side can start dragging
-			if (el !== topCardEl() || !s.isBack || isClickAndSwiping) {
+			if (!canAnswerCard(el === topCardEl(), s.isBack, isClickAndSwiping)) {
 				return;
 			}
 
@@ -186,9 +188,7 @@
 			swipeX = 0;
 			isTopCardBack = false; // reset state
 
-			const quality = directionX > 0 ? 5 : 0;
-
-			updateFinishedCardToStore(quality, directionX > 0);
+			updateFinishedCard(directionX > 0 ? 'yes' : 'no');
 
 			setTimeout(() => {
 				el.style.transition = '';
@@ -250,15 +250,10 @@
 		el.addEventListener('click', onClick);
 	}
 
-	function programmaticSwipe(isYes: boolean, quality: number) {
+	function programmaticSwipe(isYes: boolean, decision: ReviewDecision) {
 		const el = topCardEl();
-		if (!el || isClickAndSwiping) {
-			return;
-		}
-
-		const s = scratch.get(el);
-		// Only allow button swipe on back side
-		if (!s?.isBack) {
+		const s = el ? scratch.get(el) : undefined;
+		if (!el || !s || !canAnswerCard(true, s.isBack, isClickAndSwiping)) {
 			return;
 		}
 
@@ -276,13 +271,14 @@
 			showAnswer: false,
 			isBack: true,
 			moved: false,
+			moveHist: [],
 		};
 		scratch.set(el, st);
 		st.x = isYes ? 200 : -200;
 		st.y = -80;
 		isTopCardBack = false; // reset state
 
-		updateFinishedCardToStore(quality, isYes);
+		updateFinishedCard(decision);
 
 		requestAnimationFrame(() => {
 			const moveOutWidth = document.body.clientWidth * 1.2 * (isYes ? 1 : -1);
@@ -302,13 +298,15 @@
 		}, 1000);
 	}
 
-	function updateFinishedCardToStore(quality: number, isYes: boolean) {
+	function updateFinishedCard(decision: ReviewDecision) {
 		if (!currentWord) {
 			return; // safety guard
 		}
-		const newEaseFactor = calNewEaseFactor(currentWord.easeFactor, quality);
-		const newStage = isYes ? currentWord.reviewStage + 1 : currentWord.reviewStage - 1;
-		setNewField(Number(currentWord.id), _clamp(newStage, 1, 5), newEaseFactor);
+		onAnswer?.({
+			card_id: currentWord.id,
+			decision,
+			expected_version: currentWord.review_state.version,
+		});
 		currentWordIndex += 1; // move to next card
 	}
 
@@ -316,6 +314,7 @@
 		title: string;
 		lessonDate: string | null;
 		chips: string[];
+		tags: string[];
 		phonics?: string;
 	};
 	type BackFace = {
@@ -329,48 +328,55 @@
 		supplementary?: string;
 	};
 
+	function displayedPartOfSpeech(c: DueCard): string | null {
+		return c.part_of_speech === 'other' && c.part_of_speech_detail
+			? c.part_of_speech_detail
+			: c.part_of_speech;
+	}
+
 	// Compute what to show on each face from a Card + direction + mode
-	function faceFront(c: WordItem, dir: StudyDirection): FrontFace {
-		const mode = 'learn'; // hardcode for now
+	function faceFront(c: DueCard, dir: StudyDirection): FrontFace {
+		const partOfSpeech = displayedPartOfSpeech(c);
 		if (dir === 'EN_ZH') {
 			return {
-				title: c.content,
-				lessonDate: new Date(c.lessonDate).toLocaleDateString('zh-TW'),
-				chips: [c.type, ...(c.note?.split(/,\s*/g) ?? [])].filter(Boolean) as string[],
-				tags: [c.tags?.split(/,\s*/g) ?? []].filter(Boolean) as string[],
-				phonics: c.phonics,
+				title: c.term,
+				lessonDate: c.learned_on ? new Date(c.learned_on).toLocaleDateString('zh-TW') : null,
+				chips: [partOfSpeech, ...(c.note?.split(/,\s*/g) ?? [])].filter(Boolean) as string[],
+				tags: c.tags.map((tag) => tag.display_name),
+				phonics: c.pronunciation ?? c.reading ?? c.romanization ?? undefined,
 			};
 		} else {
 			return {
-				title: c.chineseExplain || '—',
-				lessonDate: new Date(c.lessonDate).toLocaleDateString('zh-TW'),
-				chips: [c.type, ...(c.note?.split(/,\s*/g) ?? [])].filter(Boolean) as string[],
-				tags: [c.tags?.split(/,\s*/g) ?? []].filter(Boolean) as string[], // Splits on "," followed by any amount of whitespace
+				title: c.meaning || '—',
+				lessonDate: c.learned_on ? new Date(c.learned_on).toLocaleDateString('zh-TW') : null,
+				chips: [partOfSpeech, ...(c.note?.split(/,\s*/g) ?? [])].filter(Boolean) as string[],
+				tags: c.tags.map((tag) => tag.display_name),
 				phonics: undefined,
 			};
 		}
 	}
 
-	function faceBack(c: WordItem, dir: StudyDirection): BackFace {
+	function faceBack(c: DueCard, dir: StudyDirection): BackFace {
 		if (dir === 'EN_ZH') {
 			return {
-				title: c.chineseExplain || '—',
-				lessonDate: new Date(c.lessonDate).toLocaleDateString('zh-TW'),
-				example: c.example || null,
-				syns: c.synonyms?.split(', ') || [],
-				ants: c.antonyms?.split(', ') || [],
-				supplementary: c.supplementary,
+				title: c.meaning || '—',
+				subtitle: c.target_language_definition ?? undefined,
+				lessonDate: c.learned_on ? new Date(c.learned_on).toLocaleDateString('zh-TW') : null,
+				example: c.example_sentence,
+				syns: c.synonyms,
+				ants: c.antonyms,
+				supplementary: c.supplementary_note ?? undefined,
 			};
 		} else {
 			return {
-				title: c.content,
-				subtitle: c.engExplain,
-				head: c.phonics,
-				lessonDate: new Date(c.lessonDate).toLocaleDateString('zh-TW'),
-				example: c.example || null,
-				syns: c.synonyms?.split(', ') || [],
-				ants: c.antonyms?.split(', ') || [],
-				supplementary: c.supplementary,
+				title: c.term,
+				subtitle: c.target_language_definition ?? undefined,
+				head: c.pronunciation ?? c.reading ?? c.romanization ?? undefined,
+				lessonDate: c.learned_on ? new Date(c.learned_on).toLocaleDateString('zh-TW') : null,
+				example: c.example_sentence,
+				syns: c.synonyms,
+				ants: c.antonyms,
+				supplementary: c.supplementary_note ?? undefined,
 			};
 		}
 	}
@@ -408,12 +414,7 @@
 <div class="swipe" bind:this={root}>
 	{#if !hasCards}
 		<div class="flex flex-col items-center gap-3 mt-10">
-			<Icon
-				icon="solar:cat-bold-duotone"
-				width="120px"
-				height="120px"
-				class="text-slate-400"
-			/>
+			<Icon icon="solar:cat-bold-duotone" width="120px" height="120px" class="text-slate-400" />
 			<span class="ml-2 font-[Contrail_One] text-3xl text-center text-slate-500">
 				We don't have any cards for you today.
 			</span>
@@ -426,24 +427,14 @@
 				height="120px"
 				class="text-slate-400"
 			/>
-			<span class="ml-2 font-[Contrail_One] text-3xl text-center text-slate-500"
-				>You've completed today's review!</span
-			>
-			<AsyncButton
-				class="mt-6 px-6 py-3 font-[Contrail_One] bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 cursor-pointer transition"
-				onRun={() => updateReviewToSheet($newFields)}
-				aria-label="Submit Results"
-			>
-				Submit Results
-			</AsyncButton>
+			<span class="ml-2 font-[Contrail_One] text-3xl text-center text-slate-500">
+				Your answers are ready to submit.
+			</span>
 		</div>
 	{:else}
 		<div class="swipe--status">
 			<span class="icon no" style="opacity:{noOpacity}">
-				<Icon
-					icon="solar:close-square-outline"
-					class={noOpacity === 1 ? 'text-rose-500' : ''}
-				/>
+				<Icon icon="solar:close-square-outline" class={noOpacity === 1 ? 'text-rose-500' : ''} />
 			</span>
 			<span class="icon yes" style="opacity:{yesOpacity}">
 				<Icon
@@ -464,22 +455,17 @@
 						<div class="card-face card-front p-2 pb-10 bg-white">
 							{#if f.chips?.length}
 								<div class="chips">
-									{#each f.chips as chip, idx}
-										<span
-											class={classNames(
-												'chip',
-												idx === 0 ? 'bg-orange-200' : 'bg-gray-100'
-											)}>{chip}</span
+									{#each f.chips as chip, idx (idx)}
+										<span class={classNames('chip', idx === 0 ? 'bg-orange-200' : 'bg-gray-100')}
+											>{chip}</span
 										>
 									{/each}
 								</div>
 							{/if}
 							{#if f.tags?.length}
 								<div class="chips mt-2">
-									{#each f.tags as tag}
-										<span
-											class={classNames('chip', 'bg-gray-100')}>{tag}</span
-										>
+									{#each f.tags as tag, idx (idx)}
+										<span class={classNames('chip', 'bg-gray-100')}>{tag}</span>
 									{/each}
 								</div>
 							{/if}
@@ -502,7 +488,7 @@
 										'cursor-pointer',
 										'p-2',
 										'rounded-full',
-                                        'text-amber-700',
+										'text-amber-700',
 										'hover:bg-slate-400/50',
 										'active:bg-slate-400/70',
 										'transition'
@@ -521,11 +507,7 @@
 									}}
 									aria-label="Open supplementary info"
 								>
-									<Icon
-										icon="solar:info-circle-bold"
-										width="25px"
-										height="25px"
-									/>
+									<Icon icon="solar:info-circle-bold" width="25px" height="25px" />
 								</button>
 							{/if}
 
@@ -539,14 +521,14 @@
 							<div class="rows">
 								{#if b.syns.length}
 									<div class="row">
-										<label>Syn</label>
-										{#each b.syns as s}<span class="pill">{s}</span>{/each}
+										<span>Syn</span>
+										{#each b.syns as s, idx (idx)}<span class="pill">{s}</span>{/each}
 									</div>
 								{/if}
 								{#if b.ants.length}
 									<div class="row">
-										<label>Ant</label>
-										{#each b.ants as a}<span class="pill">{a}</span>{/each}
+										<span>Ant</span>
+										{#each b.ants as a, idx (idx)}<span class="pill">{a}</span>{/each}
 									</div>
 								{/if}
 							</div>
@@ -561,21 +543,16 @@
 		<div class="swipe--buttons">
 			<button
 				id="no"
-				onclick={() => programmaticSwipe(false, 0)}
+				onclick={() => programmaticSwipe(false, 'no')}
 				disabled={isClickAndSwiping || !isTopCardBack}
 				aria-label="No"
 			>
-				<Icon
-					icon="solar:close-square-bold"
-					class="text-rose-700"
-					width="60px"
-					height="60px"
-				/>
+				<Icon icon="solar:close-square-bold" class="text-rose-700" width="60px" height="60px" />
 			</button>
 			<button
 				id="no-a-bit"
 				class="ml-5 text-rose-700"
-				onclick={() => programmaticSwipe(false, 2)}
+				onclick={() => programmaticSwipe(false, 'no_a_bit')}
 				disabled={isClickAndSwiping || !isTopCardBack}
 				aria-label="No A Bit"
 			>
@@ -585,7 +562,7 @@
 			<button
 				id="yes-a-bit"
 				class="mr-5 text-emerald-500"
-				onclick={() => programmaticSwipe(true, 3)}
+				onclick={() => programmaticSwipe(true, 'yes_a_bit')}
 				disabled={isClickAndSwiping || !isTopCardBack}
 				aria-label="Yes A Bit"
 			>
@@ -594,22 +571,17 @@
 			</button>
 			<button
 				id="yes"
-				onclick={() => programmaticSwipe(true, 5)}
+				onclick={() => programmaticSwipe(true, 'yes')}
 				disabled={isClickAndSwiping || !isTopCardBack}
 				aria-label="Yes"
 			>
-				<Icon
-					icon="solar:check-square-bold"
-					class="text-emerald-500"
-					width="60px"
-					height="60px"
-				/>
+				<Icon icon="solar:check-square-bold" class="text-emerald-500" width="60px" height="60px" />
 			</button>
 		</div>
 	{/if}
 </div>
 
-<Modal open={modalOpen} title={'More Info'} handleClose={() => (modalOpen = false)}>
+<Modal open={modalOpen} title="More Info" handleClose={() => (modalOpen = false)}>
 	{#snippet ModalBody()}
 		<div class="whitespace-pre-wrap text-sm leading-relaxed">
 			{modalContent}
@@ -624,8 +596,9 @@
 		box-sizing: border-box;
 	}
 	.swipe {
-		width: 100vw;
-		height: 100%;
+		width: 100%;
+		min-height: 0;
+		flex: 1;
 		padding-block: 40px;
 		display: flex;
 		flex-direction: column;
@@ -649,7 +622,8 @@
 		transition: all 0.2s;
 	}
 	.swipe--cards {
-		flex-grow: 1;
+		min-height: 0;
+		flex: 1;
 		padding-top: 40px;
 		display: flex;
 		position: relative;
@@ -661,7 +635,7 @@
 		display: inline-block;
 		width: 90vw;
 		max-width: 400px;
-		height: 90%;
+		height: 100%;
 		max-height: 600px;
 		position: absolute;
 		overflow: hidden;
@@ -771,7 +745,7 @@
 		align-items: center;
 		gap: 6px;
 	}
-	.row label {
+	.row > span:first-child {
 		font-size: 12px;
 		opacity: 0.6;
 	}

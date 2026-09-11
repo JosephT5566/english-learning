@@ -380,7 +380,8 @@ Goal: make the existing user workflow run entirely through the new API.
 - Add card creation and editing only after the review path is stable.
 - Add English and Japanese sections that share components and API contracts while presenting the appropriate fields for each language.
 - Handle loading, empty, validation, unauthenticated, forbidden, conflict, retryable, and server-error states.
-- Preserve the temporary configuration switch for controlled fallback.
+- Use one FastAPI review runtime path after cutover; rollback is a previous-frontend redeploy rather
+  than an automatic fallback or dual write.
 - Add contract tests or generated types to detect frontend/backend drift.
 - Add end-to-end tests for login substitution, due review, successful review, safe retry, and authorization failure.
 - Perform the read cutover, verify it, and then perform the write cutover.
