@@ -12,6 +12,14 @@ jobs:
   frontend:
     name: Frontend checks
     runs-on: ubuntu-latest
+    # SvelteKit generates named exports for $env/static/public only when the
+    # variables exist. Safe placeholders keep checks and browser-test builds
+    # deterministic on clean runners; the production-style build overrides them.
+    env:
+      PUBLIC_API_BASE_URL: http://127.0.0.1:8000
+      PUBLIC_APP_SCRIPT_URL: https://example.invalid/apps-script
+      PUBLIC_GOOGLE_AUTH_CLIENT_ID: ci-google-client-id
+      PUBLIC_EMAIL_WHITE_LIST: ci-user@example.invalid
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -38,8 +46,6 @@ jobs:
         run: npm run test:frontend
 
       - name: Check frontend types and Svelte contracts
-        env:
-          PUBLIC_API_BASE_URL: http://127.0.0.1:8000
         run: npm run check
 
       - name: Test critical review browser flows
