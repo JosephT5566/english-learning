@@ -1,6 +1,6 @@
 # Project Memory
 
-Last updated: 2026-09-11
+Last updated: 2026-09-12
 
 ## Product
 
@@ -16,10 +16,10 @@ This is Joseph's personal English learning/review app. The primary workflow is:
 
 The app is optimized for a small, personal learning flow rather than a public multi-user product.
 
-An independently runnable FastAPI foundation now exists under `apps/api/`, with liveness, typed and
+An independently runnable FastAPI service exists under `apps/api/`, with liveness, typed and
 secret-safe startup configuration, a lazy SQLAlchemy engine lifecycle, and database-aware readiness.
-It is not connected to the frontend yet, so the current user experience and Google Apps Script
-runtime path are unchanged.
+The English review flow and shared English/Japanese deck/card reads now use it. Deck/card mutations
+remain the next frontend cutover boundary.
 
 Persistence foundations are implemented locally: application-scoped SQLAlchemy session factories,
 explicit short-lived transaction ownership, an empty reversible Alembic baseline, PostgreSQL-only
@@ -33,12 +33,11 @@ model. Authenticated deck/card/due-review reads now expose deterministic shared 
 contracts. The backend verifies Google ID tokens, maps Google subject to an internal user, enforces
 owned SQL scope, and provides owner-derived deck/card create, edit, and archive APIs. Review writes
 now commit idempotent batches, immutable events, and current-state transitions atomically with
-deterministic concurrency control. Frontend integration remains pending, so the backend remains
-disconnected from the user experience.
+deterministic concurrency control. Review and management reads are connected to the user experience;
+management writes are not yet connected.
 
-A local one-time CSV dry-run boundary now validates the legacy 21-field Sheet snapshot and persists
-only safe import audit hashes and diagnostic codes. It does not create cards or review data; the
-frontend and Google Apps Script runtime remain unchanged.
+A local one-time CSV dry-run boundary validates the legacy 21-field Sheet snapshot and persists only
+safe import audit hashes and diagnostic codes. It does not create cards or review data.
 
 A separate local confirmed-import CLI now requires and reproduces one eligible dry run before
 atomically creating cards, normalized tags, associations, fresh review states, and durable
@@ -52,11 +51,23 @@ The English due-review and review-write flow now uses FastAPI/PostgreSQL exclusi
 automatic Apps Script fallback or dual write. Production deployment remains a later milestone, so
 this cutover is verified locally rather than claimed in production.
 
+Read-only deck/card management now uses the same authenticated FastAPI boundary for English and
+Japanese. `/decks` canonicalizes a missing language to English, `/decks?language=ja` selects
+Japanese, and detail pages display language-relevant fields without a separate application. The
+checked-in OpenAPI schema generates the shared TypeScript contracts while runtime guards still
+validate network JSON. Browser evidence covers normal review and management navigation without an
+Apps Script call. Legacy modules remain only while the later write-cutover and rollback work is
+unfinished.
+
 ## Current User Experience
 
 - `/` shows today's date, a welcome message, and either a Google sign-in button or a `Start` button.
 - `/review` loads up to 10 authenticated English due cards from FastAPI, shuffles them, and renders
   `SwipeCards`.
+- `/decks?language=en|ja` lists the authenticated user's active or archived decks through one shared
+  route and component boundary; missing language defaults to English.
+- `/decks/[deckId]` lists owned cards in one deck, and `/cards/[cardId]` shows the owned card detail.
+- Japanese management views conditionally show reading and romanization; English shows pronunciation.
 - Cards show an English-to-Chinese direction by default.
 - A card starts on the front face. The user clicks to flip it, then can drag/swipe or use action buttons on the back face.
 - Answer completion shows a `Submit Results` button. Only a validated FastAPI result changes the UI

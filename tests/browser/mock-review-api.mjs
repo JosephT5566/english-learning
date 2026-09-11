@@ -4,6 +4,9 @@ const mode = process.env.MOCK_REVIEW_MODE ?? 'ambiguous';
 const port = Number(process.env.MOCK_REVIEW_PORT ?? 8001);
 const origin = 'http://127.0.0.1:4173';
 const cardId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+const japaneseCardId = 'ffffffff-ffff-4fff-8fff-ffffffffffff';
+const englishDeckId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+const japaneseDeckId = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
 const requestId = '99999999-9999-4999-8999-999999999999';
 let firstCommand;
 
@@ -27,6 +30,66 @@ const reviewState = {
 	version: 1,
 };
 
+function deck(language, archived = false) {
+	const japanese = language === 'ja';
+	return {
+		id: japanese ? japaneseDeckId : englishDeckId,
+		title: japanese ? '日本語の基礎' : 'English foundations',
+		target_language: language,
+		explanation_language: 'zh-TW',
+		archived_at: archived ? '2026-09-11T02:00:00Z' : null,
+		version: archived ? 4 : 3,
+		created_at: '2026-09-01T00:00:00Z',
+		updated_at: '2026-09-11T02:00:00Z',
+	};
+}
+
+function card(language, detailed = false, archived = false) {
+	const japanese = language === 'ja';
+	const parent = deck(language);
+	const summary = {
+		id: japanese ? japaneseCardId : cardId,
+		deck: {
+			id: parent.id,
+			title: parent.title,
+			target_language: parent.target_language,
+			explanation_language: parent.explanation_language,
+			archived_at: parent.archived_at,
+		},
+		term: japanese ? '学ぶ' : 'resilient',
+		meaning: japanese ? 'to learn' : '有復原力的',
+		reading: japanese ? 'まなぶ' : null,
+		pronunciation: japanese ? null : '/rɪˈzɪliənt/',
+		romanization: japanese ? 'manabu' : null,
+		part_of_speech: 'verb',
+		archived_at: archived ? '2026-09-11T02:00:00Z' : null,
+		version: 2,
+		updated_at: '2026-09-11T01:00:00Z',
+	};
+	if (!detailed) return summary;
+	return {
+		...summary,
+		target_language_definition: japanese ? '知識や技能を身につける' : 'able to recover quickly',
+		example_sentence: japanese ? '毎日、日本語を学びます。' : 'The service is resilient.',
+		example_translation: japanese ? 'I study Japanese every day.' : null,
+		example_source: null,
+		synonyms: japanese ? [] : ['robust'],
+		antonyms: japanese ? [] : ['fragile'],
+		part_of_speech_detail: null,
+		note: japanese ? '五段動詞' : null,
+		supplementary_note: null,
+		learned_on: '2026-09-11',
+		created_at: '2026-09-01T00:00:00Z',
+		tags: [
+			{
+				id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+				display_name: 'foundation',
+			},
+		],
+		review_state: reviewState,
+	};
+}
+
 function headers(extra = {}) {
 	return {
 		'Access-Control-Allow-Origin': origin,
@@ -44,7 +107,13 @@ function json(response, status, body) {
 
 function error(response, status, code, message, retryable = false, details) {
 	json(response, status, {
-		error: { code, message, retryable, request_id: requestId, ...(details ? { details } : {}) },
+		error: {
+			code,
+			message,
+			retryable,
+			request_id: requestId,
+			...(details ? { details } : {}),
+		},
 	});
 }
 
@@ -66,6 +135,63 @@ const server = http.createServer((request, response) => {
 	const requestMode = modeFor(request);
 	if (requestMode === 'unauthorized') {
 		error(response, 401, 'invalid_authentication', 'Authentication credentials are invalid.');
+		return;
+	}
+	if (requestMode === 'management-unauthorized') {
+		error(response, 401, 'invalid_authentication', 'Authentication credentials are invalid.');
+		return;
+	}
+	if (requestMode === 'management-retryable') {
+		error(response, 503, 'database_unavailable', 'The database is temporarily unavailable.', true);
+		return;
+	}
+	if (requestMode === 'management-server-error') {
+		error(response, 500, 'internal_error', 'An unexpected error occurred.');
+		return;
+	}
+
+	const parsedUrl = new URL(request.url ?? '/', `http://127.0.0.1:${port}`);
+	if (request.method === 'GET' && parsedUrl.pathname === '/v1/decks') {
+		if (requestMode === 'management-empty') {
+			json(response, 200, { items: [], next_cursor: null });
+			return;
+		}
+		const language = parsedUrl.searchParams.get('target_language') === 'ja' ? 'ja' : 'en';
+		const archived = parsedUrl.searchParams.get('status') === 'archived';
+		const sendDecks = () =>
+			json(response, 200, {
+				items: [deck(language, archived)],
+				next_cursor: null,
+			});
+		if (requestMode === 'management-slow') setTimeout(sendDecks, 300);
+		else sendDecks();
+		return;
+	}
+	if (request.method === 'GET' && parsedUrl.pathname.startsWith('/v1/decks/')) {
+		if (requestMode === 'management-not-found') {
+			error(response, 404, 'deck_not_found', 'The requested deck was not found.');
+			return;
+		}
+		const id = parsedUrl.pathname.split('/').at(-1);
+		json(response, 200, deck(id === japaneseDeckId ? 'ja' : 'en'));
+		return;
+	}
+	if (request.method === 'GET' && parsedUrl.pathname === '/v1/cards') {
+		const japanese = parsedUrl.searchParams.get('deck_id') === japaneseDeckId;
+		const archived = parsedUrl.searchParams.get('status') === 'archived';
+		json(response, 200, {
+			items: [card(japanese ? 'ja' : 'en', false, archived)],
+			next_cursor: null,
+		});
+		return;
+	}
+	if (request.method === 'GET' && parsedUrl.pathname.startsWith('/v1/cards/')) {
+		if (requestMode === 'management-not-found') {
+			error(response, 404, 'card_not_found', 'The requested card was not found.');
+			return;
+		}
+		const id = parsedUrl.pathname.split('/').at(-1);
+		json(response, 200, card(id === japaneseCardId ? 'ja' : 'en', true));
 		return;
 	}
 
@@ -106,7 +232,12 @@ const server = http.createServer((request, response) => {
 						supplementary_note: null,
 						learned_on: '2026-09-01',
 						created_at: '2026-09-01T00:00:00Z',
-						tags: [{ id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', display_name: 'backend' }],
+						tags: [
+							{
+								id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+								display_name: 'backend',
+							},
+						],
 						review_state: reviewState,
 					},
 				],
@@ -154,7 +285,7 @@ const server = http.createServer((request, response) => {
 						card_id: cardId,
 						expected_version: 1,
 						current_version: 2,
-					}
+					},
 				);
 				return;
 			}
@@ -166,7 +297,7 @@ const server = http.createServer((request, response) => {
 						503,
 						'database_unavailable',
 						'The database is temporarily unavailable.',
-						true
+						true,
 					);
 					return;
 				}

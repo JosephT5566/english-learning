@@ -1,6 +1,6 @@
 # Development Memory
 
-Last updated: 2026-09-01
+Last updated: 2026-09-12
 
 ## Commands
 
@@ -13,6 +13,8 @@ Last updated: 2026-09-01
 - Type/Svelte validation: `npm run check`
 - Frontend contract/component tests: `npm run test:frontend`
 - Critical local browser tests: `npm run test:browser`
+- Export FastAPI OpenAPI and generate frontend TypeScript: `npm run api:generate`
+- Regenerate and fail if committed API artifacts drift: `npm run api:check`
 - Format all files: `npm run format`
 - Lint and formatting check: `npm run lint`
 
@@ -44,10 +46,11 @@ PostgreSQL integration tests are explicitly opt-in and never fall back to SQLite
 
 The app reads these public SvelteKit env vars:
 
-- `PUBLIC_API_BASE_URL`: FastAPI origin/base URL used by the review API client. It is independent of
-  the static frontend's `paths.base`; omit the trailing slash (a trailing slash is normalized).
-- `PUBLIC_APP_SCRIPT_URL`: legacy Google Apps Script endpoint retained for non-review migration
-  history. The cut-over review flow does not read it.
+- `PUBLIC_API_BASE_URL`: FastAPI origin/base URL used by review and deck/card management. It is
+  independent of the static frontend's `paths.base`; omit the trailing slash (a trailing slash is
+  normalized).
+- `PUBLIC_APP_SCRIPT_URL`: legacy Google Apps Script endpoint retained temporarily for rollback
+  evidence. Normal review and management navigation does not read it.
 - `PUBLIC_GOOGLE_AUTH_CLIENT_ID`: Google Identity Services OAuth client ID.
 - `PUBLIC_EMAIL_WHITE_LIST`: comma-separated allowed Google account emails.
 
@@ -76,7 +79,10 @@ These API values are server-side and must never use the SvelteKit `PUBLIC_` pref
 
 ## Validation Expectations
 
-Run `npm run check` after changing TypeScript, Svelte components, stores, or API contracts. Run `npm run build` when changing routing, static deployment configuration, environment behavior, or imports that may differ between dev and production.
+Run `npm run check` after changing TypeScript, Svelte components, stores, or API contracts. Run
+`npm run api:generate` after changing FastAPI request or response models, and commit both generated
+artifacts. Run `npm run build` when changing routing, static deployment configuration, environment
+behavior, or imports that may differ between dev and production.
 
 ## Style Notes
 
@@ -90,5 +96,6 @@ Run `npm run check` after changing TypeScript, Svelte components, stores, or API
 ## Known Local Setup Assumptions
 
 - Google Identity Services must be loaded in `src/app.html` for `window.google.accounts.id` to exist.
-- Sheet fetch/update paths depend on the Apps Script endpoint being available and returning the expected `{ ok, result/error }` shape.
+- The legacy Sheet wrapper still depends on the Apps Script `{ ok, result/error }` shape, but it is
+  not part of normal review or management navigation.
 - Auth state is currently initialized from local token helpers only where components call them; verify sign-in persistence when changing auth flow.

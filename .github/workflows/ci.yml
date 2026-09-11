@@ -30,8 +30,26 @@ jobs:
           node-version: 22
           cache: npm
 
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Setup uv for API contract generation
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: apps/api/uv.lock
+
       - name: Install dependencies
         run: npm ci
+
+      - name: Synchronize API contract dependencies
+        working-directory: apps/api
+        run: uv sync --locked
+
+      - name: Check generated API contract
+        run: npm run api:check
 
       - name: Build frontend
         env:
@@ -39,7 +57,7 @@ jobs:
           PUBLIC_APP_SCRIPT_URL: ${{ vars.PUBLIC_APP_SCRIPT_URL }}
           PUBLIC_GOOGLE_AUTH_CLIENT_ID: ${{ vars.PUBLIC_GOOGLE_AUTH_CLIENT_ID }}
           PUBLIC_EMAIL_WHITE_LIST: ${{ vars.PUBLIC_EMAIL_WHITE_LIST }}
-          BASE_PATH: '/${{ github.event.repository.name }}'
+          BASE_PATH: "/${{ github.event.repository.name }}"
         run: npm run build
 
       - name: Test frontend contracts and review state

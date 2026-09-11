@@ -1,6 +1,6 @@
 # English Learning Project Memory
 
-Last updated: 2026-09-11
+Last updated: 2026-09-12
 
 ## Purpose
 
@@ -13,9 +13,10 @@ This is project evidence, not professional production-service experience.
 - SvelteKit 2 and Svelte 5 static frontend
 - GitHub Pages deployment
 - Google Identity Services sign-in in the browser
-- Google Apps Script API for vocabulary retrieval and review updates
-- Google Sheets as the current data store
-- English review routes and shared card components
+- Legacy Google Apps Script/Sheet code retained for rollback evidence, but absent from normal review
+  and deck/card management read traffic
+- PostgreSQL-backed English review plus shared English/Japanese management reads
+- English review routes and shared language-aware deck/card components
 - A semantic-search proposal exists but is not an active priority
 
 ## Target system
@@ -45,9 +46,9 @@ This is project evidence, not professional production-service experience.
 
 ## Active milestone
 
-Week 5 — frontend integration and cutover. Issue #24 is implemented and verified locally; review
-the diff and remote CI before closing it. Production deployment and post-deployment verification
-remain part of the later deployment milestone.
+Week 5 — frontend integration and cutover. Issue #24 is implemented and verified locally. Issue #25
+Part 1 now has a locally verified read-only bilingual management boundary; management mutations,
+full cutover/rollback evidence, remote CI, and deployment remain pending.
 
 The Weeks 0-3 milestone is complete and audited locally in
 [`issues/issue-12/README.md`](issues/issue-12/README.md). GitHub shows issues #4 through #11 closed,
@@ -206,6 +207,18 @@ frontend contract/state/component tests, nine Playwright browser tests, and the 
 PostgreSQL-backed backend suite passed locally. See
 [`issues/issue-24/README.md`](issues/issue-24/README.md).
 
+Issue #25 Part 1 is implemented and verified locally. `/decks?language=en|ja`, owned deck/card
+drill-down, active/archive filtering, conditional Japanese reading/romanization, and English
+pronunciation all share one FastAPI client and component/domain boundary. Missing language
+canonicalizes to English; invalid language performs no API request. FastAPI's deterministic checked-in
+OpenAPI schema generates checked-in TypeScript and CI rejects drift, while runtime guards still
+validate response JSON. Thirteen frontend tests and 20 Playwright Chrome flows pass, including loading,
+empty, authentication, non-disclosing not-found, retryable, archive, bilingual, mobile, static-path,
+and network checks. The combined review/management trace contains only `/v1` FastAPI persistence
+requests and no Apps Script URL. This is a read boundary only: create/edit/archive UI, idempotent
+create behavior, write failures, final rollback documentation, remote CI, and deployment remain.
+See [`issues/issue-25/README.md`](issues/issue-25/README.md).
+
 GitHub tracking:
 
 - [Weeks 0–3 roadmap issue](https://github.com/JosephT5566/english-learning/issues/12)
@@ -259,8 +272,14 @@ Repository-wide `npm run lint` still fails on the known Prettier baseline; touch
 and tests pass targeted ESLint. The Issue #23 operator replay and backup/restore evidence limits also
 remain documented.
 
+Issue #25's management write boundary is intentionally still open. Backend deck/card create does
+not yet accept the planned `Idempotency-Key`, and the frontend does not yet expose create, edit, or
+archive controls. Therefore Part 1 proves read cutover only, not complete database cutover or
+rollback readiness.
+
 ## Next action
 
-Commit and push the frontend CI environment fix, then confirm the rerun passes. Before any
-production cutover, configure the real `PUBLIC_API_BASE_URL` and approved frontend CORS origin, then
-follow the later deployment milestone.
+Implement Issue #25 Part 2: add exact-replay idempotency to backend deck/card creation using the
+existing database identity columns, then connect failure-safe shared create/edit/archive UI while
+preserving optimistic versions. Do not remove legacy rollback evidence until the later read/write
+cutover checklist records the data-consistency limit.

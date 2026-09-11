@@ -1,6 +1,6 @@
 # Architecture Memory
 
-Last updated: 2026-09-11
+Last updated: 2026-09-12
 
 ## Stack
 
@@ -10,24 +10,31 @@ Last updated: 2026-09-11
 - Tailwind CSS v4 through `@tailwindcss/vite`.
 - Static adapter (`@sveltejs/adapter-static`) configured for static hosting/GitHub Pages-style base paths.
 - Google Identity Services for sign-in.
-- Legacy Google Apps Script/Sheet modules remain in the repository, but are no longer in the review
-  runtime path.
-- Independently runnable FastAPI/PostgreSQL API under `apps/api/`; the English due-review and review
-  submission frontend now use it exclusively.
+- Legacy Google Apps Script/Sheet modules remain in the repository for rollback evidence, but normal
+  review and deck/card management reads no longer import or call them.
+- Independently runnable FastAPI/PostgreSQL API under `apps/api/`; review plus English/Japanese
+  management reads now use it exclusively. Management writes remain the next cutover boundary.
 
 ## Source Map
 
 - `src/routes/+layout.svelte`: imports global CSS and wraps route content.
 - `src/routes/+page.svelte`: home/sign-in/start page.
-- `src/routes/review/+page.svelte`: review page; fetches sheet words and passes them to card UI.
-- `src/routes/Header.svelte`: currently unused/commented in layout.
+- `src/routes/review/+page.svelte`: review page; fetches due cards from FastAPI and passes them to
+  the existing card UI.
+- `src/routes/decks/+page.svelte`: shared language-aware deck list with active/archive filtering.
+- `src/routes/decks/[deckId]/+page.svelte`: owned deck detail and card list.
+- `src/routes/cards/[cardId]/+page.svelte`: owned card detail with language-relevant fields.
+- `src/routes/Header.svelte`: base-path-aware primary navigation used by the shared layout.
 - `src/lib/auth.ts`: Google Identity Services initialization, token storage, token validation, profile lookup, sign-out.
 - `src/lib/api/client.ts`: authenticated FastAPI transport, bearer-header handling, response
   validation, and typed errors.
-- `src/lib/api/contracts.ts`: frontend copies of the due-review, review-write/result, and error
-  contracts with runtime boundary guards.
+- `src/lib/api/generated.ts`: checked-in TypeScript generated from FastAPI's checked-in OpenAPI
+  document.
+- `src/lib/api/contracts.ts`: generated schema aliases plus handwritten runtime boundary guards and
+  the custom error-envelope types that OpenAPI does not yet describe.
 - `src/lib/api/sheet.ts`: legacy Apps Script wrapper; no review runtime module imports it after
   cutover.
+- `src/lib/management/`: language/query parsing and management read-error presentation policy.
 - `src/lib/api/mock.ts`: local mock word data.
 - `src/lib/stores/auth.ts`: sign-in store.
 - `src/lib/review/pending.ts`: account-scoped, 24-hour exact-command/idempotency-key recovery.
@@ -58,6 +65,9 @@ Last updated: 2026-09-11
   audit persistence, and private in-memory confirmed-import candidates.
 - `apps/api/app/confirmed_imports.py`: approved-snapshot verification, atomic confirmed import,
   exact replay, post-commit reconciliation, safe reports, and the local operator CLI.
+- `apps/api/openapi.json`: committed deterministic API schema used for frontend type generation and
+  contract-drift checks.
+- `apps/api/scripts/export_openapi.py`: deterministic OpenAPI export from the FastAPI application.
 - `apps/api/app/pagination.py`: versioned opaque cursor encoding, strict parsing, and normalized
   query-shape binding.
 - `apps/api/migrations/`: Alembic environment and reversible migration history; the empty baseline
@@ -95,8 +105,9 @@ Last updated: 2026-09-11
     `GET`/`POST` methods, and its bearer/content/idempotency headers. It exposes `X-Request-ID` for
     browser-visible support diagnostics without enabling credentialed cookies.
 
-The English review frontend now targets this FastAPI service. No review read or write calls Google
-Apps Script, and there is no automatic fallback or dual-write path.
+The English review frontend and English/Japanese management read pages now target this FastAPI
+service. Normal review and management navigation makes no Apps Script call. Review writes have no
+fallback or dual-write path; management writes have not yet been connected.
 
 ## Backend Read Flow
 
@@ -141,8 +152,9 @@ Apps Script, and there is no automatic fallback or dual-write path.
 5. The request transaction commits the batch, all events, and all states together. Any exception or
    item failure rolls the complete request back.
 
-English and Japanese travel through the same routes, response models, ownership checks, and tables.
-The current review UI requests English while retaining the shared language-aware API contract.
+English and Japanese travel through the same routes, response models, ownership checks, tables, and
+management components. The review UI currently requests English while retaining the shared
+language-aware API contract.
 
 ## Initial Domain Schema
 
@@ -213,7 +225,8 @@ evidence is recorded in the [Issue #8 query-plan report](training/issues/issue-8
 - The checked-in bilingual fixture uses one owner with English and Japanese decks/cards, shared
   reusable tags, current states, and one two-card review batch. It is test evidence, not a production
   seed or import path.
-- Authenticated `/v1` routes now read and write these tables; frontend integration remains pending.
+- Authenticated `/v1` routes read and write these tables. Review and management reads are integrated;
+  deck/card management mutations remain pending.
 - Query-plan evidence comes from a deterministic local dataset with 40,000 cards, states, tag links,
   and events. It verifies planner selection, not production latency, throughput, or future planner
   behavior.
@@ -272,6 +285,30 @@ Review update payload shape is:
    produce success. Eligible manual retries reuse the persisted body/key pair.
 7. A conflict retires the old command and refetches due state; a validated `ReviewResult` clears it
    and produces the completed UI.
+
+## Management Read Flow
+
+1. `/decks` treats a missing `language` query as English and replaces the URL with
+   `?language=en`; unsupported values show a validation state without making an API request.
+2. English and Japanese tabs reuse the same route, client methods, domain contracts, and list
+   components. Active/archive filtering is expressed through the API `status` query.
+3. The client sends bearer-authenticated deck/card list and detail requests to `/v1`, then validates
+   each successful JSON boundary before displaying it.
+4. Deck and card IDs remain owner-scoped on the backend. A missing or cross-owner detail produces
+   the same non-disclosing not-found UI.
+5. Japanese cards show reading and romanization when present; English cards show pronunciation.
+   Both languages share meaning, definition, example, relation, tag, note, and review-state fields.
+6. Loading, empty, authentication, not-found, retryable, server, and malformed-response states are
+   distinct. A failed or unclear read never renders stale data as a successful response.
+
+## OpenAPI Type Flow
+
+1. FastAPI's application schema is exported deterministically to `apps/api/openapi.json`.
+2. `openapi-typescript` generates `src/lib/api/generated.ts`; both artifacts are committed.
+3. `src/lib/api/contracts.ts` selects the product types and retains runtime guards because generated
+   TypeScript alone cannot validate untrusted network JSON.
+4. Frontend CI regenerates both artifacts and fails on a diff, so a backend contract change cannot
+   silently leave the checked-in frontend types stale.
 
 ## Auth Flow
 

@@ -1,11 +1,13 @@
 # Decisions And Known Issues
 
-Last updated: 2026-09-04
+Last updated: 2026-09-12
 
 ## Durable Decisions
 
 - Use SvelteKit static adapter for deployment compatibility with static hosting and GitHub Pages.
-- Keep Google Sheet access behind a Google Apps Script endpoint instead of calling Google Sheets APIs directly from the browser.
+- Keep any retained legacy Google Sheet access behind Google Apps Script instead of calling Google
+  Sheets APIs directly from the browser; do not use it in normal cut-over review or management
+  paths.
 - Use Google Identity Services ID tokens for client sign-in and authenticated sheet updates.
 - Keep review state client-side during a session, then submit batched updates at the end of the review.
 - Use a five-stage spaced-repetition model with stage intervals from `STAGE_INTERVALS`.
@@ -83,6 +85,16 @@ Last updated: 2026-09-04
 - Roll review cutover back by redeploying the previous frontend, accepting temporary downtime and
   explicit divergence between post-cutover PostgreSQL reviews and Google Sheets. Do not attempt
   automatic reverse synchronization.
+- Use one language-aware management route and component/domain boundary for English and Japanese.
+  Canonicalize a missing `/decks` language to English; reject unsupported values in the browser
+  without an API request. Show reading/romanization only for Japanese and pronunciation only for
+  English.
+- Cut management reads before management writes. Deck/card list and detail pages call only the
+  authenticated FastAPI API; keep management mutation controls unavailable until their failure,
+  concurrency, and idempotency behavior is implemented and verified.
+- Treat FastAPI OpenAPI as the compile-time frontend contract. Commit its deterministic JSON export
+  and generated TypeScript, fail CI on regeneration drift, and retain handwritten runtime guards
+  because network JSON remains untrusted.
 - Allow browser review calls only from exact configured HTTP(S) origins. Permit the review
   transport's `GET`/`POST` methods and `Authorization`, `Content-Type`, and `Idempotency-Key`
   headers; expose `X-Request-ID`, keep credentialed cookies disabled, and reject wildcard or
@@ -131,3 +143,6 @@ Last updated: 2026-09-04
 - 2026-09-11: Cut the English due-review and batched review-submission frontend flow to the
   authenticated FastAPI contract with persisted exact-command retries, visible conflict recovery,
   backend-owned scheduling, and no Apps Script fallback or dual write.
+- 2026-09-12: Added shared English/Japanese deck/card list and detail reads, missing-language English
+  canonicalization, generated OpenAPI TypeScript with drift checks, and browser evidence that normal
+  review plus management navigation makes no Apps Script request. Management writes remain pending.

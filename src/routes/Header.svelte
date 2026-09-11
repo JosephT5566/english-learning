@@ -1,26 +1,32 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import { resolve } from '$app/paths';
-	import logo from '$lib/images/svelte-logo.svg';
-	import github from '$lib/images/github.svg';
+	import { browser } from '$app/environment';
+
+	let language = $derived(browser && page.url.searchParams.get('language') === 'ja' ? 'ja' : 'en');
+	let homePath = $derived(resolve('/'));
+	let reviewPath = $derived(resolve('/review'));
+	let decksPath = $derived(resolve('/decks'));
 </script>
 
 <header>
-	<nav>
-		<svg viewBox="0 0 2 3" aria-hidden="true">
-			<path d="M0,0 L1,2 C1.5,3 1.5,3 2,3 L2,0 Z" />
-		</svg>
+	<nav aria-label="Primary navigation">
 		<ul>
-			<li aria-current={page.url.pathname === `${resolve}/` ? 'page' : undefined}>
-				<a href={resolve('/')}>Home</a>
+			<li aria-current={page.url.pathname === homePath ? 'page' : undefined}>
+				<a href={homePath}>Home</a>
 			</li>
-			<li aria-current={page.url.pathname === `${resolve}/review` ? 'page' : undefined}>
-				<a href={resolve('/review')}>Review</a>
+			<li aria-current={page.url.pathname === reviewPath ? 'page' : undefined}>
+				<a href={reviewPath}>Review</a>
+			</li>
+			<li
+				aria-current={page.url.pathname.startsWith(decksPath) ||
+				page.url.pathname.includes('/cards/')
+					? 'page'
+					: undefined}
+			>
+				<a href={`${decksPath}?language=${language}`}>Decks</a>
 			</li>
 		</ul>
-		<svg viewBox="0 0 2 3" aria-hidden="true">
-			<path d="M0,0 L0,3 C0.5,3 0.5,3 1,2 L2,0 Z" />
-		</svg>
 	</nav>
 </header>
 
@@ -28,22 +34,16 @@
 	header {
 		display: flex;
 		justify-content: center;
+		padding: 0.75rem 1rem 0;
 	}
 
 	nav {
 		display: flex;
 		justify-content: center;
-		--background: rgba(255, 255, 255, 0.7);
-	}
-
-	svg {
-		width: 2em;
-		height: 3em;
-		display: block;
-	}
-
-	path {
-		fill: var(--background);
+		border: 1px solid rgba(64, 117, 166, 0.16);
+		border-radius: 999px;
+		background: rgba(255, 255, 255, 0.62);
+		box-shadow: 0 6px 20px rgba(47, 78, 105, 0.08);
 	}
 
 	ul {
@@ -55,8 +55,6 @@
 		justify-content: center;
 		align-items: center;
 		list-style: none;
-		background: var(--background);
-		background-size: contain;
 	}
 
 	li {
@@ -67,23 +65,23 @@
 	li[aria-current='page']::before {
 		--size: 6px;
 		content: '';
-		width: 0;
+		width: calc(var(--size) * 2);
 		height: 0;
 		position: absolute;
-		top: 0;
+		bottom: 0;
 		left: calc(50% - var(--size));
-		border: var(--size) solid transparent;
-		border-top: var(--size) solid var(--color-theme-1);
+		border: 0;
+		border-bottom: 3px solid var(--color-theme-2);
 	}
 
 	nav a {
 		display: flex;
 		height: 100%;
 		align-items: center;
-		padding: 0 0.5rem;
+		padding: 0 0.75rem;
 		color: var(--color-text);
 		font-weight: 700;
-		font-size: 0.8rem;
+		font-size: 0.72rem;
 		text-transform: uppercase;
 		letter-spacing: 0.1em;
 		text-decoration: none;
@@ -92,5 +90,6 @@
 
 	a:hover {
 		color: var(--color-theme-1);
+		text-decoration: none;
 	}
 </style>
