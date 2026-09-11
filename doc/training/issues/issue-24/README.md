@@ -3,6 +3,8 @@
 Status: implemented and verified locally, including one live authenticated review; remote CI and
 production deployment remain.
 
+繁中學習整理請見 [learning-notes.md](learning-notes.md)。
+
 ## Acceptance boundary
 
 The existing English flip/swipe review now uses authenticated FastAPI/PostgreSQL reads and writes:
