@@ -20,6 +20,10 @@ DEFAULT_DATABASE_URL = (
     "english_learning:english_learning@localhost:5432/english_learning"
 )
 DEFAULT_GOOGLE_OAUTH_CLIENT_ID = "local-development-client-id"
+DEFAULT_CORS_ALLOWED_ORIGINS = (
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+)
 
 
 class AppEnvironment(StrEnum):
@@ -62,6 +66,41 @@ class Settings(BaseSettings):
     google_oauth_client_id: Annotated[
         str, StringConstraints(strip_whitespace=True, min_length=1)
     ] = DEFAULT_GOOGLE_OAUTH_CLIENT_ID
+    cors_allowed_origins: Annotated[tuple[str, ...], Field(min_length=1)] = (
+        DEFAULT_CORS_ALLOWED_ORIGINS
+    )
+
+    @field_validator("cors_allowed_origins")
+    @classmethod
+    def require_explicit_http_origins(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        """Accept only exact HTTP(S) origins without paths or wildcards."""
+
+        from urllib.parse import urlsplit
+
+        normalized: list[str] = []
+        for candidate in value:
+            origin = candidate.strip().rstrip("/")
+            parsed = urlsplit(origin)
+            if (
+                origin == "*"
+                or parsed.scheme not in {"http", "https"}
+                or not parsed.netloc
+                or parsed.username is not None
+                or parsed.password is not None
+                or parsed.path
+                or parsed.query
+                or parsed.fragment
+            ):
+                raise ValueError("must contain only exact HTTP(S) origins")
+            try:
+                _ = parsed.port
+            except ValueError:
+                raise ValueError("must contain only exact HTTP(S) origins") from None
+            normalized.append(origin)
+
+        if len(normalized) != len(set(normalized)):
+            raise ValueError("must not contain duplicate origins")
+        return tuple(normalized)
 
     @field_validator("database_url")
     @classmethod
@@ -130,6 +169,14 @@ def load_settings() -> Settings:
     ):
         raise ConfigurationError(
             "Invalid configuration for GOOGLE_OAUTH_CLIENT_ID; production requires an explicit value."
+        )
+
+    if (
+        settings.app_env is AppEnvironment.PRODUCTION
+        and settings.cors_allowed_origins == DEFAULT_CORS_ALLOWED_ORIGINS
+    ):
+        raise ConfigurationError(
+            "Invalid configuration for CORS_ALLOWED_ORIGINS; production requires an explicit value."
         )
 
     return settings

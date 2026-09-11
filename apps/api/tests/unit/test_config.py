@@ -4,6 +4,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.config import (
+    DEFAULT_CORS_ALLOWED_ORIGINS,
     DEFAULT_DATABASE_URL,
     AppEnvironment,
     ConfigurationError,
@@ -18,6 +19,7 @@ CONFIG_ENVIRONMENT_VARIABLES = (
     "DATABASE_URL",
     "DATABASE_CONNECT_TIMEOUT_SECONDS",
     "GOOGLE_OAUTH_CLIENT_ID",
+    "CORS_ALLOWED_ORIGINS",
 )
 
 
@@ -35,6 +37,7 @@ def test_load_settings_uses_safe_local_defaults() -> None:
     assert settings.log_level is LogLevel.INFO
     assert settings.database_url.get_secret_value() == DEFAULT_DATABASE_URL
     assert settings.database_connect_timeout_seconds == 2
+    assert settings.cors_allowed_origins == DEFAULT_CORS_ALLOWED_ORIGINS
     assert DEFAULT_DATABASE_URL not in repr(settings)
     assert DEFAULT_DATABASE_URL not in str(settings)
 
@@ -49,6 +52,10 @@ def test_environment_variables_override_defaults(
     monkeypatch.setenv("LOG_LEVEL", "DEBUG")
     monkeypatch.setenv("DATABASE_URL", database_url)
     monkeypatch.setenv("DATABASE_CONNECT_TIMEOUT_SECONDS", "5")
+    monkeypatch.setenv(
+        "CORS_ALLOWED_ORIGINS",
+        '["https://app.example.com","http://localhost:4173"]',
+    )
 
     settings = load_settings()
 
@@ -56,6 +63,10 @@ def test_environment_variables_override_defaults(
     assert settings.log_level is LogLevel.DEBUG
     assert settings.database_url.get_secret_value() == database_url
     assert settings.database_connect_timeout_seconds == 5
+    assert settings.cors_allowed_origins == (
+        "https://app.example.com",
+        "http://localhost:4173",
+    )
 
 
 def test_production_accepts_explicit_database_url(
@@ -67,6 +78,7 @@ def test_production_accepts_explicit_database_url(
     monkeypatch.setenv("APP_ENV", "production")
     monkeypatch.setenv("DATABASE_URL", database_url)
     monkeypatch.setenv("GOOGLE_OAUTH_CLIENT_ID", "production-client-id")
+    monkeypatch.setenv("CORS_ALLOWED_ORIGINS", '["https://app.example.com"]')
 
     settings = load_settings()
 
@@ -100,12 +112,45 @@ def test_production_requires_explicit_google_oauth_client_id(
         load_settings()
 
 
+def test_production_requires_explicit_cors_origins(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setenv(
+        "DATABASE_URL",
+        "postgresql+psycopg://api_user:password@db.example:5432/app",
+    )
+    monkeypatch.setenv("GOOGLE_OAUTH_CLIENT_ID", "production-client-id")
+
+    with pytest.raises(ConfigurationError, match="CORS_ALLOWED_ORIGINS"):
+        load_settings()
+
+
 def test_google_oauth_client_id_must_not_be_blank(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("GOOGLE_OAUTH_CLIENT_ID", "   ")
 
     with pytest.raises(ConfigurationError, match="GOOGLE_OAUTH_CLIENT_ID"):
+        load_settings()
+
+
+@pytest.mark.parametrize(
+    "origins",
+    [
+        "[]",
+        '["*"]',
+        '["https://app.example.com/path"]',
+        '["https://user:password@app.example.com"]',
+        '["https://app.example.com","https://app.example.com/"]',
+    ],
+)
+def test_cors_origins_must_be_nonempty_unique_exact_origins(
+    monkeypatch: pytest.MonkeyPatch, origins: str
+) -> None:
+    monkeypatch.setenv("CORS_ALLOWED_ORIGINS", origins)
+
+    with pytest.raises(ConfigurationError, match="CORS_ALLOWED_ORIGINS"):
         load_settings()
 
 

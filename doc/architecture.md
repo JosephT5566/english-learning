@@ -40,6 +40,7 @@ Last updated: 2026-09-11
 - `src/app.css`: global CSS, Tailwind import, and base layout styling.
 - `apps/api/app/main.py`: FastAPI application factory, lifespan boundary, and router composition.
 - `apps/api/app/config.py`: typed, secret-safe environment configuration loaded during lifespan.
+- `apps/api/app/cors.py`: exact-origin browser policy initialized from validated lifespan settings.
 - `apps/api/app/database.py`: lazy SQLAlchemy engine construction, application-scoped session factory,
   explicit transaction ownership, readiness queries, and pool disposal.
 - `apps/api/app/errors.py`: stable safe API error models and application/framework exception handlers.
@@ -90,6 +91,9 @@ Last updated: 2026-09-11
    and dispose their engine, while each revision runs in Alembic's transaction boundary.
 10. HTTP middleware assigns a new request UUID. Expected, validation, framework, and unexpected
     failures return one stable envelope and never serialize internal exception details.
+11. The outer CORS middleware permits only configured HTTP(S) frontend origins, the product's
+    `GET`/`POST` methods, and its bearer/content/idempotency headers. It exposes `X-Request-ID` for
+    browser-visible support diagnostics without enabling credentialed cookies.
 
 The English review frontend now targets this FastAPI service. No review read or write calls Google
 Apps Script, and there is no automatic fallback or dual-write path.
@@ -286,3 +290,5 @@ Review update payload shape is:
 - Use `$app/paths.resolve()` for internal URLs.
 - `PUBLIC_API_BASE_URL` is the external API base and is not prefixed with the static frontend's
   `paths.base`; a trailing slash is normalized by the client.
+- FastAPI's `CORS_ALLOWED_ORIGINS` is an explicit JSON array of frontend origins. Local defaults
+  cover `localhost:5173` and `127.0.0.1:5173`; production must provide its real static origin.

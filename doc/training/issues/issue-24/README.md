@@ -1,6 +1,7 @@
 # Issue #24 - Review API cutover
 
-Status: implemented and verified locally; production deployment remains a later milestone.
+Status: implementation and CORS verified locally; one real review write walkthrough remains before
+remote CI. Production deployment remains a later milestone.
 
 ## Acceptance boundary
 
@@ -61,8 +62,9 @@ dual write.
 - Reviews accepted into PostgreSQL after cutover are not synchronized back to Google Sheets. A
   rollback therefore creates explicit PostgreSQL/Sheet divergence; operators must preserve both
   datasets and reconcile deliberately before another authority transition.
-- Production deployment, CORS for the final frontend origin, and post-deployment verification belong
-  to the deployment milestone.
+- The API rejects wildcard CORS and requires an explicit production frontend origin. Supplying that
+  final origin, production deployment, and post-deployment verification belong to the deployment
+  milestone.
 
 ## Local verification
 
@@ -85,9 +87,16 @@ dual write.
   not confirmed, exact-key/body retry to success, pending cleanup, stale conflict retirement, empty
   and loading states, due/submission `401` sign-out, validation/not-found rejection, unexpected
   server failure, and invalid success-response behavior.
+- Five focused CORS contracts verify allowed due/submission preflights, rejected origins/methods/
+  headers, and `X-Request-ID` exposure. Real Uvicorn preflights from both supported local origins
+  returned `200` with the intended methods and headers. After the CORS addition, the complete
+  PostgreSQL-backed backend suite passed all 231 tests in 87.71 seconds.
+- A real Chrome page at `http://localhost:5173/review` used a live Google ID token to load 10 due
+  cards from local FastAPI/PostgreSQL after CORS was enabled. No real review submission was made
+  during this check because that would change the user's learning schedule.
 
-This is a local correctness result, not remote CI, live Google verification, deployment, or
-production evidence.
+This is a local correctness and live authenticated-read result, not a live review-write, remote CI,
+deployment, or production result.
 
 ## Five-minute explanation
 

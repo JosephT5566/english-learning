@@ -68,6 +68,8 @@ this cutover is verified locally rather than claimed in production.
 - Google sign-in is client-side and stores the Google ID token plus expiration in `localStorage`.
 - API requests require a valid ID token from `getTokenIfValid()` and send it only in the bearer
   header.
+- Browser API access is restricted to exact backend-configured origins; bearer and idempotency
+  headers are allowed while credentialed cookies remain disabled.
 - `SwipeCards` emits decisions and observed state versions; review stages, ease, and dates are now
   backend-owned.
 - One logical submission retains the same key and body across ambiguous retries for up to 24 hours.

@@ -65,6 +65,11 @@ The API accepts these server-side variables:
 - `DATABASE_URL`: secret SQLAlchemy URL using the `postgresql+psycopg` driver. The local default is
   disposable and rejected in production.
 - `DATABASE_CONNECT_TIMEOUT_SECONDS`: integer from 1 through 10; defaults to `2`.
+- `GOOGLE_OAUTH_CLIENT_ID`: server-side audience used to verify Google ID tokens. It must match the
+  frontend's Google web client ID.
+- `CORS_ALLOWED_ORIGINS`: JSON array of exact browser origins, for example
+  `["http://localhost:5173","http://127.0.0.1:5173"]`. Wildcards, paths, credentials, duplicates,
+  and an empty list are rejected; production must set an explicit value.
 
 These API values are server-side and must never use the SvelteKit `PUBLIC_` prefix. A local
 `apps/api/.env` is optional and ignored by Git; `.env.example` contains only disposable defaults.

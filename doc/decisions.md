@@ -83,6 +83,10 @@ Last updated: 2026-09-04
 - Roll review cutover back by redeploying the previous frontend, accepting temporary downtime and
   explicit divergence between post-cutover PostgreSQL reviews and Google Sheets. Do not attempt
   automatic reverse synchronization.
+- Allow browser review calls only from exact configured HTTP(S) origins. Permit the review
+  transport's `GET`/`POST` methods and `Authorization`, `Content-Type`, and `Idempotency-Key`
+  headers; expose `X-Request-ID`, keep credentialed cookies disabled, and reject wildcard or
+  implicit production origins.
 
 ## Known Follow-Up Areas
 

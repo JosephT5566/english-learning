@@ -247,14 +247,18 @@ Required outputs:
 
 ## Current blockers
 
-No local Issue #24 implementation blocker remains. Remote CI, live Google sign-in/token verification,
-production API/CORS configuration, deployment, and post-deployment behavior are not verified.
+The discovered browser preflight blocker is fixed: strict configurable CORS contracts pass, real
+Uvicorn preflights succeed, and Chrome loaded 10 due cards through a live Google token and local
+FastAPI/PostgreSQL. A real review write was deliberately not submitted because it changes the
+user's learning schedule. Remote CI, the final production API/CORS values, deployment, and
+post-deployment behavior remain unverified.
 Repository-wide `npm run lint` still fails on the known Prettier baseline; touched frontend source
 and tests pass targeted ESLint. The Issue #23 operator replay and backup/restore evidence limits also
 remain documented.
 
 ## Next action
 
-Review the Issue #24 diff and push the feature branch for remote CI. Before any production cutover,
-configure the real `PUBLIC_API_BASE_URL` and approved frontend CORS origin, then follow the later
-deployment milestone. Do not claim production cutover from local browser evidence.
+With explicit user approval, complete one real local review submission and confirm its PostgreSQL
+transition. Then commit the CORS follow-up and push the feature branch for remote CI. Before any
+production cutover, configure the real `PUBLIC_API_BASE_URL` and approved frontend CORS origin, then
+follow the later deployment milestone.
