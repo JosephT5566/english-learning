@@ -3,5 +3,9 @@ import { writable } from 'svelte/store';
 export const isSignedIn = writable<boolean>(false);
 
 export function setSignIn() {
-    isSignedIn.set(true);
+	isSignedIn.set(true);
+}
+
+export function setSignOut() {
+	isSignedIn.set(false);
 }

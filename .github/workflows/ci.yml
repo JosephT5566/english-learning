@@ -27,11 +27,23 @@ jobs:
 
       - name: Build frontend
         env:
+          PUBLIC_API_BASE_URL: ${{ vars.PUBLIC_API_BASE_URL }}
           PUBLIC_APP_SCRIPT_URL: ${{ vars.PUBLIC_APP_SCRIPT_URL }}
           PUBLIC_GOOGLE_AUTH_CLIENT_ID: ${{ vars.PUBLIC_GOOGLE_AUTH_CLIENT_ID }}
           PUBLIC_EMAIL_WHITE_LIST: ${{ vars.PUBLIC_EMAIL_WHITE_LIST }}
           BASE_PATH: '/${{ github.event.repository.name }}'
         run: npm run build
+
+      - name: Test frontend contracts and review state
+        run: npm run test:frontend
+
+      - name: Check frontend types and Svelte contracts
+        env:
+          PUBLIC_API_BASE_URL: http://127.0.0.1:8000
+        run: npm run check
+
+      - name: Test critical review browser flows
+        run: npm run test:browser
 
   backend:
     name: Backend checks

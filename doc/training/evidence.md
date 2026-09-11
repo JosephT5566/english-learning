@@ -496,3 +496,34 @@ Use precise language such as “project,” “local load test,” or “deploye
 - Five-minute explanation practiced: In progress through the Issue #23 transaction walkthrough.
 - Candidate resume bullet: Not yet. Revisit after the private import, frontend cutover, and deployed
   verification support an honest end-to-end claim.
+
+### Authenticated review frontend cutover
+
+- Date: 2026-09-11
+- Status: Verified locally; not deployed
+- Problem: Preserve the existing English flip/swipe workflow while replacing unauthenticated Sheet
+  reads and client-calculated Sheet writes with authenticated transactional API calls that remain
+  safe after ambiguous client outcomes.
+- Constraints and invariants: ID tokens travel only in bearer headers; FastAPI owns identity,
+  authorization, validation, and scheduling; a logical retry keeps an identical body/key pair;
+  stale batches save nothing; failed writes never appear successful; review runtime has no fallback
+  or dual writes.
+- Decision: Use a typed runtime-validated Svelte API boundary and one 24-hour, Google-subject-scoped
+  pending command. Retry ambiguous/auth/retryable failures exactly, retire definite/conflicting
+  commands, and recover stale state by refetching rather than reconstructing mixed batches.
+- Implementation references: `src/lib/api/client.ts`, `src/lib/api/contracts.ts`,
+  `src/lib/review/pending.ts`, `src/routes/review/+page.svelte`,
+  `src/lib/components/SwipeCards.svelte`, `tests/frontend/`, `tests/browser/`, and
+  `doc/training/issues/issue-24/README.md`.
+- Verification and failure cases: Ten frontend contract/state/component tests and nine Playwright
+  Chrome tests cover flip gating, exact retries, expiry/account isolation, invalid storage, loading,
+  empty, authentication, retryable failure, success cleanup, and stale conflicts. The static subpath
+  build and all 220 backend tests passed against PostgreSQL 17; Ruff and uv lock checks passed.
+- Measured result: Local correctness only. The full backend suite took 83.28 seconds. This is not a
+  production latency, reliability, scale, or user-impact claim.
+- Limitations: Remote CI, live Google verification, final CORS/API hosting configuration,
+  deployment, post-deployment verification, and production rollback are unverified. Repository-wide
+  Prettier drift remains.
+- Five-minute explanation practiced: Prepared in the issue artifact; Joseph has not yet practiced the
+  complete explanation end to end.
+- Candidate resume bullet: Not yet. Revisit after deployment and post-deployment verification.

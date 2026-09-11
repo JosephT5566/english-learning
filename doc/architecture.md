@@ -1,6 +1,6 @@
 # Architecture Memory
 
-Last updated: 2026-09-04
+Last updated: 2026-09-11
 
 ## Stack
 
@@ -10,8 +10,10 @@ Last updated: 2026-09-04
 - Tailwind CSS v4 through `@tailwindcss/vite`.
 - Static adapter (`@sveltejs/adapter-static`) configured for static hosting/GitHub Pages-style base paths.
 - Google Identity Services for sign-in.
-- Google Apps Script endpoint as the Google Sheet API facade.
-- Independently runnable FastAPI foundation under `apps/api/`; it is not yet used by the frontend.
+- Legacy Google Apps Script/Sheet modules remain in the repository, but are no longer in the review
+  runtime path.
+- Independently runnable FastAPI/PostgreSQL API under `apps/api/`; the English due-review and review
+  submission frontend now use it exclusively.
 
 ## Source Map
 
@@ -20,10 +22,17 @@ Last updated: 2026-09-04
 - `src/routes/review/+page.svelte`: review page; fetches sheet words and passes them to card UI.
 - `src/routes/Header.svelte`: currently unused/commented in layout.
 - `src/lib/auth.ts`: Google Identity Services initialization, token storage, token validation, profile lookup, sign-out.
-- `src/lib/api/sheet.ts`: Apps Script API wrapper for fetching word lists and posting review updates.
+- `src/lib/api/client.ts`: authenticated FastAPI transport, bearer-header handling, response
+  validation, and typed errors.
+- `src/lib/api/contracts.ts`: frontend copies of the due-review, review-write/result, and error
+  contracts with runtime boundary guards.
+- `src/lib/api/sheet.ts`: legacy Apps Script wrapper; no review runtime module imports it after
+  cutover.
 - `src/lib/api/mock.ts`: local mock word data.
 - `src/lib/stores/auth.ts`: sign-in store.
-- `src/lib/stores/review.ts`: review word list, current index, and pending sheet update fields.
+- `src/lib/review/pending.ts`: account-scoped, 24-hour exact-command/idempotency-key recovery.
+- `src/lib/review/interaction.ts`: presentation-independent flip-before-answer guard.
+- `src/lib/stores/review.ts`: legacy Sheet-oriented review store, no longer used by the review route.
 - `src/lib/types.ts`: shared app data contracts.
 - `src/lib/utils.ts`: spaced-repetition intervals and ease-factor calculation.
 - `src/lib/components/SwipeCards.svelte`: main review card interaction.
@@ -82,8 +91,8 @@ Last updated: 2026-09-04
 10. HTTP middleware assigns a new request UUID. Expected, validation, framework, and unexpected
     failures return one stable envelope and never serialize internal exception details.
 
-The frontend still uses Google Apps Script at runtime. No frontend request currently targets this
-FastAPI service.
+The English review frontend now targets this FastAPI service. No review read or write calls Google
+Apps Script, and there is no automatic fallback or dual-write path.
 
 ## Backend Read Flow
 
@@ -129,7 +138,7 @@ FastAPI service.
    item failure rolls the complete request back.
 
 English and Japanese travel through the same routes, response models, ownership checks, and tables.
-The frontend is not connected to these reads yet and its Google Apps Script behavior is unchanged.
+The current review UI requests English while retaining the shared language-aware API contract.
 
 ## Initial Domain Schema
 
@@ -247,24 +256,33 @@ Review update payload shape is:
 
 ## Data Flow
 
-1. `src/routes/review/+page.svelte` calls `getWordListFromSheet()`.
-2. `getWordListFromSheet()` fetches `PUBLIC_APP_SCRIPT_URL?action=getList&count=10`.
-3. The page shuffles the returned `WordItem[]` and stores it in `wordList`.
-4. `SwipeCards.svelte` renders and manages card interactions locally.
-5. Each completed card calls `setNewField()` with the updated stage/ease factor.
-6. `setNewField()` calculates `lastReview`, `nextReview`, `reviewStage`, and `easeFactor` into `newFields`.
-7. `Submit Results` calls `updateReviewToSheet($newFields)`.
-8. `updateReviewToSheet()` validates the Google ID token and posts updates to Apps Script.
+1. `src/routes/review/+page.svelte` asks the typed client for up to ten English due cards.
+2. The client sends `GET /v1/reviews/due` with the current ID token only in `Authorization` and
+   validates the successful page contract before returning it.
+3. The page shuffles the due cards and `SwipeCards.svelte` retains the flip/swipe presentation.
+4. Each answered back face emits only `card_id`, `decision`, and the due response's
+   `review_state.version`; no scheduling value is calculated in the browser.
+5. The first submit creates and persists one account-scoped body/key pair. The client sends that
+   exact body to `POST /v1/reviews` with `Idempotency-Key`.
+6. Network, authentication, retryable provider/database, and ambiguous response failures do not
+   produce success. Eligible manual retries reuse the persisted body/key pair.
+7. A conflict retires the old command and refetches due state; a validated `ReviewResult` clears it
+   and produces the completed UI.
 
 ## Auth Flow
 
 - `src/routes/+page.svelte` initializes Google Identity Services on mount if the user is not signed in.
 - `initGsiOnce()` configures the client ID and whitelist from public env vars.
 - On successful credential callback, `auth.ts` decodes the JWT, validates verified/whitelisted email, stores token and expiration, and sets `isSignedIn`.
-- `getTokenIfValid()` rejects missing or near-expired tokens using a safety buffer and skew allowance.
+- `getTokenIfValid()` rejects missing or near-expired tokens using a safety buffer and skew allowance,
+  clears stale credentials, and synchronizes `isSignedIn` to false.
+- A server `401` invokes the same sign-out boundary. An unconfirmed pending review is retained for
+  the same Google subject; signing in as another subject deletes it before any review data is shown.
 
 ## Static Hosting Notes
 
 - `svelte.config.js` uses `adapter-static` with `fallback: '404.html'`.
 - `paths.base` is empty during dev and reads `process.env.BASE_PATH` otherwise.
 - Use `$app/paths.resolve()` for internal URLs.
+- `PUBLIC_API_BASE_URL` is the external API base and is not prefixed with the static frontend's
+  `paths.base`; a trailing slash is normalized by the client.

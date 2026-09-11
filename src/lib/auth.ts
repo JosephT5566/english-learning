@@ -1,6 +1,7 @@
 import { PUBLIC_GOOGLE_AUTH_CLIENT_ID, PUBLIC_EMAIL_WHITE_LIST } from '$env/static/public';
 import { browser } from '$app/environment';
-import { setSignIn } from './stores/auth';
+import { setSignIn, setSignOut } from './stores/auth';
+import { clearPendingSubmission, loadPendingSubmission } from './review/pending';
 
 // ======== 設定 ========
 const STORAGE_TOKEN = 'gid_id_token';
@@ -62,7 +63,12 @@ export function getIsSignedIn(): boolean {
 	if (!token || !exp) {
 		return false;
 	}
-	return isTokenStillValid(exp);
+	if (!isTokenStillValid(exp)) {
+		clearToken();
+		setSignOut();
+		return false;
+	}
+	return true;
 }
 
 export function getProfile(): JwtPayload | null {
@@ -81,6 +87,8 @@ export function getProfile(): JwtPayload | null {
 export function getTokenIfValid(): string | null {
 	const { token, exp } = loadToken();
 	if (!token || !exp || !isTokenStillValid(exp)) {
+		clearToken();
+		setSignOut();
 		return null;
 	}
 
@@ -126,6 +134,15 @@ export function initGsiOnce(onError?: (e: Error) => void) {
 				if (!payload.exp) {
 					throw new Error('Google login failed: No exp in token');
 				}
+				if (!payload.sub) {
+					throw new Error('Google login failed: No subject in token');
+				}
+				const previousSubject = getProfile()?.sub;
+				if (previousSubject && previousSubject !== payload.sub) {
+					clearPendingSubmission();
+				} else {
+					loadPendingSubmission(payload.sub);
+				}
 				saveToken(idToken, payload.exp);
 				setSignIn();
 			} catch (e) {
@@ -158,6 +175,7 @@ export function renderGoogleButton(container: HTMLElement) {
 // ======== 登出 ========
 export function signOut() {
 	clearToken();
+	setSignOut();
 	// 可選：通知 GIS 取消自動選擇
 	try {
 		window.google?.accounts?.id?.disableAutoSelect?.();
