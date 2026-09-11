@@ -515,19 +515,21 @@ Use precise language such as “project,” “local load test,” or “deploye
   `src/lib/review/pending.ts`, `src/routes/review/+page.svelte`,
   `src/lib/components/SwipeCards.svelte`, `tests/frontend/`, `tests/browser/`, and
   `doc/training/issues/issue-24/README.md`.
-- Verification and failure cases: Ten frontend contract/state/component tests and nine Playwright
+- Verification and failure cases: Eleven frontend contract/state/component tests and ten Playwright
   Chrome tests cover flip gating, exact retries, expiry/account isolation, invalid storage, loading,
-  empty, authentication, retryable failure, success cleanup, and stale conflicts. The static subpath
+  empty, authentication, retryable failure, success cleanup, stale conflicts, preserved imported
+  part-of-speech labels, and usable mobile card height. The static subpath
   build and, after the CORS follow-up, all 231 backend tests passed against PostgreSQL 17; Ruff and
   uv lock checks passed. Five
   focused CORS contracts also cover allowed due/submission preflight, rejected origins/methods/
-  headers, and browser-visible request IDs. Real Uvicorn preflights passed, and Chrome loaded 10 due
-  cards using a live Google token through local FastAPI/PostgreSQL.
+  headers, and browser-visible request IDs. Real Uvicorn preflights passed. Chrome used a live Google
+  token to submit 10 due cards through local FastAPI/PostgreSQL; the success UI reported 10 saved,
+  and a content-free database check found one batch, 10 distinct events, and 10 current states
+  matching their recorded `srs-v1` results.
 - Measured result: Local correctness only. The full backend suite took 83.28 seconds. This is not a
   production latency, reliability, scale, or user-impact claim.
-- Limitations: The live authenticated read did not submit a real review write. Remote CI, final
-  production CORS/API hosting values, deployment, post-deployment verification, and production
-  rollback are unverified. Repository-wide Prettier drift remains.
+- Limitations: Remote CI, final production CORS/API hosting values, deployment, post-deployment
+  verification, and production rollback are unverified. Repository-wide Prettier drift remains.
 - Five-minute explanation practiced: Prepared in the issue artifact; Joseph has not yet practiced the
   complete explanation end to end.
 - Candidate resume bullet: Not yet. Revisit after deployment and post-deployment verification.

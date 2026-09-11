@@ -247,18 +247,17 @@ Required outputs:
 
 ## Current blockers
 
-The discovered browser preflight blocker is fixed: strict configurable CORS contracts pass, real
-Uvicorn preflights succeed, and Chrome loaded 10 due cards through a live Google token and local
-FastAPI/PostgreSQL. A real review write was deliberately not submitted because it changes the
-user's learning schedule. Remote CI, the final production API/CORS values, deployment, and
-post-deployment behavior remain unverified.
+The discovered browser preflight and collapsed-card-height blockers are fixed. Strict configurable
+CORS contracts and the mobile layout regression pass. Chrome then completed a live 10-card review
+through a real Google token and local FastAPI/PostgreSQL; the database contained one batch, 10
+distinct events, and 10 current states matching their recorded `srs-v1` results. Remote CI, the
+final production API/CORS values, deployment, and post-deployment behavior remain unverified.
 Repository-wide `npm run lint` still fails on the known Prettier baseline; touched frontend source
 and tests pass targeted ESLint. The Issue #23 operator replay and backup/restore evidence limits also
 remain documented.
 
 ## Next action
 
-With explicit user approval, complete one real local review submission and confirm its PostgreSQL
-transition. Then commit the CORS follow-up and push the feature branch for remote CI. Before any
-production cutover, configure the real `PUBLIC_API_BASE_URL` and approved frontend CORS origin, then
-follow the later deployment milestone.
+Commit the CORS comments and layout regression follow-up, then push the feature branch for remote
+CI. Before any production cutover, configure the real `PUBLIC_API_BASE_URL` and approved frontend
+CORS origin, then follow the later deployment milestone.

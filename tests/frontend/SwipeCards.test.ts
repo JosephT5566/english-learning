@@ -45,6 +45,21 @@ const card: DueCard = {
 };
 
 describe('SwipeCards', () => {
+	it('displays a preserved legacy part-of-speech label instead of canonical other', () => {
+		const importedCard: DueCard = {
+			...card,
+			part_of_speech: 'other',
+			part_of_speech_detail: 'vocabulary',
+			note: 'informal',
+		};
+
+		render(SwipeCards, { props: { wordList: [importedCard] } });
+
+		expect(screen.getByText('vocabulary', { exact: true })).toBeInTheDocument();
+		expect(screen.queryByText('other', { exact: true })).not.toBeInTheDocument();
+		expect(screen.getByText('informal', { exact: true })).toBeInTheDocument();
+	});
+
 	it('requires a flip before answering and emits only the backend command fields', async () => {
 		const onAnswer = vi.fn();
 		const { container } = render(SwipeCards, { props: { wordList: [card], onAnswer } });

@@ -9,6 +9,18 @@ async function answerOneCard(page: import('@playwright/test').Page) {
 	await page.getByRole('button', { name: 'Submit Results', exact: true }).click();
 }
 
+test('the review card stack receives usable viewport height', async ({ page }) => {
+	await page.setViewportSize({ width: 390, height: 700 });
+	await page.goto('/__test__/auth/retryable');
+	await expect(page.getByText('resilient', { exact: true })).toBeVisible();
+
+	const cardsBox = await page.locator('.swipe--cards').boundingBox();
+	const cardBox = await page.locator('.swipe--card').boundingBox();
+
+	expect(cardsBox?.height).toBeGreaterThan(300);
+	expect(cardBox?.height).toBeGreaterThan(300);
+});
+
 test('an unconfirmed submission retries the identical command and succeeds once', async ({
 	page,
 }) => {

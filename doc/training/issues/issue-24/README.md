@@ -1,7 +1,7 @@
 # Issue #24 - Review API cutover
 
-Status: implementation and CORS verified locally; one real review write walkthrough remains before
-remote CI. Production deployment remains a later milestone.
+Status: implemented and verified locally, including one live authenticated review; remote CI and
+production deployment remain.
 
 ## Acceptance boundary
 
@@ -68,9 +68,10 @@ dual write.
 
 ## Local verification
 
-- `npm run test:frontend`: nine Node contract/state tests plus one Svelte component test passed,
+- `npm run test:frontend`: nine Node contract/state tests plus two Svelte component tests passed,
   including exact pending-command recovery, 24-hour expiry, cross-account deletion, malformed
-  storage, actual flip gating, and the emitted backend command shape.
+  storage, imported part-of-speech detail presentation, actual flip gating, and the emitted backend
+  command shape.
 - `PUBLIC_API_BASE_URL=http://127.0.0.1:8000 npm run check`: passed with three pre-existing unused
   layout CSS warnings and no errors.
 - Static production builds passed both with `BASE_PATH=/english-learning` and with an empty local
@@ -82,21 +83,23 @@ dual write.
   `BASE_PATH=/english-learning`, and whitespace checks passed. Repository-wide `npm run lint`
   remains blocked by the pre-existing Prettier baseline (57 reported files after adding this
   ticket's test files); targeted ESLint for every touched frontend source/test passes.
-- `npm run test:browser`: nine Playwright/Chrome tests passed against checked-in deterministic
+- `npm run test:browser`: ten Playwright/Chrome tests passed against checked-in deterministic
   servers. They cover disabled answer controls before flip, due-card rendering, retryable `503` as
   not confirmed, exact-key/body retry to success, pending cleanup, stale conflict retirement, empty
   and loading states, due/submission `401` sign-out, validation/not-found rejection, unexpected
-  server failure, and invalid success-response behavior.
+  server failure, invalid success-response behavior, and a mobile-viewport regression requiring the
+  card stack and card to receive usable height.
 - Five focused CORS contracts verify allowed due/submission preflights, rejected origins/methods/
   headers, and `X-Request-ID` exposure. Real Uvicorn preflights from both supported local origins
   returned `200` with the intended methods and headers. After the CORS addition, the complete
   PostgreSQL-backed backend suite passed all 231 tests in 87.71 seconds.
-- A real Chrome page at `http://localhost:5173/review` used a live Google ID token to load 10 due
-  cards from local FastAPI/PostgreSQL after CORS was enabled. No real review submission was made
-  during this check because that would change the user's learning schedule.
+- A real Chrome page at `http://localhost:5173/review` used a live Google ID token to load and submit
+  10 due cards through local FastAPI/PostgreSQL. The confirmed UI reported 10 saved answers. A
+  content-free database check found exactly one batch, 10 events for 10 distinct cards, and all 10
+  current states equal to their recorded `srs-v1` resulting states.
 
-This is a local correctness and live authenticated-read result, not a live review-write, remote CI,
-deployment, or production result.
+This is a local correctness and live authenticated review result, not remote CI, deployment, or
+production evidence.
 
 ## Five-minute explanation
 

@@ -184,7 +184,9 @@
 	<title>Daily English review</title>
 </svelte:head>
 
-<div class="review-page-container min-h-dvh bg-[var(--bg)] flex items-center justify-center p-4">
+<div
+	class="review-page-container flex h-dvh min-h-0 items-center justify-center bg-[var(--bg)] p-4"
+>
 	{#if viewState === 'loading'}
 		<div class="flex flex-col items-center gap-3" aria-live="polite">
 			<Icon
@@ -196,7 +198,7 @@
 			<span class="font-[Contrail_One] text-3xl text-slate-500">Loading...</span>
 		</div>
 	{:else if viewState === 'reviewing'}
-		<div class="flex w-full flex-col items-center gap-4">
+		<div class="flex h-full min-h-0 w-full flex-col items-center gap-4">
 			<p class="font-[Contrail_One] text-slate-500" aria-live="polite">
 				{Math.min(answers.length + 1, cards.length)} / {cards.length}
 			</p>

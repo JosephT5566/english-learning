@@ -328,13 +328,20 @@
 		supplementary?: string;
 	};
 
+	function displayedPartOfSpeech(c: DueCard): string | null {
+		return c.part_of_speech === 'other' && c.part_of_speech_detail
+			? c.part_of_speech_detail
+			: c.part_of_speech;
+	}
+
 	// Compute what to show on each face from a Card + direction + mode
 	function faceFront(c: DueCard, dir: StudyDirection): FrontFace {
+		const partOfSpeech = displayedPartOfSpeech(c);
 		if (dir === 'EN_ZH') {
 			return {
 				title: c.term,
 				lessonDate: c.learned_on ? new Date(c.learned_on).toLocaleDateString('zh-TW') : null,
-				chips: [c.part_of_speech, ...(c.note?.split(/,\s*/g) ?? [])].filter(Boolean) as string[],
+				chips: [partOfSpeech, ...(c.note?.split(/,\s*/g) ?? [])].filter(Boolean) as string[],
 				tags: c.tags.map((tag) => tag.display_name),
 				phonics: c.pronunciation ?? c.reading ?? c.romanization ?? undefined,
 			};
@@ -342,7 +349,7 @@
 			return {
 				title: c.meaning || '—',
 				lessonDate: c.learned_on ? new Date(c.learned_on).toLocaleDateString('zh-TW') : null,
-				chips: [c.part_of_speech, ...(c.note?.split(/,\s*/g) ?? [])].filter(Boolean) as string[],
+				chips: [partOfSpeech, ...(c.note?.split(/,\s*/g) ?? [])].filter(Boolean) as string[],
 				tags: c.tags.map((tag) => tag.display_name),
 				phonics: undefined,
 			};
@@ -589,8 +596,9 @@
 		box-sizing: border-box;
 	}
 	.swipe {
-		width: 100vw;
-		height: 100%;
+		width: 100%;
+		min-height: 0;
+		flex: 1;
 		padding-block: 40px;
 		display: flex;
 		flex-direction: column;
@@ -614,7 +622,8 @@
 		transition: all 0.2s;
 	}
 	.swipe--cards {
-		flex-grow: 1;
+		min-height: 0;
+		flex: 1;
 		padding-top: 40px;
 		display: flex;
 		position: relative;
@@ -626,7 +635,7 @@
 		display: inline-block;
 		width: 90vw;
 		max-width: 400px;
-		height: 90%;
+		height: 100%;
 		max-height: 600px;
 		position: absolute;
 		overflow: hidden;
