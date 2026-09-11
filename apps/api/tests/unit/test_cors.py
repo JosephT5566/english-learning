@@ -46,6 +46,27 @@ def test_review_submission_preflight_allows_protocol_headers() -> None:
     assert "idempotency-key" in allowed_headers
 
 
+def test_management_mutation_preflights_allow_patch_and_delete() -> None:
+    with TestClient(create_app()) as client:
+        patch = client.options(
+            "/v1/cards/20000000-0000-0000-0000-000000000001",
+            headers=preflight_headers(
+                LOCAL_ORIGIN,
+                "PATCH",
+                "authorization, content-type",
+            ),
+        )
+        delete = client.options(
+            "/v1/cards/20000000-0000-0000-0000-000000000001",
+            headers=preflight_headers(LOCAL_ORIGIN, "DELETE", "authorization"),
+        )
+
+    assert patch.status_code == delete.status_code == 200
+    allowed_methods = patch.headers["access-control-allow-methods"]
+    assert "PATCH" in allowed_methods
+    assert "DELETE" in allowed_methods
+
+
 def test_preflight_rejects_unconfigured_origin() -> None:
     with TestClient(create_app()) as client:
         response = client.options(
@@ -65,7 +86,7 @@ def test_preflight_rejects_unapproved_method_and_header() -> None:
     with TestClient(create_app()) as client:
         response = client.options(
             "/v1/reviews",
-            headers=preflight_headers(LOCAL_ORIGIN, "DELETE", "x-unsafe-header"),
+            headers=preflight_headers(LOCAL_ORIGIN, "PUT", "x-unsafe-header"),
         )
 
     assert response.status_code == 400

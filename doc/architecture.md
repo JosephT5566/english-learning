@@ -13,7 +13,7 @@ Last updated: 2026-09-12
 - Legacy Google Apps Script/Sheet modules remain in the repository for rollback evidence, but normal
   review and deck/card management reads no longer import or call them.
 - Independently runnable FastAPI/PostgreSQL API under `apps/api/`; review plus English/Japanese
-  management reads now use it exclusively. Management writes remain the next cutover boundary.
+  management reads and writes now use it exclusively.
 
 ## Source Map
 
@@ -35,6 +35,8 @@ Last updated: 2026-09-12
 - `src/lib/api/sheet.ts`: legacy Apps Script wrapper; no review runtime module imports it after
   cutover.
 - `src/lib/management/`: language/query parsing and management read-error presentation policy.
+- `src/lib/management/pending.ts`: account-scoped, 24-hour exact deck/card creation recovery.
+- `src/lib/management/mutations.ts`: mutation failure and optimistic-conflict presentation policy.
 - `src/lib/api/mock.ts`: local mock word data.
 - `src/lib/stores/auth.ts`: sign-in store.
 - `src/lib/review/pending.ts`: account-scoped, 24-hour exact-command/idempotency-key recovery.
@@ -43,6 +45,13 @@ Last updated: 2026-09-12
 - `src/lib/types.ts`: shared app data contracts.
 - `src/lib/utils.ts`: spaced-repetition intervals and ease-factor calculation.
 - `src/lib/components/SwipeCards.svelte`: main review card interaction.
+- `src/lib/components/ui/`: repository-owned Sheet, Alert Dialog, and Button components generated
+  from the shadcn-svelte registry. They use Bits UI underneath and are configured by
+  `components.json`.
+- `src/lib/components/Drawer.svelte` and `ConfirmDialog.svelte`: task-specific management wrappers
+  over the shared shadcn-svelte components, retaining local styling and feature-facing APIs.
+- `src/lib/components/DeckForm.svelte`, `CardForm.svelte`, and `MutationNotice.svelte`: shared
+  management mutation forms and failure presentation.
 - `src/lib/components/AsyncButton.svelte`, `Modal.svelte`, `QuestionCard.svelte`, `QWordToMeaning.svelte`: reusable or older UI pieces.
 - `src/app.css`: global CSS, Tailwind import, and base layout styling.
 - `apps/api/app/main.py`: FastAPI application factory, lifespan boundary, and router composition.
@@ -102,12 +111,12 @@ Last updated: 2026-09-12
 10. HTTP middleware assigns a new request UUID. Expected, validation, framework, and unexpected
     failures return one stable envelope and never serialize internal exception details.
 11. The outer CORS middleware permits only configured HTTP(S) frontend origins, the product's
-    `GET`/`POST` methods, and its bearer/content/idempotency headers. It exposes `X-Request-ID` for
+    `GET`/`POST`/`PATCH`/`DELETE` methods, and its bearer/content/idempotency headers. It exposes `X-Request-ID` for
     browser-visible support diagnostics without enabling credentialed cookies.
 
 The English review frontend and English/Japanese management read pages now target this FastAPI
-service. Normal review and management navigation makes no Apps Script call. Review writes have no
-fallback or dual-write path; management writes have not yet been connected.
+service. Normal review and management navigation makes no Apps Script call. Review and management
+writes have no fallback or dual-write path.
 
 ## Backend Read Flow
 
@@ -137,6 +146,9 @@ fallback or dual-write path; management writes have not yet been connected.
    stale owned writes return `409 version_conflict`.
 5. Deletes archive rather than physically removing decks or cards. Card creation also creates the
    required initial review state in the same transaction.
+6. Deck/card creates require a UUID idempotency key. Versioned normalized validated request content is hashed
+   and stored with the resource under a partial owner/key unique index. Exact retries return that
+   resource; different content under the key returns `409 idempotency_key_reused`.
 
 ## Backend Review Write Flow
 
@@ -225,8 +237,8 @@ evidence is recorded in the [Issue #8 query-plan report](training/issues/issue-8
 - The checked-in bilingual fixture uses one owner with English and Japanese decks/cards, shared
   reusable tags, current states, and one two-card review batch. It is test evidence, not a production
   seed or import path.
-- Authenticated `/v1` routes read and write these tables. Review and management reads are integrated;
-  deck/card management mutations remain pending.
+- Authenticated `/v1` routes read and write these tables. Review and deck/card management are
+  integrated; final production cutover verification remains pending.
 - Query-plan evidence comes from a deterministic local dataset with 40,000 cards, states, tag links,
   and events. It verifies planner selection, not production latency, throughput, or future planner
   behavior.
@@ -309,6 +321,18 @@ Review update payload shape is:
    TypeScript alone cannot validate untrusted network JSON.
 4. Frontend CI regenerates both artifacts and fails on a diff, so a backend contract change cannot
    silently leave the checked-in frontend types stale.
+
+## Management Mutation Flow
+
+1. Deck create/edit uses a compact drawer, card create uses a wide drawer, and card edit replaces the
+   detail grid inline. Language-specific fields remain conditional within the shared form.
+2. Before create, the browser stores one exact body/UUID key for the current Google subject. An
+   unclear, retryable, or authentication result keeps and locks that command; an exact manual retry
+   sends the same pair. Confirmation or definite rejection clears it.
+3. Edits submit the last-read resource version. A `409 version_conflict` keeps the user's values and
+   only discards them after the explicit latest-state reload action.
+4. Archives require confirmation. If the response is unclear, the page reads the resource again and
+   only navigates to Archived after observing `archived_at`; otherwise it shows an unconfirmed state.
 
 ## Auth Flow
 

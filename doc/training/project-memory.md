@@ -47,8 +47,8 @@ This is project evidence, not professional production-service experience.
 ## Active milestone
 
 Week 5 — frontend integration and cutover. Issue #24 is implemented and verified locally. Issue #25
-Part 1 now has a locally verified read-only bilingual management boundary; management mutations,
-full cutover/rollback evidence, remote CI, and deployment remain pending.
+Parts 1 and 2 now have locally verified bilingual management reads and failure-safe mutations. Final
+cutover/rollback execution, legacy runtime cleanup, remote CI, and deployment remain pending.
 
 The Weeks 0-3 milestone is complete and audited locally in
 [`issues/issue-12/README.md`](issues/issue-12/README.md). GitHub shows issues #4 through #11 closed,
@@ -219,6 +219,17 @@ requests and no Apps Script URL. This is a read boundary only: create/edit/archi
 create behavior, write failures, final rollback documentation, remote CI, and deployment remain.
 See [`issues/issue-25/README.md`](issues/issue-25/README.md).
 
+Issue #25 Part 2 is implemented and verified locally. Deck/card creation now requires UUID
+idempotency keys and uses the existing per-owner key/hash constraints for exact replay and
+different-content rejection; card replay preserves one card and one initial review state. Shared
+deck/card forms add create, optimistic edit, and confirmed archive behavior without splitting the
+English/Japanese application. Shared Drawer and ConfirmDialog wrappers now compose generated
+shadcn-svelte Sheet and Alert Dialog components, with Bits UI retained underneath, without changing
+the established styling. A 24-hour account-scoped pending creation locks the exact request after
+unclear outcomes. Stale edits keep values until an explicit reload/discard, and unclear archives
+refetch before success. The full 236-test PostgreSQL suite, 16 frontend tests, 28 Playwright flows,
+Svelte check, scoped lint/format, generated contract, and static subpath build pass locally.
+
 GitHub tracking:
 
 - [Weeks 0–3 roadmap issue](https://github.com/JosephT5566/english-learning/issues/12)
@@ -272,14 +283,12 @@ Repository-wide `npm run lint` still fails on the known Prettier baseline; touch
 and tests pass targeted ESLint. The Issue #23 operator replay and backup/restore evidence limits also
 remain documented.
 
-Issue #25's management write boundary is intentionally still open. Backend deck/card create does
-not yet accept the planned `Idempotency-Key`, and the frontend does not yet expose create, edit, or
-archive controls. Therefore Part 1 proves read cutover only, not complete database cutover or
-rollback readiness.
+Issue #25's local management write boundary is complete, but production cutover remains open. The
+real API/CORS environment, deployed static build, remote CI, and rollback execution have not been
+verified. Legacy Apps Script configuration remains until that final boundary is recorded.
 
 ## Next action
 
-Implement Issue #25 Part 2: add exact-replay idempotency to backend deck/card creation using the
-existing database identity columns, then connect failure-safe shared create/edit/archive UI while
-preserving optimistic versions. Do not remove legacy rollback evidence until the later read/write
-cutover checklist records the data-consistency limit.
+Complete Issue #25 Part 3: run the real read/write cutover checklist, record when PostgreSQL-only
+writes make Sheets stale, remove Apps Script from normal runtime configuration, and verify remote CI
+plus the deployed static base path. Preserve rollback evidence and snapshots.

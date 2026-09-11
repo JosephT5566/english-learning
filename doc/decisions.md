@@ -90,11 +90,20 @@ Last updated: 2026-09-12
   without an API request. Show reading/romanization only for Japanese and pronunciation only for
   English.
 - Cut management reads before management writes. Deck/card list and detail pages call only the
-  authenticated FastAPI API; keep management mutation controls unavailable until their failure,
+  authenticated FastAPI API; expose management mutation controls only after their failure,
   concurrency, and idempotency behavior is implemented and verified.
+- Require a UUID idempotency key for deck/card creation and store its versioned normalized request hash on the
+  created owned resource. Retain one exact account-scoped browser command for uncertain retries;
+  never reuse its key with edited content.
+- Preserve user input after optimistic conflicts and discard it only through an explicit latest-state
+  reload. For an unclear archive response, verify `archived_at` with a read before showing success.
 - Treat FastAPI OpenAPI as the compile-time frontend contract. Commit its deterministic JSON export
   and generated TypeScript, fail CI on regeneration drift, and retain handwritten runtime guards
   because network JSON remains untrusted.
+- Generate common Sheet and Alert Dialog components from the shadcn-svelte registry, with Bits UI
+  retained as their underlying accessibility primitive. Compose those repository-owned components
+  behind task-specific Drawer and ConfirmDialog APIs, keeping product styling local while sharing
+  focus trapping, keyboard dismissal, scroll locking, portals, and ARIA semantics.
 - Allow browser review calls only from exact configured HTTP(S) origins. Permit the review
   transport's `GET`/`POST` methods and `Authorization`, `Content-Type`, and `Idempotency-Key`
   headers; expose `X-Request-ID`, keep credentialed cookies disabled, and reject wildcard or
@@ -146,3 +155,9 @@ Last updated: 2026-09-12
 - 2026-09-12: Added shared English/Japanese deck/card list and detail reads, missing-language English
   canonicalization, generated OpenAPI TypeScript with drift checks, and browser evidence that normal
   review plus management navigation makes no Apps Script request. Management writes remain pending.
+- 2026-09-12: Added idempotent deck/card creation, shared create/edit/archive controls, exact pending
+  command recovery, explicit stale-edit discard, archive reconciliation, and management CORS methods.
+- 2026-09-12: Replaced hand-built management overlays with shadcn-svelte Sheet and Alert Dialog
+  components backed by Bits UI. Task-specific Drawer and ConfirmDialog wrappers preserve the
+  existing visual design while adding consistent modal focus, keyboard, portal, scroll-lock, and
+  semantic behavior.

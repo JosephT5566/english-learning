@@ -1,10 +1,12 @@
 """Owner-derived deck and card creation, editing, and archival."""
 
+import hashlib
+import json
 from datetime import date
 from typing import Annotated, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Body, Depends, Request, Response, status
+from fastapi import APIRouter, Body, Depends, Header, Request, Response, status
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -184,31 +186,101 @@ def _version_conflict() -> ApiError:
     )
 
 
+def _idempotency_key(raw_value: str | None) -> UUID:
+    if raw_value is None:
+        raise _invalid_idempotency_key()
+    try:
+        return UUID(raw_value)
+    except (ValueError, AttributeError):
+        raise _invalid_idempotency_key() from None
+
+
+def _invalid_idempotency_key() -> ApiError:
+    return ApiError(
+        status_code=400,
+        code="invalid_idempotency_key",
+        message="A valid Idempotency-Key header is required.",
+    )
+
+
+def _creation_request_hash(payload: WriteModel) -> str:
+    normalized = {
+        "contract": "creation-v1",
+        "resource": payload.__class__.__name__,
+        "payload": payload.model_dump(mode="json"),
+    }
+    canonical = json.dumps(
+        normalized,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return f"sha256:{hashlib.sha256(canonical.encode()).hexdigest()}"
+
+
+def _idempotency_key_reused() -> ApiError:
+    return ApiError(
+        status_code=409,
+        code="idempotency_key_reused",
+        message="The idempotency key was already used for different content.",
+    )
+
+
 @router.post("/decks", response_model=Deck, status_code=status.HTTP_201_CREATED)
 def create_deck(
     request: Request,
     payload: Annotated[DeckCreate, Body()],
     session: SessionDependency,
     user: CurrentUserDependency,
+    raw_idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
 ) -> Deck:
     _reject_unknown_filters(request, set())
+    idempotency_key = _idempotency_key(raw_idempotency_key)
+    request_hash = _creation_request_hash(payload)
     row = (
         session.execute(
             text(
                 f"""
                 INSERT INTO learning_decks (
-                    owner_id, title, target_language, explanation_language
+                    owner_id, title, target_language, explanation_language,
+                    creation_idempotency_key, creation_request_hash
                 ) VALUES (
-                    :owner_id, :title, :target_language, :explanation_language
+                    :owner_id, :title, :target_language, :explanation_language,
+                    :idempotency_key, :request_hash
                 )
+                ON CONFLICT (owner_id, creation_idempotency_key)
+                    WHERE creation_idempotency_key IS NOT NULL
+                DO NOTHING
                 RETURNING {DECK_COLUMNS.replace("d.", "")}
                 """
             ),
-            {"owner_id": user.id, **payload.model_dump()},
+            {
+                "owner_id": user.id,
+                "idempotency_key": idempotency_key,
+                "request_hash": request_hash,
+                **payload.model_dump(),
+            },
         )
         .mappings()
-        .one()
+        .one_or_none()
     )
+    if row is None:
+        row = (
+            session.execute(
+                text(
+                    f"""
+                    SELECT {DECK_COLUMNS}, d.creation_request_hash
+                    FROM learning_decks AS d
+                    WHERE d.owner_id = :owner_id
+                      AND d.creation_idempotency_key = :idempotency_key
+                    """
+                ),
+                {"owner_id": user.id, "idempotency_key": idempotency_key},
+            )
+            .mappings()
+            .one()
+        )
+        if row.creation_request_hash != request_hash:
+            raise _idempotency_key_reused()
     return Deck.model_validate(row)
 
 
@@ -296,8 +368,30 @@ def create_card(
     payload: Annotated[CardCreate, Body()],
     session: SessionDependency,
     user: CurrentUserDependency,
+    raw_idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
 ) -> CardDetail:
     _reject_unknown_filters(request, set())
+    idempotency_key = _idempotency_key(raw_idempotency_key)
+    request_hash = _creation_request_hash(payload)
+    existing = (
+        session.execute(
+            text(
+                """
+                SELECT id, creation_request_hash
+                FROM learning_cards
+                WHERE owner_id = :owner_id
+                  AND creation_idempotency_key = :idempotency_key
+                """
+            ),
+            {"owner_id": user.id, "idempotency_key": idempotency_key},
+        )
+        .mappings()
+        .one_or_none()
+    )
+    if existing is not None:
+        if existing.creation_request_hash != request_hash:
+            raise _idempotency_key_reused()
+        return _card_detail(session, existing.id, user.id)
     deck_archived = session.execute(
         text(
             "SELECT archived_at FROM learning_decks WHERE id = :id AND owner_id = :owner_id"
@@ -314,17 +408,49 @@ def create_card(
         )
 
     values = payload.model_dump()
-    columns = ["owner_id", *values]
+    columns = [
+        "owner_id",
+        *values,
+        "creation_idempotency_key",
+        "creation_request_hash",
+    ]
     card_id = session.execute(
         text(
             f"""
             INSERT INTO learning_cards ({", ".join(columns)})
             VALUES ({", ".join(f":{column}" for column in columns)})
+            ON CONFLICT (owner_id, creation_idempotency_key)
+                WHERE creation_idempotency_key IS NOT NULL
+            DO NOTHING
             RETURNING id
             """
         ),
-        {"owner_id": user.id, **values},
-    ).scalar_one()
+        {
+            "owner_id": user.id,
+            **values,
+            "creation_idempotency_key": idempotency_key,
+            "creation_request_hash": request_hash,
+        },
+    ).scalar_one_or_none()
+    if card_id is None:
+        replay = (
+            session.execute(
+                text(
+                    """
+                    SELECT id, creation_request_hash
+                    FROM learning_cards
+                    WHERE owner_id = :owner_id
+                      AND creation_idempotency_key = :idempotency_key
+                    """
+                ),
+                {"owner_id": user.id, "idempotency_key": idempotency_key},
+            )
+            .mappings()
+            .one()
+        )
+        if replay.creation_request_hash != request_hash:
+            raise _idempotency_key_reused()
+        return _card_detail(session, replay.id, user.id)
     session.execute(
         text(
             """

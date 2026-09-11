@@ -2,11 +2,15 @@
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
-	import { getCard } from '$lib/api/client';
-	import type { CardDetail, TargetLanguage } from '$lib/api/contracts';
+	import { archiveCard, getCard, updateCard } from '$lib/api/client';
+	import type { CardCreate, CardDetail, TargetLanguage } from '$lib/api/contracts';
+	import CardForm from '$lib/components/CardForm.svelte';
+	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 	import LanguageTabs from '$lib/components/LanguageTabs.svelte';
+	import MutationNotice from '$lib/components/MutationNotice.svelte';
 	import ReadError from '$lib/components/ReadError.svelte';
 	import { readErrorCopy, type ReadErrorCopy } from '$lib/management/errors';
+	import { mutationErrorCopy, type MutationErrorCopy } from '$lib/management/mutations';
 	import { readLanguageQuery } from '$lib/management/navigation';
 
 	type ViewState = 'redirecting' | 'invalid-language' | 'loading' | 'ready' | 'error';
@@ -14,6 +18,10 @@
 	let language: TargetLanguage = $state('en');
 	let card: CardDetail | null = $state(null);
 	let error: ReadErrorCopy | null = $state(null);
+	let editing = $state(false);
+	let archiveConfirm = $state(false);
+	let mutationBusy = $state(false);
+	let mutationNotice: MutationErrorCopy | null = $state(null);
 	let requestSequence = 0;
 	let cardId = $derived(page.params.cardId ?? '');
 
@@ -53,6 +61,55 @@
 		}
 	}
 
+	async function saveCard(fields: Omit<CardCreate, 'deck_id'>): Promise<void> {
+		if (!card) return;
+		mutationBusy = true;
+		mutationNotice = null;
+		try {
+			card = await updateCard(card.id, { version: card.version, ...fields });
+			editing = false;
+		} catch (cause) {
+			mutationNotice = mutationErrorCopy(cause);
+		} finally {
+			mutationBusy = false;
+		}
+	}
+
+	async function discardEdits(): Promise<void> {
+		editing = false;
+		mutationNotice = null;
+		await loadCurrent(language);
+		editing = true;
+	}
+
+	async function archiveCurrentCard(): Promise<void> {
+		if (!card) return;
+		mutationBusy = true;
+		mutationNotice = null;
+		try {
+			await archiveCard(card.id);
+			await goto(
+				`${resolve('/decks/[deckId]', { deckId: card.deck.id })}?language=${language}&status=archived`,
+			);
+		} catch (cause) {
+			try {
+				const latest = await getCard(card.id);
+				if (latest.archived_at) {
+					await goto(
+						`${resolve('/decks/[deckId]', { deckId: latest.deck.id })}?language=${language}&status=archived`,
+					);
+					return;
+				}
+			} catch {
+				// The follow-up read is also unclear; keep the operation explicitly unconfirmed.
+			}
+			mutationNotice = mutationErrorCopy(cause);
+			archiveConfirm = false;
+		} finally {
+			mutationBusy = false;
+		}
+	}
+
 	$effect(() => {
 		const parsedLanguage = readLanguageQuery(page.url.searchParams);
 		if (parsedLanguage.kind === 'missing') {
@@ -88,6 +145,27 @@
 			<LanguageTabs current={language} englishHref={listHref('en')} japaneseHref={listHref('ja')} />
 		{/if}
 	</div>
+	{#if card && viewState === 'ready' && !card.archived_at && !editing}
+		<div class="resource-actions">
+			<button
+				class="primary-button"
+				type="button"
+				onclick={() => {
+					mutationNotice = null;
+					editing = true;
+				}}>Edit card</button
+			>
+			<button
+				class="danger-button"
+				type="button"
+				onclick={() => {
+					mutationNotice = null;
+					archiveConfirm = true;
+				}}>Archive card</button
+			>
+		</div>
+	{/if}
+	{#if mutationNotice && !editing}<MutationNotice notice={mutationNotice} />{/if}
 
 	{#if viewState === 'invalid-language'}
 		<section class="read-state">
@@ -98,6 +176,19 @@
 		<section class="read-state" aria-live="polite">Loading card…</section>
 	{:else if viewState === 'error' && error}
 		<ReadError {...error} onretry={() => loadCurrent(language)} />
+	{:else if card && editing}
+		<section class="inline-editor" aria-label="Edit card">
+			<h2>Edit card</h2>
+			<CardForm
+				{language}
+				initial={card}
+				busy={mutationBusy}
+				notice={mutationNotice}
+				onsave={saveCard}
+				oncancel={() => (editing = false)}
+				onreload={discardEdits}
+			/>
+		</section>
 	{:else if card}
 		<dl class="detail-grid">
 			<div class="detail-field wide">
@@ -168,3 +259,17 @@
 		</dl>
 	{/if}
 </section>
+
+{#if archiveConfirm && card}
+	<ConfirmDialog
+		eyebrow="Archive card"
+		title={`Remove “${card.term}” from active study?`}
+		description="You can still view it from Archived cards."
+		cancelLabel="Keep card"
+		confirmLabel="Archive card"
+		busyLabel="Checking result…"
+		busy={mutationBusy}
+		oncancel={() => (archiveConfirm = false)}
+		onconfirm={archiveCurrentCard}
+	/>
+{/if}

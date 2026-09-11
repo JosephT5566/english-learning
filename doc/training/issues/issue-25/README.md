@@ -4,9 +4,10 @@ Last updated: 2026-09-12
 
 ## Status
 
-Part 1, the read-only bilingual management boundary, is implemented and verified locally. The full
-ticket remains open: deck/card create, edit, archive, mutation recovery, final cutover, rollback
-execution, remote CI, deployment, and post-deployment verification are not complete.
+Parts 1 and 2 are implemented and verified locally: bilingual reads plus failure-safe deck/card
+create, edit, and archive now use FastAPI. The full ticket remains open for final cutover/rollback
+execution, removal of legacy runtime configuration, remote CI, deployment, and post-deployment
+verification.
 
 ## Agreed Product Shape
 
@@ -40,6 +41,28 @@ execution, remote CI, deployment, and post-deployment verification are not compl
 - Enabled the shared header and added Home, Review, and Decks navigation without redesigning the
   existing blue study-space visual language.
 
+## Part 2 Implementation
+
+- Required a UUID `Idempotency-Key` for deck/card creation. The backend hashes versioned normalized validated
+  content into the existing per-owner replay columns, returns the same resource for an exact retry,
+  and rejects different content under the same key with `409 idempotency_key_reused`.
+- Card creation and its initial review state remain one transaction; exact replay creates neither a
+  second card nor a second state. No migration was needed because the constrained replay columns and
+  partial unique indexes already existed.
+- Added account-scoped 24-hour pending creation storage. Unclear, retryable, and authentication
+  outcomes retain the exact body/key and lock fields until retry; confirmed or definite outcomes
+  clear it.
+- Added deck create/edit drawers, a wide card-create drawer, inline card editing, and explicit archive
+  confirmations on the existing three pages. New cards default `learned_on` to browser-local today.
+- Generated repository-owned shadcn-svelte Sheet and Alert Dialog components, backed by Bits UI,
+  then composed them behind the feature-facing Drawer and ConfirmDialog wrappers. This preserves the
+  existing styling while standardizing focus trapping, Escape behavior, scroll locking, portals,
+  and accessible modal semantics.
+- Optimistic conflicts retain form values and expose “Reload latest and discard my changes.” Archive
+  uncertainty performs a follow-up read before showing an archived outcome.
+- Expanded exact-origin CORS from `GET`/`POST` to the required `PATCH`/`DELETE` methods without adding
+  cookies, wildcard origins, or new headers.
+
 ## Verification Evidence
 
 Local verification on 2026-09-12:
@@ -57,6 +80,19 @@ Local verification on 2026-09-12:
   to the configured FastAPI `/v1` origin and contained no Apps Script URL.
 - Manual Chrome inspection: Japanese deck list, deck detail, and card detail were usable at desktop
   and mobile widths and showed the expected language-specific fields.
+
+Part 2 verification on 2026-09-12:
+
+- Complete PostgreSQL-backed backend suite: 236 passed with one existing upstream deprecation
+  warning; focused idempotency/authorization: 9 passed; focused CORS: 6 passed.
+- Frontend contract/state/component tests: 16 passed.
+- Playwright Chrome: 28 passed, including exact ambiguous-create retry, local-date default,
+  validation, successful and stale edits, authorization failure, ambiguous archive recovery, and
+  keyboard drawer dismissal.
+- Svelte/TypeScript check: zero errors and warnings; scoped Ruff/ESLint/Prettier passed.
+- Static production build with `BASE_PATH=/english-learning`: passed.
+- Manual Chrome inspection confirmed the compact deck drawer remains visually consistent with the
+  established learning-library design.
 
 This evidence is local and fixture-backed. It does not claim live authorization isolation, remote CI,
 deployment, production traffic, or management-write correctness.
@@ -87,5 +123,6 @@ reintroduce stale Sheet state, so recovery requires downtime and explicit reconc
 
 ## Next Step
 
-Implement Part 2: extend deck/card creation to accept an `Idempotency-Key`, prove exact replay and
-conflicting-key behavior on the backend, then connect the shared write UI.
+Complete Part 3: execute the read/write cutover checklist against the real API, record the exact
+rollback/data-consistency boundary, remove Apps Script from normal runtime configuration, and verify
+remote CI plus the deployed static base path.

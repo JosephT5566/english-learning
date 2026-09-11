@@ -11,8 +11,12 @@ import {
 	type ArchiveStatus,
 	type ApiErrorBody,
 	type CardDetail,
+	type CardCreate,
 	type CardSummary,
+	type CardUpdate,
 	type Deck,
+	type DeckCreate,
+	type DeckUpdate,
 	type DueCard,
 	type Page,
 	type ReviewResult,
@@ -71,7 +75,7 @@ async function authenticatedRequest(path: string, init: RequestInit = {}): Promi
 		});
 	} catch {
 		throw new ApiClientError(
-			'We could not reach the review service. Your answers are not confirmed yet.',
+			'We could not reach the service. The result is not confirmed yet.',
 			'network',
 			true,
 		);
@@ -156,6 +160,58 @@ export async function getCard(cardId: string): Promise<CardDetail> {
 		throw new ApiClientError('The card response was invalid.', 'invalid_response', true);
 	}
 	return data;
+}
+
+export async function createDeck(payload: DeckCreate, idempotencyKey: string): Promise<Deck> {
+	const data = await authenticatedRequest('/v1/decks', {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
+		body: JSON.stringify(payload),
+	});
+	if (!isDeck(data))
+		throw new ApiClientError('The created deck response was invalid.', 'invalid_response', true);
+	return data;
+}
+
+export async function updateDeck(deckId: string, payload: DeckUpdate): Promise<Deck> {
+	const data = await authenticatedRequest(`/v1/decks/${encodeURIComponent(deckId)}`, {
+		method: 'PATCH',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify(payload),
+	});
+	if (!isDeck(data))
+		throw new ApiClientError('The updated deck response was invalid.', 'invalid_response', true);
+	return data;
+}
+
+export async function archiveDeck(deckId: string): Promise<void> {
+	await authenticatedRequest(`/v1/decks/${encodeURIComponent(deckId)}`, { method: 'DELETE' });
+}
+
+export async function createCard(payload: CardCreate, idempotencyKey: string): Promise<CardDetail> {
+	const data = await authenticatedRequest('/v1/cards', {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
+		body: JSON.stringify(payload),
+	});
+	if (!isCardDetail(data))
+		throw new ApiClientError('The created card response was invalid.', 'invalid_response', true);
+	return data;
+}
+
+export async function updateCard(cardId: string, payload: CardUpdate): Promise<CardDetail> {
+	const data = await authenticatedRequest(`/v1/cards/${encodeURIComponent(cardId)}`, {
+		method: 'PATCH',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify(payload),
+	});
+	if (!isCardDetail(data))
+		throw new ApiClientError('The updated card response was invalid.', 'invalid_response', true);
+	return data;
+}
+
+export async function archiveCard(cardId: string): Promise<void> {
+	await authenticatedRequest(`/v1/cards/${encodeURIComponent(cardId)}`, { method: 'DELETE' });
 }
 
 export async function getDueReviews(

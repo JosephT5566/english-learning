@@ -2,12 +2,40 @@
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
-	import { getCards, getDeck } from '$lib/api/client';
-	import type { ArchiveStatus, CardSummary, Deck, TargetLanguage } from '$lib/api/contracts';
+	import { getProfile } from '$lib/auth';
+	import {
+		ApiClientError,
+		archiveDeck,
+		createCard,
+		getCards,
+		getDeck,
+		updateDeck,
+	} from '$lib/api/client';
+	import type {
+		ArchiveStatus,
+		CardCreate,
+		CardSummary,
+		Deck,
+		DeckCreate,
+		TargetLanguage,
+	} from '$lib/api/contracts';
+	import CardForm from '$lib/components/CardForm.svelte';
+	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
+	import DeckForm from '$lib/components/DeckForm.svelte';
+	import Drawer from '$lib/components/Drawer.svelte';
 	import LanguageTabs from '$lib/components/LanguageTabs.svelte';
+	import MutationNotice from '$lib/components/MutationNotice.svelte';
 	import ReadError from '$lib/components/ReadError.svelte';
 	import { readErrorCopy, type ReadErrorCopy } from '$lib/management/errors';
+	import { mutationErrorCopy, type MutationErrorCopy } from '$lib/management/mutations';
 	import { languageName, readArchiveStatus, readLanguageQuery } from '$lib/management/navigation';
+	import {
+		clearPendingManagement,
+		createPendingManagement,
+		loadPendingManagement,
+		savePendingManagement,
+		type PendingManagementCreation,
+	} from '$lib/management/pending';
 
 	type ViewState = 'redirecting' | 'invalid-language' | 'loading' | 'ready' | 'error';
 	let viewState: ViewState = $state('loading');
@@ -18,6 +46,13 @@
 	let nextCursor: string | null = $state(null);
 	let error: ReadErrorCopy | null = $state(null);
 	let loadingMore = $state(false);
+	let editOpen = $state(false);
+	let cardCreateOpen = $state(false);
+	let archiveConfirm = $state(false);
+	let mutationBusy = $state(false);
+	let mutationNotice: MutationErrorCopy | null = $state(null);
+	let pendingCreate: PendingManagementCreation | null = $state(null);
+	let pendingLoaded = false;
 	let requestSequence = 0;
 	let deckId = $derived(page.params.deckId ?? '');
 
@@ -72,6 +107,113 @@
 		}
 	}
 
+	async function saveDeck(payload: DeckCreate): Promise<void> {
+		if (!deck) return;
+		mutationBusy = true;
+		mutationNotice = null;
+		try {
+			deck = await updateDeck(deck.id, {
+				version: deck.version,
+				title: payload.title,
+				explanation_language: payload.explanation_language,
+			});
+			editOpen = false;
+		} catch (cause) {
+			mutationNotice = mutationErrorCopy(cause);
+		} finally {
+			mutationBusy = false;
+		}
+	}
+
+	async function discardDeckEdits(): Promise<void> {
+		editOpen = false;
+		mutationNotice = null;
+		await loadCurrent(language, archiveStatus);
+		editOpen = true;
+	}
+
+	async function archiveCurrentDeck(): Promise<void> {
+		if (!deck) return;
+		mutationBusy = true;
+		mutationNotice = null;
+		try {
+			await archiveDeck(deck.id);
+			await goto(`${resolve('/decks')}?language=${language}&status=archived`);
+		} catch (cause) {
+			try {
+				const latest = await getDeck(deck.id);
+				if (latest.archived_at) {
+					await goto(`${resolve('/decks')}?language=${language}&status=archived`);
+					return;
+				}
+			} catch {
+				// The follow-up read is also unclear; keep the operation explicitly unconfirmed.
+			}
+			mutationNotice = mutationErrorCopy(cause);
+			archiveConfirm = false;
+		} finally {
+			mutationBusy = false;
+		}
+	}
+
+	async function saveNewCard(fields: Omit<CardCreate, 'deck_id'>): Promise<void> {
+		const owner = getProfile()?.sub;
+		if (!owner) {
+			mutationNotice = mutationErrorCopy(
+				new ApiClientError('Please sign in again.', 'authentication', false, 401),
+			);
+			return;
+		}
+		const payload: CardCreate = { ...fields, deck_id: deckId };
+		if (
+			!pendingCreate ||
+			pendingCreate.kind !== 'card' ||
+			JSON.stringify(pendingCreate.payload) !== JSON.stringify(payload)
+		) {
+			pendingCreate = createPendingManagement(owner, 'card', payload);
+			savePendingManagement(pendingCreate);
+		}
+		mutationBusy = true;
+		mutationNotice = null;
+		try {
+			const created = await createCard(payload, pendingCreate.idempotencyKey);
+			clearPendingManagement();
+			pendingCreate = null;
+			cardCreateOpen = false;
+			await goto(`${resolve('/cards/[cardId]', { cardId: created.id })}?language=${language}`);
+		} catch (cause) {
+			mutationNotice = mutationErrorCopy(cause);
+			if (
+				!(cause instanceof ApiClientError) ||
+				(!cause.retryable && cause.kind !== 'authentication')
+			) {
+				clearPendingManagement();
+				pendingCreate = null;
+			}
+		} finally {
+			mutationBusy = false;
+		}
+	}
+
+	function openCardCreate(): void {
+		if (
+			pendingCreate &&
+			(pendingCreate.kind !== 'card' ||
+				!('deck_id' in pendingCreate.payload) ||
+				pendingCreate.payload.deck_id !== deckId)
+		)
+			return;
+		mutationNotice = pendingCreate
+			? {
+					title: 'Card creation was not confirmed',
+					message: 'Retry the unchanged request before editing these values.',
+					retryable: true,
+					conflict: false,
+				}
+			: null;
+		cardCreateOpen = true;
+	}
+
 	$effect(() => {
 		const parsedLanguage = readLanguageQuery(page.url.searchParams);
 		const parsedStatus = readArchiveStatus(page.url.searchParams);
@@ -87,6 +229,25 @@
 		}
 		language = parsedLanguage.language;
 		archiveStatus = parsedStatus;
+		if (!pendingLoaded) {
+			pendingLoaded = true;
+			const owner = getProfile()?.sub;
+			const pending = owner ? loadPendingManagement(owner) : null;
+			pendingCreate = pending;
+			if (
+				pending?.kind === 'card' &&
+				'deck_id' in pending.payload &&
+				pending.payload.deck_id === deckId
+			) {
+				cardCreateOpen = true;
+				mutationNotice = {
+					title: 'Card creation was not confirmed',
+					message: 'Your values are restored. Save again to retry the same request safely.',
+					retryable: true,
+					conflict: false,
+				};
+			}
+		}
 		void loadCurrent(language, archiveStatus);
 	});
 </script>
@@ -106,9 +267,52 @@
 				</p>{/if}
 		</div>
 		{#if viewState !== 'invalid-language'}
-			<LanguageTabs current={language} englishHref={listHref('en')} japaneseHref={listHref('ja')} />
+			<div class="heading-actions">
+				<LanguageTabs
+					current={language}
+					englishHref={listHref('en')}
+					japaneseHref={listHref('ja')}
+				/>
+			</div>
 		{/if}
 	</div>
+	{#if deck && viewState === 'ready'}
+		<div class="resource-actions">
+			{#if !deck.archived_at && archiveStatus === 'active'}
+				<button
+					class="primary-button"
+					type="button"
+					disabled={Boolean(
+						pendingCreate &&
+							(pendingCreate.kind !== 'card' ||
+								!('deck_id' in pendingCreate.payload) ||
+								pendingCreate.payload.deck_id !== deckId),
+					)}
+					title={pendingCreate ? 'Finish the pending creation before starting another.' : undefined}
+					onclick={openCardCreate}>New card</button
+				>
+				<button
+					class="secondary-button"
+					type="button"
+					onclick={() => {
+						mutationNotice = null;
+						editOpen = true;
+					}}>Edit deck</button
+				>
+				<button
+					class="danger-button"
+					type="button"
+					onclick={() => {
+						mutationNotice = null;
+						archiveConfirm = true;
+					}}>Archive deck</button
+				>
+			{/if}
+		</div>
+		{#if mutationNotice && !editOpen && !cardCreateOpen}<MutationNotice
+				notice={mutationNotice}
+			/>{/if}
+	{/if}
 
 	{#if viewState === 'invalid-language'}
 		<section class="read-state">
@@ -167,3 +371,54 @@
 		{/if}
 	{/if}
 </section>
+
+{#if editOpen && deck}
+	<Drawer
+		title="Edit deck"
+		dismissible={!mutationBusy}
+		onclose={() => !mutationBusy && (editOpen = false)}
+	>
+		<DeckForm
+			language={deck.target_language}
+			initial={deck}
+			busy={mutationBusy}
+			locked={Boolean(pendingCreate && mutationNotice)}
+			notice={mutationNotice}
+			onsave={saveDeck}
+			oncancel={() => (editOpen = false)}
+			onreload={discardDeckEdits}
+		/>
+	</Drawer>
+{/if}
+
+{#if cardCreateOpen}
+	<Drawer
+		title={`New ${languageName(language)} card`}
+		wide
+		dismissible={!mutationBusy}
+		onclose={() => !mutationBusy && (cardCreateOpen = false)}
+	>
+		<CardForm
+			{language}
+			draft={pendingCreate?.kind === 'card' ? (pendingCreate.payload as CardCreate) : null}
+			busy={mutationBusy}
+			notice={mutationNotice}
+			onsave={saveNewCard}
+			oncancel={() => (cardCreateOpen = false)}
+		/>
+	</Drawer>
+{/if}
+
+{#if archiveConfirm && deck}
+	<ConfirmDialog
+		eyebrow="Archive deck"
+		title={`Archive “${deck.title}”?`}
+		description="Its cards leave active study but remain available from Archived decks."
+		cancelLabel="Keep deck"
+		confirmLabel="Archive deck"
+		busyLabel="Checking result…"
+		busy={mutationBusy}
+		oncancel={() => (archiveConfirm = false)}
+		onconfirm={archiveCurrentDeck}
+	/>
+{/if}

@@ -3,6 +3,7 @@
 import os
 from collections.abc import Iterator
 from typing import ClassVar
+from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
@@ -55,6 +56,13 @@ def api_client(
 
 def bearer(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
+
+
+def create_headers(token: str, key: str | None = None) -> dict[str, str]:
+    return {
+        **bearer(token),
+        "Idempotency-Key": key or str(uuid4()),
+    }
 
 
 def test_google_subject_maps_to_stable_internal_user_and_updates_email(
@@ -128,7 +136,7 @@ def test_create_derives_owner_and_rejects_client_identity_and_foreign_parent(
             "target_language": "ja",
             "explanation_language": "zh-TW",
         },
-        headers=headers,
+        headers=create_headers("attacker-token"),
     )
     assert deck.status_code == 201
     deck_id = deck.json()["id"]
@@ -136,7 +144,7 @@ def test_create_derives_owner_and_rejects_client_identity_and_foreign_parent(
     foreign_parent = api_client.post(
         "/v1/cards",
         json={"deck_id": FIXTURE_DECK_ID, "term": "bad", "meaning": "bad"},
-        headers=headers,
+        headers=create_headers("attacker-token"),
     )
     assert foreign_parent.status_code == 404
     assert foreign_parent.json()["error"]["code"] == "deck_not_found"
@@ -144,7 +152,7 @@ def test_create_derives_owner_and_rejects_client_identity_and_foreign_parent(
     card = api_client.post(
         "/v1/cards",
         json={"deck_id": deck_id, "term": "勉強", "meaning": "study"},
-        headers=headers,
+        headers=create_headers("attacker-token"),
     )
     assert card.status_code == 201
     card_id = card.json()["id"]
@@ -175,6 +183,108 @@ def test_create_derives_owner_and_rejects_client_identity_and_foreign_parent(
         ).one()
     assert owners[0] == owners[1]
     assert initial_review_state == (1, 2.50, 0, None, 1)
+
+
+@pytest.mark.parametrize("value", [None, "not-a-uuid"])
+def test_create_requires_valid_idempotency_key(
+    api_client: TestClient,
+    value: str | None,
+) -> None:
+    headers = bearer("fixture-token")
+    if value is not None:
+        headers["Idempotency-Key"] = value
+
+    response = api_client.post(
+        "/v1/decks",
+        json={
+            "title": "Safe retry",
+            "target_language": "en",
+            "explanation_language": "zh-TW",
+        },
+        headers=headers,
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "invalid_idempotency_key"
+
+
+def test_deck_create_replays_exact_request_and_rejects_key_reuse(
+    api_client: TestClient,
+    migrated_database_engine: Engine,
+) -> None:
+    key = str(uuid4())
+    headers = create_headers("fixture-token", key)
+    payload = {
+        "title": "Retry-safe English",
+        "target_language": "en",
+        "explanation_language": "zh-TW",
+    }
+
+    created = api_client.post("/v1/decks", json=payload, headers=headers)
+    replayed = api_client.post("/v1/decks", json=payload, headers=headers)
+    conflict = api_client.post(
+        "/v1/decks",
+        json={**payload, "title": "Different content"},
+        headers=headers,
+    )
+
+    assert created.status_code == replayed.status_code == 201
+    assert created.json() == replayed.json()
+    assert conflict.status_code == 409
+    assert conflict.json()["error"]["code"] == "idempotency_key_reused"
+    with migrated_database_engine.connect() as connection:
+        count = connection.execute(
+            text(
+                """
+                SELECT count(*)
+                FROM learning_decks
+                WHERE creation_idempotency_key = :key
+                """
+            ),
+            {"key": key},
+        ).scalar_one()
+    assert count == 1
+
+
+def test_card_create_replays_card_and_single_initial_state(
+    api_client: TestClient,
+    migrated_database_engine: Engine,
+) -> None:
+    key = str(uuid4())
+    headers = create_headers("fixture-token", key)
+    payload = {
+        "deck_id": FIXTURE_DECK_ID,
+        "term": "idempotent",
+        "meaning": "safe to repeat",
+        "learned_on": "2026-09-12",
+    }
+
+    created = api_client.post("/v1/cards", json=payload, headers=headers)
+    replayed = api_client.post("/v1/cards", json=payload, headers=headers)
+    conflict = api_client.post(
+        "/v1/cards",
+        json={**payload, "meaning": "different content"},
+        headers=headers,
+    )
+
+    assert created.status_code == replayed.status_code == 201
+    assert created.json() == replayed.json()
+    assert conflict.status_code == 409
+    assert conflict.json()["error"]["code"] == "idempotency_key_reused"
+    with migrated_database_engine.connect() as connection:
+        counts = connection.execute(
+            text(
+                """
+                SELECT count(*), count(s.card_id)
+                FROM learning_cards AS c
+                LEFT JOIN review_states AS s
+                  ON (s.card_id, s.owner_id) = (c.id, c.owner_id)
+                WHERE c.creation_idempotency_key = :key
+                """
+            ),
+            {"key": key},
+        ).one()
+    assert counts == (1, 1)
 
 
 def test_other_user_cannot_edit_or_archive_resources_by_changing_ids(

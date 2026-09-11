@@ -243,10 +243,244 @@ button:focus:not(:focus-visible) {
 	cursor: pointer;
 }
 
+.heading-actions,
+.resource-actions,
+.form-actions {
+	display: flex;
+	align-items: center;
+	gap: 0.7rem;
+}
+
+.heading-actions {
+	flex-direction: column;
+	align-items: flex-end;
+}
+
+.resource-actions {
+	justify-content: flex-end;
+	margin: -0.5rem 0 1rem;
+}
+
+.primary-button,
+.secondary-button,
+.danger-button,
+.icon-button {
+	padding: 0.7rem 1rem;
+	border-radius: 0.65rem;
+	font: inherit;
+	font-weight: 750;
+	cursor: pointer;
+}
+
+.primary-button {
+	border: 1px solid #315f89;
+	color: white;
+	background: #315f89;
+}
+
+.secondary-button {
+	border: 1px solid rgba(49, 95, 137, 0.4);
+	color: #315f89;
+	background: rgba(255, 255, 255, 0.72);
+}
+
+.danger-button {
+	border: 1px solid #a34646;
+	color: #8b3030;
+	background: rgba(255, 247, 247, 0.85);
+}
+
+.primary-button:disabled,
+.secondary-button:disabled,
+.danger-button:disabled {
+	opacity: 0.6;
+	cursor: wait;
+}
+
+.drawer-backdrop {
+	position: fixed;
+	z-index: 50;
+	inset: 0;
+	background: rgba(28, 48, 65, 0.34);
+	backdrop-filter: blur(2px);
+}
+
+.drawer {
+	position: fixed;
+	z-index: 51;
+	top: 0;
+	right: 0;
+	width: min(28rem, 100vw);
+	height: 100dvh;
+	box-sizing: border-box;
+	overflow-y: auto;
+	border-left: 1px solid rgba(64, 117, 166, 0.25);
+	background: #edf3f8;
+	box-shadow: -18px 0 50px rgba(31, 57, 79, 0.18);
+}
+
+.drawer.wide {
+	width: min(48rem, 100vw);
+}
+
+.drawer > header {
+	position: sticky;
+	z-index: 1;
+	top: 0;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 1.1rem 1.25rem;
+	border-bottom: 1px solid rgba(64, 117, 166, 0.2);
+	background: rgba(237, 243, 248, 0.96);
+}
+
+.drawer-title,
+.inline-editor h2,
+.confirm-card h2 {
+	margin: 0;
+	font-family: 'Bodoni Moda', Georgia, serif;
+	font-size: 1.65rem;
+}
+
+.icon-button {
+	padding: 0.2rem 0.55rem;
+	border: 0;
+	color: #315f89;
+	background: transparent;
+	font-size: 1.6rem;
+}
+
+.drawer-body {
+	padding: 1.25rem;
+}
+
+.management-form,
+.form-grid {
+	display: grid;
+	gap: 1rem;
+}
+
+.management-form fieldset {
+	min-width: 0;
+	padding: 0;
+	margin: 0;
+	border: 0;
+}
+
+.management-form fieldset:disabled {
+	opacity: 0.72;
+}
+
+.form-grid {
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.management-form label {
+	display: grid;
+	gap: 0.35rem;
+	color: #405c73;
+	font-size: 0.86rem;
+	font-weight: 700;
+}
+
+.management-form input,
+.management-form select,
+.management-form textarea {
+	width: 100%;
+	box-sizing: border-box;
+	padding: 0.72rem 0.8rem;
+	border: 1px solid rgba(64, 117, 166, 0.36);
+	border-radius: 0.55rem;
+	color: #20394e;
+	background: rgba(255, 255, 255, 0.86);
+	font: inherit;
+}
+
+.management-form textarea {
+	min-height: 5.5rem;
+	resize: vertical;
+}
+
+.management-form input:focus-visible,
+.management-form select:focus-visible,
+.management-form textarea:focus-visible,
+button:focus-visible {
+	outline: 3px solid rgba(64, 117, 166, 0.28);
+	outline-offset: 2px;
+}
+
+.form-grid .wide {
+	grid-column: 1 / -1;
+}
+
+.form-context {
+	margin: 0;
+	color: #60788c;
+	font-size: 0.88rem;
+}
+
+.form-actions {
+	justify-content: flex-end;
+	padding-top: 0.5rem;
+}
+
+.mutation-notice {
+	padding: 0.85rem 1rem;
+	border-left: 4px solid #b46b39;
+	border-radius: 0.5rem;
+	background: rgba(255, 249, 239, 0.9);
+}
+
+.mutation-notice p {
+	margin: 0.25rem 0;
+}
+
+.mutation-notice small {
+	display: block;
+	margin-bottom: 0.5rem;
+	word-break: break-all;
+}
+
+.inline-editor {
+	padding: 1.25rem;
+	border: 1px solid rgba(64, 117, 166, 0.2);
+	border-radius: 0.9rem;
+	background: rgba(255, 255, 255, 0.65);
+}
+
+.inline-editor h2 {
+	margin-bottom: 1rem;
+}
+
+.confirm-card {
+	position: fixed;
+	z-index: 51;
+	top: 50%;
+	left: 50%;
+	transform: translate(-50%, -50%);
+	width: min(30rem, calc(100vw - 2rem));
+	box-sizing: border-box;
+	padding: 1.5rem;
+	border: 1px solid rgba(64, 117, 166, 0.25);
+	border-radius: 0.9rem;
+	background: #edf3f8;
+	box-shadow: 0 22px 60px rgba(31, 57, 79, 0.24);
+}
+
 @media (max-width: 640px) {
 	.management-heading {
 		align-items: start;
 		flex-direction: column;
+	}
+
+	.heading-actions {
+		align-items: flex-start;
+	}
+
+	.resource-actions {
+		justify-content: flex-start;
+		flex-wrap: wrap;
 	}
 
 	.management-row {
@@ -258,6 +492,14 @@ button:focus:not(:focus-visible) {
 	}
 
 	.detail-field.wide {
+		grid-column: auto;
+	}
+
+	.form-grid {
+		grid-template-columns: 1fr;
+	}
+
+	.form-grid .wide {
 		grid-column: auto;
 	}
 }

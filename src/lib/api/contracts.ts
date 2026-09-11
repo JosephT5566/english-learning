@@ -23,6 +23,10 @@ export type TagSummary = components['schemas']['TagSummary'];
 export type CardSummary = components['schemas']['CardSummary'];
 export type CardDetail = components['schemas']['CardDetail'];
 export type DueCard = components['schemas']['DueCard'];
+export type DeckCreate = components['schemas']['DeckCreate'];
+export type DeckUpdate = components['schemas']['DeckUpdate'];
+export type CardCreate = components['schemas']['CardCreate'];
+export type CardUpdate = components['schemas']['CardUpdate'];
 
 export interface Page<T> {
 	items: T[];
