@@ -33,7 +33,7 @@ function testToken(testMode) {
 http
 	.createServer(async (request, response) => {
 		const authMatch = request.url?.match(
-			/^\/__test__\/auth\/(retryable|conflict|empty|unauthorized|submit-unauthorized|validation|not-found|server-error|invalid-response|slow)$/
+			/^\/__test__\/auth\/(retryable|conflict|empty|unauthorized|submit-unauthorized|validation|not-found|server-error|invalid-response|slow)$/,
 		);
 		if (authMatch) {
 			const { token, exp } = testToken(authMatch[1]);
@@ -49,7 +49,11 @@ http
 
 		const urlPath = new URL(request.url ?? '/', 'http://127.0.0.1').pathname;
 		const relative =
-			urlPath === '/' ? 'index.html' : urlPath === '/review' ? 'review.html' : urlPath.slice(1);
+			urlPath === '/'
+				? 'index.html'
+				: urlPath === '/review' || urlPath === '/decks'
+					? `${urlPath.slice(1)}.html`
+					: urlPath.slice(1);
 		const filePath = path.resolve(root, relative);
 		if (!filePath.startsWith(`${root}${path.sep}`)) {
 			response.writeHead(404);
@@ -63,8 +67,14 @@ http
 			});
 			response.end(body);
 		} catch {
-			response.writeHead(404);
-			response.end('Not found');
+			try {
+				const fallback = await fs.readFile(path.resolve(root, '404.html'));
+				response.writeHead(200, { 'Content-Type': 'text/html' });
+				response.end(fallback);
+			} catch {
+				response.writeHead(404);
+				response.end('Not found');
+			}
 		}
 	})
 	.listen(port, '127.0.0.1', () => {

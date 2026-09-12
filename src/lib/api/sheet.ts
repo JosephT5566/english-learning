@@ -5,11 +5,16 @@ import {
 	type WordItem,
 	type WordListResponse,
 } from '$lib/types';
-import { PUBLIC_APP_SCRIPT_URL } from '$env/static/public';
 import { mockWordItems } from './mock';
 import { getTokenIfValid } from '$lib/auth';
 
-const ENDPOINT = PUBLIC_APP_SCRIPT_URL; // .env 讀
+function requireLegacyEndpoint(endpoint: string): string {
+	const normalized = endpoint.trim();
+	if (!normalized) {
+		throw new Error('Legacy Apps Script endpoint must be supplied explicitly');
+	}
+	return normalized;
+}
 
 export async function getMockWordItems(): Promise<WordItem[]> {
 	// 模擬從伺服器取得資料
@@ -20,8 +25,8 @@ export async function getMockWordItems(): Promise<WordItem[]> {
 	});
 }
 
-export async function getWordListFromSheet(): Promise<WordItem[]> {
-	const res = await fetch(`${ENDPOINT}?action=getList&count=10`);
+export async function getWordListFromSheet(endpoint: string): Promise<WordItem[]> {
+	const res = await fetch(`${requireLegacyEndpoint(endpoint)}?action=getList&count=10`);
 	const data = (await res.json()) as WordListResponse;
 	// const data = await getMockWordItems().then((items) => ({
 	// 	ok: true,
@@ -46,17 +51,20 @@ export async function getWordListFromSheet(): Promise<WordItem[]> {
 //   return res.json();
 // }
 
-export async function updateReviewToSheet(updateFields: UpdateFields): Promise<void> {
+export async function updateReviewToSheet(
+	endpoint: string,
+	updateFields: UpdateFields,
+): Promise<void> {
 	const idToken = getTokenIfValid();
 	if (!idToken) {
 		throw new Error('No valid token for updateReview');
 	}
 
-	const res = await fetch(ENDPOINT, {
+	const res = await fetch(requireLegacyEndpoint(endpoint), {
 		method: 'POST',
 		body: JSON.stringify({
 			op: 'updateRows',
-		  id_token: idToken,
+			id_token: idToken,
 			fields: updateFields,
 		}),
 	});

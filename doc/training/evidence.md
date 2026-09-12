@@ -533,3 +533,58 @@ Use precise language such as “project,” “local load test,” or “deploye
 - Five-minute explanation practiced: Prepared in the issue artifact; Joseph has not yet practiced the
   complete explanation end to end.
 - Candidate resume bullet: Not yet. Revisit after deployment and post-deployment verification.
+
+### Shared bilingual management read and write cutover
+
+- Date: 2026-09-12
+- Status: Parts 1 and 2 plus the local Part 3 configuration cutover are verified; production remains open
+- Problem: Add owner-scoped English/Japanese deck and card management views without duplicating the
+  application or allowing the legacy Sheet path back into normal read traffic.
+- Constraints and invariants: One route/client/domain boundary serves both languages; missing
+  language defaults visibly to English; invalid language performs no API request; successful JSON is
+  runtime validated; cross-owner and missing details remain indistinguishable; static base paths
+  remain valid; uncertain mutations never appear successful.
+- Decision: Use shared query-language routes and conditional language fields. Generate committed
+  TypeScript from a committed deterministic FastAPI OpenAPI export, check regeneration drift in CI,
+  and keep runtime guards at the network boundary.
+- Write decision: Require per-owner UUID creation keys backed by stored normalized request hashes;
+  retain the exact account-scoped command for unclear retries, preserve values after stale edits, and
+  refetch before confirming an unclear archive.
+- UI primitive decision: Generate common Sheet and Alert Dialog components from shadcn-svelte,
+  retaining Bits UI underneath, and compose them behind task-specific Drawer and ConfirmDialog
+  wrappers for consistent modal focus, keyboard, scroll-lock, portal, and ARIA behavior without
+  splitting the visual system.
+- Runtime cutover decision: Remove the Apps Script variable from CI/deployment and require explicit
+  endpoint injection in the preserved legacy wrapper. Gate deployment on a configured HTTPS FastAPI
+  base URL rather than shipping an empty API base or an automatic fallback.
+- Implementation references: `src/routes/decks/`, `src/routes/cards/`,
+  `src/lib/components/LanguageTabs.svelte`, `src/lib/components/ReadError.svelte`,
+  `src/lib/management/`, `src/lib/api/client.ts`, `src/lib/api/contracts.ts`,
+  `src/lib/api/generated.ts`, `apps/api/openapi.json`, `.github/workflows/ci.yml`,
+  `tests/frontend/management-contracts.test.mjs`, `tests/browser/management-read-flow.spec.ts`, and
+  `doc/training/issues/issue-25/README.md`.
+- Verification and failure cases: Local Svelte/TypeScript, targeted lint, static subpath build, 16
+  frontend tests at the Part 2 checkpoint, all 236 PostgreSQL-backed backend tests, and 28 Playwright
+  Chrome flows passed. Part 3 increased frontend coverage to 20 tests and repeated the static build,
+  Svelte check, and browser suite.
+  Browser cases cover English-default and
+  Japanese navigation, conditional fields, archive filtering, loading, empty, invalid-language
+  no-request, authentication cleanup, non-disclosing not-found, retryable errors, and mobile list
+  usability. A combined review/management trace found `/v1` persistence traffic only at the
+  configured FastAPI origin and no Apps Script URL.
+- Mutation cases cover exact ambiguous-create retry, browser-local learned date, validation,
+  successful and stale edits, authorization failure, and archive outcome reconciliation. Focused
+  PostgreSQL tests prove deck/card exact replay, different-content conflicts, valid keys, ownership,
+  and one review state; focused CORS tests cover `PATCH` and `DELETE`. A keyboard case verifies that
+  the shared drawer dismisses with Escape through the accessible primitive.
+- Measured result: Local correctness only; no latency, scale, reliability, or user-impact claim.
+- Part 3 artifact evidence: CI/deployment contain no Apps Script variable; the production build
+  contains the configured FastAPI base and no Apps Script variable, host, or endpoint fragment. The
+  deploy validator rejects missing, HTTP, credential-bearing, query-bearing, and fragment-bearing
+  API values.
+- Limitations: The unused legacy wrapper and sanitized snapshot remain as evidence. No production API
+  host is recorded, so remote CI, live management authorization, deployment, production network
+  traffic, and the production rollback boundary are unverified.
+- Five-minute explanation practiced: Prepared in the Issue #25 artifact; Joseph has not yet practiced
+  it end to end.
+- Candidate resume bullet: Not yet. Revisit after complete write cutover and deployment evidence.

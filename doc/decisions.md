@@ -1,11 +1,13 @@
 # Decisions And Known Issues
 
-Last updated: 2026-09-04
+Last updated: 2026-09-12
 
 ## Durable Decisions
 
 - Use SvelteKit static adapter for deployment compatibility with static hosting and GitHub Pages.
-- Keep Google Sheet access behind a Google Apps Script endpoint instead of calling Google Sheets APIs directly from the browser.
+- Keep any retained legacy Google Sheet access behind Google Apps Script instead of calling Google
+  Sheets APIs directly from the browser; do not use it in normal cut-over review or management
+  paths.
 - Use Google Identity Services ID tokens for client sign-in and authenticated sheet updates.
 - Keep review state client-side during a session, then submit batched updates at the end of the review.
 - Use a five-stage spaced-repetition model with stage intervals from `STAGE_INTERVALS`.
@@ -83,6 +85,29 @@ Last updated: 2026-09-04
 - Roll review cutover back by redeploying the previous frontend, accepting temporary downtime and
   explicit divergence between post-cutover PostgreSQL reviews and Google Sheets. Do not attempt
   automatic reverse synchronization.
+- Use one language-aware management route and component/domain boundary for English and Japanese.
+  Canonicalize a missing `/decks` language to English; reject unsupported values in the browser
+  without an API request. Show reading/romanization only for Japanese and pronunciation only for
+  English.
+- Cut management reads before management writes. Deck/card list and detail pages call only the
+  authenticated FastAPI API; expose management mutation controls only after their failure,
+  concurrency, and idempotency behavior is implemented and verified.
+- Require a UUID idempotency key for deck/card creation and store its versioned normalized request hash on the
+  created owned resource. Retain one exact account-scoped browser command for uncertain retries;
+  never reuse its key with edited content.
+- Preserve user input after optimistic conflicts and discard it only through an explicit latest-state
+  reload. For an unclear archive response, verify `archived_at` with a read before showing success.
+- Treat FastAPI OpenAPI as the compile-time frontend contract. Commit its deterministic JSON export
+  and generated TypeScript, fail CI on regeneration drift, and retain handwritten runtime guards
+  because network JSON remains untrusted.
+- Generate common Sheet and Alert Dialog components from the shadcn-svelte registry, with Bits UI
+  retained as their underlying accessibility primitive. Compose those repository-owned components
+  behind task-specific Drawer and ConfirmDialog APIs, keeping product styling local while sharing
+  focus trapping, keyboard dismissal, scroll locking, portals, and ARIA semantics.
+- Remove `PUBLIC_APP_SCRIPT_URL` from CI and deployment rather than retaining a runtime fallback
+  switch. Preserve the unused legacy wrapper and sanitized Sheet snapshot as evidence, but require
+  deliberate endpoint injection for any legacy call. Fail deployment unless the FastAPI base is a
+  configured HTTPS URL without credentials, a query, or a fragment.
 - Allow browser review calls only from exact configured HTTP(S) origins. Permit the review
   transport's `GET`/`POST` methods and `Authorization`, `Content-Type`, and `Idempotency-Key`
   headers; expose `X-Request-ID`, keep credentialed cookies disabled, and reject wildcard or
@@ -131,3 +156,15 @@ Last updated: 2026-09-04
 - 2026-09-11: Cut the English due-review and batched review-submission frontend flow to the
   authenticated FastAPI contract with persisted exact-command retries, visible conflict recovery,
   backend-owned scheduling, and no Apps Script fallback or dual write.
+- 2026-09-12: Added shared English/Japanese deck/card list and detail reads, missing-language English
+  canonicalization, generated OpenAPI TypeScript with drift checks, and browser evidence that normal
+  review plus management navigation makes no Apps Script request. Management writes remain pending.
+- 2026-09-12: Added idempotent deck/card creation, shared create/edit/archive controls, exact pending
+  command recovery, explicit stale-edit discard, archive reconciliation, and management CORS methods.
+- 2026-09-12: Replaced hand-built management overlays with shadcn-svelte Sheet and Alert Dialog
+  components backed by Bits UI. Task-specific Drawer and ConfirmDialog wrappers preserve the
+  existing visual design while adding consistent modal focus, keyboard, portal, scroll-lock, and
+  semantic behavior.
+- 2026-09-12: Removed Apps Script from frontend build/deployment configuration, made the preserved
+  legacy wrapper explicitly injected, and added a deployment gate for the production FastAPI base
+  URL. Live production verification remains dependent on an actual deployed API and CORS origin.

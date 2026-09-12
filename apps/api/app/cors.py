@@ -45,7 +45,7 @@ class ConfiguredCORSMiddleware:
                 allow_origins=list(settings.cors_allowed_origins),
                 # Authentication uses an Authorization bearer token, not browser cookies.
                 allow_credentials=False,
-                allow_methods=["GET", "POST"],
+                allow_methods=["GET", "POST", "PATCH", "DELETE"],
                 allow_headers=["Authorization", "Content-Type", "Idempotency-Key"],
                 # Let the frontend include the correlation ID in support diagnostics.
                 expose_headers=["X-Request-ID"],

@@ -1,6 +1,6 @@
 # English Learning Project Memory
 
-Last updated: 2026-09-11
+Last updated: 2026-09-12
 
 ## Purpose
 
@@ -13,9 +13,10 @@ This is project evidence, not professional production-service experience.
 - SvelteKit 2 and Svelte 5 static frontend
 - GitHub Pages deployment
 - Google Identity Services sign-in in the browser
-- Google Apps Script API for vocabulary retrieval and review updates
-- Google Sheets as the current data store
-- English review routes and shared card components
+- Legacy Google Apps Script/Sheet code retained for rollback evidence, but absent from normal review
+  and deck/card management read/write traffic and frontend build configuration
+- PostgreSQL-backed English review plus shared English/Japanese management reads and writes
+- English review routes and shared language-aware deck/card components
 - A semantic-search proposal exists but is not an active priority
 
 ## Target system
@@ -45,9 +46,10 @@ This is project evidence, not professional production-service experience.
 
 ## Active milestone
 
-Week 5 — frontend integration and cutover. Issue #24 is implemented and verified locally; review
-the diff and remote CI before closing it. Production deployment and post-deployment verification
-remain part of the later deployment milestone.
+Week 5 — frontend integration and cutover. Issue #24 is implemented and verified locally. Issue #25
+Parts 1 and 2 plus the local Part 3 runtime-configuration cutover are verified. Production API/CORS
+configuration, remote CI, deployment, live read/write checks, and the production rollback boundary
+remain pending.
 
 The Weeks 0-3 milestone is complete and audited locally in
 [`issues/issue-12/README.md`](issues/issue-12/README.md). GitHub shows issues #4 through #11 closed,
@@ -206,6 +208,29 @@ frontend contract/state/component tests, nine Playwright browser tests, and the 
 PostgreSQL-backed backend suite passed locally. See
 [`issues/issue-24/README.md`](issues/issue-24/README.md).
 
+Issue #25 Part 1 is implemented and verified locally. `/decks?language=en|ja`, owned deck/card
+drill-down, active/archive filtering, conditional Japanese reading/romanization, and English
+pronunciation all share one FastAPI client and component/domain boundary. Missing language
+canonicalizes to English; invalid language performs no API request. FastAPI's deterministic checked-in
+OpenAPI schema generates checked-in TypeScript and CI rejects drift, while runtime guards still
+validate response JSON. Thirteen frontend tests and 20 Playwright Chrome flows pass, including loading,
+empty, authentication, non-disclosing not-found, retryable, archive, bilingual, mobile, static-path,
+and network checks. The combined review/management trace contains only `/v1` FastAPI persistence
+requests and no Apps Script URL. This is a read boundary only: create/edit/archive UI, idempotent
+create behavior, write failures, final rollback documentation, remote CI, and deployment remain.
+See [`issues/issue-25/README.md`](issues/issue-25/README.md).
+
+Issue #25 Part 2 is implemented and verified locally. Deck/card creation now requires UUID
+idempotency keys and uses the existing per-owner key/hash constraints for exact replay and
+different-content rejection; card replay preserves one card and one initial review state. Shared
+deck/card forms add create, optimistic edit, and confirmed archive behavior without splitting the
+English/Japanese application. Shared Drawer and ConfirmDialog wrappers now compose generated
+shadcn-svelte Sheet and Alert Dialog components, with Bits UI retained underneath, without changing
+the established styling. A 24-hour account-scoped pending creation locks the exact request after
+unclear outcomes. Stale edits keep values until an explicit reload/discard, and unclear archives
+refetch before success. The full 236-test PostgreSQL suite, 16 frontend tests, 28 Playwright flows,
+Svelte check, scoped lint/format, generated contract, and static subpath build pass locally.
+
 GitHub tracking:
 
 - [Weeks 0–3 roadmap issue](https://github.com/JosephT5566/english-learning/issues/12)
@@ -259,8 +284,14 @@ Repository-wide `npm run lint` still fails on the known Prettier baseline; touch
 and tests pass targeted ESLint. The Issue #23 operator replay and backup/restore evidence limits also
 remain documented.
 
+Issue #25's local management write and runtime-configuration boundaries are complete. CI and Pages
+deployment no longer provide an Apps Script URL; the preserved wrapper requires explicit endpoint
+injection, and deployment now rejects a missing or non-HTTPS FastAPI origin. The configured static
+build contains no Apps Script value. The real API/CORS environment, remote CI, deployed read/write
+flows, and production rollback boundary remain unverified because no production API host is recorded.
+
 ## Next action
 
-Commit and push the frontend CI environment fix, then confirm the rerun passes. Before any
-production cutover, configure the real `PUBLIC_API_BASE_URL` and approved frontend CORS origin, then
-follow the later deployment milestone.
+Deploy the production API/PostgreSQL boundary, configure the exact Pages CORS origin and repository
+`PUBLIC_API_BASE_URL`, then finish Issue #25's remote CI, deployed read/write/network checks, and
+record the first production PostgreSQL-only mutation. Preserve rollback evidence and snapshots.

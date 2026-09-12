@@ -1,6 +1,6 @@
 # Architecture Memory
 
-Last updated: 2026-09-11
+Last updated: 2026-09-12
 
 ## Stack
 
@@ -10,24 +10,33 @@ Last updated: 2026-09-11
 - Tailwind CSS v4 through `@tailwindcss/vite`.
 - Static adapter (`@sveltejs/adapter-static`) configured for static hosting/GitHub Pages-style base paths.
 - Google Identity Services for sign-in.
-- Legacy Google Apps Script/Sheet modules remain in the repository, but are no longer in the review
-  runtime path.
-- Independently runnable FastAPI/PostgreSQL API under `apps/api/`; the English due-review and review
-  submission frontend now use it exclusively.
+- Legacy Google Apps Script/Sheet modules remain in the repository for rollback evidence, but normal
+  review and deck/card management reads no longer import or call them.
+- Independently runnable FastAPI/PostgreSQL API under `apps/api/`; review plus English/Japanese
+  management reads and writes now use it exclusively.
 
 ## Source Map
 
 - `src/routes/+layout.svelte`: imports global CSS and wraps route content.
 - `src/routes/+page.svelte`: home/sign-in/start page.
-- `src/routes/review/+page.svelte`: review page; fetches sheet words and passes them to card UI.
-- `src/routes/Header.svelte`: currently unused/commented in layout.
+- `src/routes/review/+page.svelte`: review page; fetches due cards from FastAPI and passes them to
+  the existing card UI.
+- `src/routes/decks/+page.svelte`: shared language-aware deck list with active/archive filtering.
+- `src/routes/decks/[deckId]/+page.svelte`: owned deck detail and card list.
+- `src/routes/cards/[cardId]/+page.svelte`: owned card detail with language-relevant fields.
+- `src/routes/Header.svelte`: base-path-aware primary navigation used by the shared layout.
 - `src/lib/auth.ts`: Google Identity Services initialization, token storage, token validation, profile lookup, sign-out.
 - `src/lib/api/client.ts`: authenticated FastAPI transport, bearer-header handling, response
   validation, and typed errors.
-- `src/lib/api/contracts.ts`: frontend copies of the due-review, review-write/result, and error
-  contracts with runtime boundary guards.
+- `src/lib/api/generated.ts`: checked-in TypeScript generated from FastAPI's checked-in OpenAPI
+  document.
+- `src/lib/api/contracts.ts`: generated schema aliases plus handwritten runtime boundary guards and
+  the custom error-envelope types that OpenAPI does not yet describe.
 - `src/lib/api/sheet.ts`: legacy Apps Script wrapper; no review runtime module imports it after
   cutover.
+- `src/lib/management/`: language/query parsing and management read-error presentation policy.
+- `src/lib/management/pending.ts`: account-scoped, 24-hour exact deck/card creation recovery.
+- `src/lib/management/mutations.ts`: mutation failure and optimistic-conflict presentation policy.
 - `src/lib/api/mock.ts`: local mock word data.
 - `src/lib/stores/auth.ts`: sign-in store.
 - `src/lib/review/pending.ts`: account-scoped, 24-hour exact-command/idempotency-key recovery.
@@ -36,6 +45,13 @@ Last updated: 2026-09-11
 - `src/lib/types.ts`: shared app data contracts.
 - `src/lib/utils.ts`: spaced-repetition intervals and ease-factor calculation.
 - `src/lib/components/SwipeCards.svelte`: main review card interaction.
+- `src/lib/components/ui/`: repository-owned Sheet, Alert Dialog, and Button components generated
+  from the shadcn-svelte registry. They use Bits UI underneath and are configured by
+  `components.json`.
+- `src/lib/components/Drawer.svelte` and `ConfirmDialog.svelte`: task-specific management wrappers
+  over the shared shadcn-svelte components, retaining local styling and feature-facing APIs.
+- `src/lib/components/DeckForm.svelte`, `CardForm.svelte`, and `MutationNotice.svelte`: shared
+  management mutation forms and failure presentation.
 - `src/lib/components/AsyncButton.svelte`, `Modal.svelte`, `QuestionCard.svelte`, `QWordToMeaning.svelte`: reusable or older UI pieces.
 - `src/app.css`: global CSS, Tailwind import, and base layout styling.
 - `apps/api/app/main.py`: FastAPI application factory, lifespan boundary, and router composition.
@@ -58,6 +74,9 @@ Last updated: 2026-09-11
   audit persistence, and private in-memory confirmed-import candidates.
 - `apps/api/app/confirmed_imports.py`: approved-snapshot verification, atomic confirmed import,
   exact replay, post-commit reconciliation, safe reports, and the local operator CLI.
+- `apps/api/openapi.json`: committed deterministic API schema used for frontend type generation and
+  contract-drift checks.
+- `apps/api/scripts/export_openapi.py`: deterministic OpenAPI export from the FastAPI application.
 - `apps/api/app/pagination.py`: versioned opaque cursor encoding, strict parsing, and normalized
   query-shape binding.
 - `apps/api/migrations/`: Alembic environment and reversible migration history; the empty baseline
@@ -92,11 +111,12 @@ Last updated: 2026-09-11
 10. HTTP middleware assigns a new request UUID. Expected, validation, framework, and unexpected
     failures return one stable envelope and never serialize internal exception details.
 11. The outer CORS middleware permits only configured HTTP(S) frontend origins, the product's
-    `GET`/`POST` methods, and its bearer/content/idempotency headers. It exposes `X-Request-ID` for
+    `GET`/`POST`/`PATCH`/`DELETE` methods, and its bearer/content/idempotency headers. It exposes `X-Request-ID` for
     browser-visible support diagnostics without enabling credentialed cookies.
 
-The English review frontend now targets this FastAPI service. No review read or write calls Google
-Apps Script, and there is no automatic fallback or dual-write path.
+The English review frontend and English/Japanese management read pages now target this FastAPI
+service. Normal review and management navigation makes no Apps Script call. Review and management
+writes have no fallback or dual-write path.
 
 ## Backend Read Flow
 
@@ -126,6 +146,9 @@ Apps Script, and there is no automatic fallback or dual-write path.
    stale owned writes return `409 version_conflict`.
 5. Deletes archive rather than physically removing decks or cards. Card creation also creates the
    required initial review state in the same transaction.
+6. Deck/card creates require a UUID idempotency key. Versioned normalized validated request content is hashed
+   and stored with the resource under a partial owner/key unique index. Exact retries return that
+   resource; different content under the key returns `409 idempotency_key_reused`.
 
 ## Backend Review Write Flow
 
@@ -141,8 +164,9 @@ Apps Script, and there is no automatic fallback or dual-write path.
 5. The request transaction commits the batch, all events, and all states together. Any exception or
    item failure rolls the complete request back.
 
-English and Japanese travel through the same routes, response models, ownership checks, and tables.
-The current review UI requests English while retaining the shared language-aware API contract.
+English and Japanese travel through the same routes, response models, ownership checks, tables, and
+management components. The review UI currently requests English while retaining the shared
+language-aware API contract.
 
 ## Initial Domain Schema
 
@@ -213,7 +237,8 @@ evidence is recorded in the [Issue #8 query-plan report](training/issues/issue-8
 - The checked-in bilingual fixture uses one owner with English and Japanese decks/cards, shared
   reusable tags, current states, and one two-card review batch. It is test evidence, not a production
   seed or import path.
-- Authenticated `/v1` routes now read and write these tables; frontend integration remains pending.
+- Authenticated `/v1` routes read and write these tables. Review and deck/card management are
+  integrated; final production cutover verification remains pending.
 - Query-plan evidence comes from a deterministic local dataset with 40,000 cards, states, tag links,
   and events. It verifies planner selection, not production latency, throughput, or future planner
   behavior.
@@ -273,6 +298,42 @@ Review update payload shape is:
 7. A conflict retires the old command and refetches due state; a validated `ReviewResult` clears it
    and produces the completed UI.
 
+## Management Read Flow
+
+1. `/decks` treats a missing `language` query as English and replaces the URL with
+   `?language=en`; unsupported values show a validation state without making an API request.
+2. English and Japanese tabs reuse the same route, client methods, domain contracts, and list
+   components. Active/archive filtering is expressed through the API `status` query.
+3. The client sends bearer-authenticated deck/card list and detail requests to `/v1`, then validates
+   each successful JSON boundary before displaying it.
+4. Deck and card IDs remain owner-scoped on the backend. A missing or cross-owner detail produces
+   the same non-disclosing not-found UI.
+5. Japanese cards show reading and romanization when present; English cards show pronunciation.
+   Both languages share meaning, definition, example, relation, tag, note, and review-state fields.
+6. Loading, empty, authentication, not-found, retryable, server, and malformed-response states are
+   distinct. A failed or unclear read never renders stale data as a successful response.
+
+## OpenAPI Type Flow
+
+1. FastAPI's application schema is exported deterministically to `apps/api/openapi.json`.
+2. `openapi-typescript` generates `src/lib/api/generated.ts`; both artifacts are committed.
+3. `src/lib/api/contracts.ts` selects the product types and retains runtime guards because generated
+   TypeScript alone cannot validate untrusted network JSON.
+4. Frontend CI regenerates both artifacts and fails on a diff, so a backend contract change cannot
+   silently leave the checked-in frontend types stale.
+
+## Management Mutation Flow
+
+1. Deck create/edit uses a compact drawer, card create uses a wide drawer, and card edit replaces the
+   detail grid inline. Language-specific fields remain conditional within the shared form.
+2. Before create, the browser stores one exact body/UUID key for the current Google subject. An
+   unclear, retryable, or authentication result keeps and locks that command; an exact manual retry
+   sends the same pair. Confirmation or definite rejection clears it.
+3. Edits submit the last-read resource version. A `409 version_conflict` keeps the user's values and
+   only discards them after the explicit latest-state reload action.
+4. Archives require confirmation. If the response is unclear, the page reads the resource again and
+   only navigates to Archived after observing `archived_at`; otherwise it shows an unconfirmed state.
+
 ## Auth Flow
 
 - `src/routes/+page.svelte` initializes Google Identity Services on mount if the user is not signed in.
@@ -290,5 +351,9 @@ Review update payload shape is:
 - Use `$app/paths.resolve()` for internal URLs.
 - `PUBLIC_API_BASE_URL` is the external API base and is not prefixed with the static frontend's
   `paths.base`; a trailing slash is normalized by the client.
+- GitHub Pages deployment validates that the public API value is a configured HTTPS base URL before
+  building. Neither CI nor deployment supplies an Apps Script variable.
+- `src/lib/api/sheet.ts` is retained as rollback evidence, but it has no ambient endpoint. Any use
+  now requires a caller to inject an Apps Script endpoint explicitly; no normal runtime module does.
 - FastAPI's `CORS_ALLOWED_ORIGINS` is an explicit JSON array of frontend origins. Local defaults
   cover `localhost:5173` and `127.0.0.1:5173`; production must provide its real static origin.

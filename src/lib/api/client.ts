@@ -2,9 +2,21 @@ import { env } from '$env/dynamic/public';
 import { getTokenIfValid, signOut } from '$lib/auth';
 import {
 	isApiErrorEnvelope,
+	isCardDetail,
+	isCardSummaryPage,
+	isDeck,
+	isDeckPage,
 	isDueCardPage,
 	isReviewResult,
+	type ArchiveStatus,
 	type ApiErrorBody,
+	type CardDetail,
+	type CardCreate,
+	type CardSummary,
+	type CardUpdate,
+	type Deck,
+	type DeckCreate,
+	type DeckUpdate,
 	type DueCard,
 	type Page,
 	type ReviewResult,
@@ -22,7 +34,7 @@ export class ApiClientError extends Error {
 		readonly status?: number,
 		readonly code?: string,
 		readonly requestId?: string,
-		readonly details?: Record<string, unknown>
+		readonly details?: Record<string, unknown>,
 	) {
 		super(message);
 		this.name = 'ApiClientError';
@@ -63,9 +75,9 @@ async function authenticatedRequest(path: string, init: RequestInit = {}): Promi
 		});
 	} catch {
 		throw new ApiClientError(
-			'We could not reach the review service. Your answers are not confirmed yet.',
+			'We could not reach the service. The result is not confirmed yet.',
 			'network',
-			true
+			true,
 		);
 	}
 
@@ -87,15 +99,124 @@ async function authenticatedRequest(path: string, init: RequestInit = {}): Promi
 			response.status,
 			error.code,
 			error.request_id,
-			error.details
+			error.details,
 		);
 	}
 	return data;
 }
 
+function queryString(values: Record<string, string | number | null | undefined>): string {
+	const query = new URLSearchParams();
+	for (const [key, value] of Object.entries(values)) {
+		if (value !== null && value !== undefined) query.set(key, String(value));
+	}
+	return query.toString();
+}
+
+export async function getDecks(
+	targetLanguage: TargetLanguage,
+	status: ArchiveStatus = 'active',
+	limit = 20,
+	cursor?: string,
+): Promise<Page<Deck>> {
+	const query = queryString({
+		target_language: targetLanguage,
+		status,
+		limit,
+		cursor,
+	});
+	const data = await authenticatedRequest(`/v1/decks?${query}`);
+	if (!isDeckPage(data)) {
+		throw new ApiClientError('The deck list response was invalid.', 'invalid_response', true);
+	}
+	return data;
+}
+
+export async function getDeck(deckId: string): Promise<Deck> {
+	const data = await authenticatedRequest(`/v1/decks/${encodeURIComponent(deckId)}`);
+	if (!isDeck(data)) {
+		throw new ApiClientError('The deck response was invalid.', 'invalid_response', true);
+	}
+	return data;
+}
+
+export async function getCards(
+	deckId: string,
+	status: ArchiveStatus = 'active',
+	limit = 20,
+	cursor?: string,
+): Promise<Page<CardSummary>> {
+	const query = queryString({ deck_id: deckId, status, limit, cursor });
+	const data = await authenticatedRequest(`/v1/cards?${query}`);
+	if (!isCardSummaryPage(data)) {
+		throw new ApiClientError('The card list response was invalid.', 'invalid_response', true);
+	}
+	return data;
+}
+
+export async function getCard(cardId: string): Promise<CardDetail> {
+	const data = await authenticatedRequest(`/v1/cards/${encodeURIComponent(cardId)}`);
+	if (!isCardDetail(data)) {
+		throw new ApiClientError('The card response was invalid.', 'invalid_response', true);
+	}
+	return data;
+}
+
+export async function createDeck(payload: DeckCreate, idempotencyKey: string): Promise<Deck> {
+	const data = await authenticatedRequest('/v1/decks', {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
+		body: JSON.stringify(payload),
+	});
+	if (!isDeck(data))
+		throw new ApiClientError('The created deck response was invalid.', 'invalid_response', true);
+	return data;
+}
+
+export async function updateDeck(deckId: string, payload: DeckUpdate): Promise<Deck> {
+	const data = await authenticatedRequest(`/v1/decks/${encodeURIComponent(deckId)}`, {
+		method: 'PATCH',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify(payload),
+	});
+	if (!isDeck(data))
+		throw new ApiClientError('The updated deck response was invalid.', 'invalid_response', true);
+	return data;
+}
+
+export async function archiveDeck(deckId: string): Promise<void> {
+	await authenticatedRequest(`/v1/decks/${encodeURIComponent(deckId)}`, { method: 'DELETE' });
+}
+
+export async function createCard(payload: CardCreate, idempotencyKey: string): Promise<CardDetail> {
+	const data = await authenticatedRequest('/v1/cards', {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
+		body: JSON.stringify(payload),
+	});
+	if (!isCardDetail(data))
+		throw new ApiClientError('The created card response was invalid.', 'invalid_response', true);
+	return data;
+}
+
+export async function updateCard(cardId: string, payload: CardUpdate): Promise<CardDetail> {
+	const data = await authenticatedRequest(`/v1/cards/${encodeURIComponent(cardId)}`, {
+		method: 'PATCH',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify(payload),
+	});
+	if (!isCardDetail(data))
+		throw new ApiClientError('The updated card response was invalid.', 'invalid_response', true);
+	return data;
+}
+
+export async function archiveCard(cardId: string): Promise<void> {
+	await authenticatedRequest(`/v1/cards/${encodeURIComponent(cardId)}`, { method: 'DELETE' });
+}
+
 export async function getDueReviews(
 	targetLanguage: TargetLanguage,
-	limit = 10
+	limit = 10,
 ): Promise<Page<DueCard>> {
 	const query = new URLSearchParams({
 		target_language: targetLanguage,
@@ -110,7 +231,7 @@ export async function getDueReviews(
 
 export async function submitReviews(
 	payload: ReviewSubmission,
-	idempotencyKey: string
+	idempotencyKey: string,
 ): Promise<ReviewResult> {
 	const data = await authenticatedRequest('/v1/reviews', {
 		method: 'POST',
