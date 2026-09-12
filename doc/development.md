@@ -33,6 +33,10 @@ canonical verified command reference.
 - Revert the latest development migration: `uv run alembic downgrade -1`
 - Lint: `uv run ruff check .`
 - Check formatting: `uv run ruff format --check .`
+- Build the locked non-root API image from the repository root:
+  `docker build --tag english-learning-api:local apps/api`
+- Verify its user, liveness, and graceful shutdown from the repository root:
+  `bash apps/api/scripts/verify_container.sh english-learning-api:local`
 
 Start the verified local PostgreSQL 17 service from the repository root with
 `docker compose up -d --wait postgres`. Inspect it with `docker compose ps` and stop it with
@@ -41,6 +45,9 @@ Start the verified local PostgreSQL 17 service from the repository root with
 Migration downgrades are exercised for local development and recovery verification. A production
 deployment must use a separately reviewed forward/backward-compatible rollout and rollback plan.
 PostgreSQL integration tests are explicitly opt-in and never fall back to SQLite.
+The API image contains Alembic, but the web process never runs migrations implicitly. Deployment
+must run `alembic upgrade head` once as an explicit pre-deploy job and stop before shifting traffic
+if that command fails.
 
 ## Environment Variables
 

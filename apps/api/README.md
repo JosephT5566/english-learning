@@ -15,6 +15,34 @@ Create or synchronize the local environment from the committed lockfile:
 uv sync --locked
 ```
 
+## Production container
+
+Build the API from the repository root. The image installs only locked runtime dependencies, runs
+as UID/GID `10001:10001`, and starts one Uvicorn process on the platform-provided `PORT` (default
+`8080`):
+
+```bash
+docker build --tag english-learning-api:local apps/api
+bash apps/api/scripts/verify_container.sh english-learning-api:local
+```
+
+The verification script starts a disposable container on a random host port, checks liveness and
+the effective runtime UID/GID, sends `SIGTERM`, requires a graceful application shutdown and exit
+status `0`, then removes the container.
+
+The image includes Alembic so a release system can run migrations as a distinct reviewed job:
+
+```bash
+docker run --rm \
+  --env-file /path/to/runtime-secrets.env \
+  english-learning-api:local \
+  alembic upgrade head
+```
+
+Do not bake environment files into the image. Do not run migrations automatically during web
+process startup: concurrent revisions could race, and a failed migration must stop the release
+before new application instances receive traffic.
+
 ## Configuration
 
 Local development works with safe disposable defaults. To override them, create an optional `.env`

@@ -108,6 +108,10 @@ Last updated: 2026-09-12
   switch. Preserve the unused legacy wrapper and sanitized Sheet snapshot as evidence, but require
   deliberate endpoint injection for any legacy call. Fail deployment unless the FastAPI base is a
   configured HTTPS URL without credentials, a query, or a fragment.
+- Package the FastAPI service as a two-stage Debian slim image with dependencies synchronized from
+  `uv.lock`, a numeric non-root runtime identity, and a direct Python PID 1 entrypoint. Honor the
+  platform `PORT` and bound graceful shutdown to eight seconds. Include Alembic in the image, but
+  require migrations to run once as an explicit pre-deploy job instead of racing during web startup.
 - Allow browser review calls only from exact configured HTTP(S) origins. Permit the review
   transport's `GET`/`POST` methods and `Authorization`, `Content-Type`, and `Idempotency-Key`
   headers; expose `X-Request-ID`, keep credentialed cookies disabled, and reject wildcard or
@@ -168,3 +172,5 @@ Last updated: 2026-09-12
 - 2026-09-12: Removed Apps Script from frontend build/deployment configuration, made the preserved
   legacy wrapper explicitly injected, and added a deployment gate for the production FastAPI base
   URL. Live production verification remains dependent on an actual deployed API and CORS origin.
+- 2026-09-12: Added the provider-neutral Issue #26 API container and automated runtime smoke check.
+  Provider, encrypted PostgreSQL, secret storage, and the real release pipeline remain undecided.

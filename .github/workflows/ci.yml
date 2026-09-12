@@ -113,3 +113,9 @@ jobs:
 
       - name: Test with PostgreSQL
         run: uv run pytest -q
+
+      - name: Build locked API container
+        run: docker build --tag english-learning-api:verify .
+
+      - name: Verify API container runtime contract
+        run: bash scripts/verify_container.sh english-learning-api:verify

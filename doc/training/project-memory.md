@@ -46,10 +46,10 @@ This is project evidence, not professional production-service experience.
 
 ## Active milestone
 
-Week 5 — frontend integration and cutover. Issue #24 is implemented and verified locally. Issue #25
-Parts 1 and 2 plus the local Part 3 runtime-configuration cutover are verified. Production API/CORS
-configuration, remote CI, deployment, live read/write checks, and the production rollback boundary
-remain pending.
+Week 6 — deployment and operational ownership. Issue #25's local frontend/runtime cutover is
+verified, while its live checks remain dependent on deployment. Issue #26 Part 1 now has a locally
+verified locked non-root API container with automated liveness and graceful-SIGTERM checks. Provider,
+database, secrets, production CORS, deployment, and rollback rehearsal remain pending.
 
 The Weeks 0-3 milestone is complete and audited locally in
 [`issues/issue-12/README.md`](issues/issue-12/README.md). GitHub shows issues #4 through #11 closed,
@@ -290,8 +290,13 @@ injection, and deployment now rejects a missing or non-HTTPS FastAPI origin. The
 build contains no Apps Script value. The real API/CORS environment, remote CI, deployed read/write
 flows, and production rollback boundary remain unverified because no production API host is recorded.
 
+Issue #26's provider-neutral container boundary is complete locally. The two-stage image excludes
+development dependencies, runs as `10001:10001`, honors `PORT`, and exits `0` after Uvicorn completes
+FastAPI lifespan shutdown on SIGTERM. CI builds and smokes the image. No host, registry, managed
+database, encrypted production connection, or deployed behavior is claimed.
+
 ## Next action
 
-Deploy the production API/PostgreSQL boundary, configure the exact Pages CORS origin and repository
-`PUBLIC_API_BASE_URL`, then finish Issue #25's remote CI, deployed read/write/network checks, and
-record the first production PostgreSQL-only mutation. Preserve rollback evidence and snapshots.
+Select the Issue #26 API host and managed PostgreSQL provider using actual cost, region, TLS,
+connection, secret, migration-job, backup, and rollback constraints. Then configure and deploy that
+boundary before finishing Issue #25's live read/write checks. Preserve rollback evidence and snapshots.

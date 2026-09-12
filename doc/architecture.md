@@ -55,6 +55,8 @@ Last updated: 2026-09-12
 - `src/lib/components/AsyncButton.svelte`, `Modal.svelte`, `QuestionCard.svelte`, `QWordToMeaning.svelte`: reusable or older UI pieces.
 - `src/app.css`: global CSS, Tailwind import, and base layout styling.
 - `apps/api/app/main.py`: FastAPI application factory, lifespan boundary, and router composition.
+- `apps/api/app/serve.py`: production process entrypoint with platform-port validation and bounded
+  graceful shutdown.
 - `apps/api/app/config.py`: typed, secret-safe environment configuration loaded during lifespan.
 - `apps/api/app/cors.py`: exact-origin browser policy initialized from validated lifespan settings.
 - `apps/api/app/database.py`: lazy SQLAlchemy engine construction, application-scoped session factory,
@@ -77,6 +79,10 @@ Last updated: 2026-09-12
 - `apps/api/openapi.json`: committed deterministic API schema used for frontend type generation and
   contract-drift checks.
 - `apps/api/scripts/export_openapi.py`: deterministic OpenAPI export from the FastAPI application.
+- `apps/api/Dockerfile`: locked two-stage API build with a UID/GID `10001:10001` runtime and no
+  development dependencies or `uv` binary in the final image.
+- `apps/api/scripts/verify_container.sh`: disposable container check for effective identity,
+  liveness, SIGTERM handling, and a clean exit.
 - `apps/api/app/pagination.py`: versioned opaque cursor encoding, strict parsing, and normalized
   query-shape binding.
 - `apps/api/migrations/`: Alembic environment and reversible migration history; the empty baseline
@@ -113,6 +119,10 @@ Last updated: 2026-09-12
 11. The outer CORS middleware permits only configured HTTP(S) frontend origins, the product's
     `GET`/`POST`/`PATCH`/`DELETE` methods, and its bearer/content/idempotency headers. It exposes `X-Request-ID` for
     browser-visible support diagnostics without enabling credentialed cookies.
+12. The production container starts `app.serve` directly as PID 1. Uvicorn owns SIGTERM handling,
+    stops accepting work, completes FastAPI lifespan cleanup within its bounded drain window, and
+    exits. Schema migrations use the same image but run as a separate pre-deploy command; web
+    startup never mutates the schema.
 
 The English review frontend and English/Japanese management read pages now target this FastAPI
 service. Normal review and management navigation makes no Apps Script call. Review and management
