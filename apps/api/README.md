@@ -52,13 +52,17 @@ file beside `pyproject.toml`; use `.env.example` as the field reference.
 | --- | --- | --- |
 | `APP_ENV` | `local` | `local`, `test`, or `production` |
 | `LOG_LEVEL` | `INFO` | `DEBUG`, `INFO`, `WARNING`, `ERROR`, or `CRITICAL` |
-| `DATABASE_URL` | Local disposable PostgreSQL URL | Must use the `postgresql+psycopg` driver |
+| `DATABASE_URL` | Local disposable PostgreSQL URL | Must use the `postgresql+psycopg` driver; production also requires verified TLS or required TLS channel binding |
 | `DATABASE_CONNECT_TIMEOUT_SECONDS` | `2` | Integer from 1 through 10 |
 | `GOOGLE_OAUTH_CLIENT_ID` | Local placeholder | Google web OAuth client ID used as the accepted token audience |
 
 Production must explicitly override `DATABASE_URL` and `GOOGLE_OAUTH_CLIENT_ID`; their local defaults
 are rejected.
 Database URLs are treated as secrets and must not be printed or logged.
+Production accepts `sslmode=verify-ca` or `sslmode=verify-full`. For Neon clients that use
+`sslmode=require`, `channel_binding=require` is also mandatory. The Cloud Run runtime injects a
+pooled least-privilege URL, while the separate migration job injects a direct schema-owning URL under
+the same variable name; the web process never receives the migration credential.
 
 FastAPI creates the SQLAlchemy engine during lifespan startup and disposes its connection pool during
 shutdown. Engine creation is lazy and does not require PostgreSQL to be available; database
@@ -96,6 +100,11 @@ Issue #23 revision `20260910_0005` adds one-time confirmed-import runs and datab
 source-to-card mappings. One transaction creates cards, normalized owned tags, associations, fresh
 review states, mappings, and the completed apply record; reconciliation is persisted separately
 after commit so an interrupted client can recover by exact replay.
+
+The production migration and candidate-release sequence is documented in the
+[Issue #26 runbook](../../doc/training/issues/issue-26/runbook.md). It uses the same locked image as
+the web service, executes one zero-retry migration task before deployment, and never migrates during
+web startup.
 
 ## One-time legacy CSV dry run
 

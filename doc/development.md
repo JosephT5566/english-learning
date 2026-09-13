@@ -87,6 +87,19 @@ The API accepts these server-side variables:
 These API values are server-side and must never use the SvelteKit `PUBLIC_` prefix. A local
 `apps/api/.env` is optional and ignored by Git; `.env.example` contains only disposable defaults.
 
+## Production Candidate Release
+
+Issue #26 targets Cloud Run in `asia-southeast1` with Neon PostgreSQL in AWS Singapore. Use
+`deploy/cloud-run/release.env.example` for nonsecret release configuration and follow
+`doc/training/issues/issue-26/runbook.md` for provisioning, migration, candidate smoke checks,
+promotion, and rollback. Database URLs belong only in their separate, version-pinned Secret
+Manager secrets; do not add them to the release environment file.
+
+The release script runs migrations through a single-task Cloud Run job, then creates a tagged
+candidate revision with zero production traffic. The smoke script checks `/health/ready` before
+promotion because Cloud Run supports startup and liveness probes but has no readiness-probe deploy
+setting.
+
 ## Validation Expectations
 
 Run `npm run check` after changing TypeScript, Svelte components, stores, or API contracts. Run

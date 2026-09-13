@@ -1,6 +1,6 @@
 # Architecture Memory
 
-Last updated: 2026-09-12
+Last updated: 2026-09-13
 
 ## Stack
 
@@ -96,6 +96,12 @@ Last updated: 2026-09-12
 - `compose.yaml`: verified local `postgres:17-alpine` service with persistent development volume and
   health check, run through OrbStack's Docker-compatible engine.
 - `.github/workflows/ci.yml`: independent frontend and PostgreSQL-backed backend verification jobs.
+- `deploy/cloud-run/release.sh`: clean-commit Cloud Build, single-task migration, and tagged
+  zero-traffic Cloud Run candidate release boundary.
+- `deploy/cloud-run/smoke.sh`: public health, authenticated owned-read, and explicitly opted-in
+  idempotent review-write smoke checks for a candidate revision.
+- `deploy/cloud-run/release.env.example`: non-secret Cloud Run/Neon resource-name and public runtime
+  configuration contract. Database URLs remain version-pinned Secret Manager values.
 
 ## Backend Foundation Flow
 
@@ -123,6 +129,15 @@ Last updated: 2026-09-12
     stops accepting work, completes FastAPI lifespan cleanup within its bounded drain window, and
     exits. Schema migrations use the same image but run as a separate pre-deploy command; web
     startup never mutates the schema.
+13. Production uses Cloud Run in `asia-southeast1` and Neon PostgreSQL in AWS Singapore. Neon is the
+    only writable source of truth; there is no runtime provider switch, dual write, or replica.
+14. The Cloud Run web identity receives only the pooled runtime database secret. A separate job
+    identity receives only the direct migration secret. Both use the standard `DATABASE_URL`
+    setting, with explicit production TLS validation.
+15. A release builds one commit-tagged image, runs a single zero-retry Alembic job, then creates a
+    tagged candidate revision with zero traffic. Health, owner scope, and one controlled idempotent
+    write must pass before explicit traffic promotion. Rollback moves traffic only to a
+    schema-compatible application revision and never automatically downgrades PostgreSQL.
 
 The English review frontend and English/Japanese management read pages now target this FastAPI
 service. Normal review and management navigation makes no Apps Script call. Review and management

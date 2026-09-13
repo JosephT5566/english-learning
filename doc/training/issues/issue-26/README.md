@@ -1,21 +1,24 @@
 # Issue #26 - Deploy API and PostgreSQL with a safe release contract
 
-Last updated: 2026-09-12
+Last updated: 2026-09-13
 
 Source: [GitHub Issue #26](https://github.com/JosephT5566/english-learning/issues/26)
 
 ## Status
 
-Part 1, the provider-neutral API container boundary, is implemented and verified locally. Hosting,
-managed PostgreSQL, encrypted connections, external secret storage, production CORS, deployment,
-and rollback rehearsal remain open.
+Part 1, the provider-neutral API container boundary, is implemented and verified locally. Part 2
+selects Cloud Run in Singapore plus Neon PostgreSQL in AWS Singapore, with Neon as the only source
+of truth. The checked-in release contract now enforces production PostgreSQL transport security,
+separates version-pinned runtime and migration secrets, runs migration before a zero-traffic
+candidate, and defines smoke/promotion/rollback operations. Cloud resources, remote execution,
+private-data migration, production CORS, live traffic, and rollback rehearsal remain open.
 
 ## Delivery Slices
 
 1. Build and continuously verify a locked non-root container with meaningful health endpoints and
    graceful termination. Completed locally.
 2. Select the API and managed PostgreSQL providers from actual workload, cost, TLS, migration-job,
-   secret-storage, backup, and rollback needs.
+   secret-storage, backup, and rollback needs. Completed locally.
 3. Configure production identity, encrypted database access, exact CORS, secrets, and probes; then
    deploy without importing private data automatically.
 4. Run migrations as a reviewed pre-deploy job, smoke-test owned reads and a review write, stage the
@@ -56,8 +59,41 @@ Verified on 2026-09-12:
 This proves the local container contract only. It does not prove a registry push, remote CI, a
 deployed revision, encrypted database connectivity, production probes, or live graceful draining.
 
-## Next Decision
+Part 2 local verification on 2026-09-13:
 
-Select the API host and managed PostgreSQL provider together. The decision must record expected low
-traffic, minimum monthly cost, region, enforced TLS, secret storage, connection limits/pooling,
-one-off migration support, automated backups and restore testing, and application-revision rollback.
+- All 251 backend tests passed against PostgreSQL 17; Ruff check, Ruff format check, and the uv lock
+  check passed.
+- Production configuration tests accept certificate verification or required TLS channel binding,
+  reject weaker transport settings, and keep the database password out of errors.
+- Both Cloud Run scripts pass Bash syntax checks. Their invalid-input paths fail safely, and the
+  checked-in `gcloud` help confirms every deployed probe flag; database readiness remains an
+  explicit pre-promotion smoke check because Cloud Run has no readiness-probe deploy setting.
+- `git diff --check` passed.
+
+This does not verify Neon connectivity, GCP IAM or Secret Manager permissions, a remote migration,
+candidate behavior, traffic promotion, or rollback.
+
+## Part 2 Provider And Release Decision
+
+- Use Cloud Run `asia-southeast1` for the API and Neon AWS Singapore for PostgreSQL.
+- Neon is the only writable source of truth. Do not add a database-provider switch, dual write, or
+  continuous Cloud SQL replica.
+- Keep the expected low-traffic bill inside a USD 10 monthly ceiling. Start Cloud Run at zero minimum
+  and one maximum instance; accept cold starts and Neon Free recovery/SLA limits.
+- Use a pooled least-privilege runtime URL and a direct schema-owning migration URL. Store them as
+  distinct version-pinned Secret Manager secrets injected into different Cloud Run identities.
+- Require verified TLS or TLS plus required channel binding in production configuration.
+- Run Alembic as a single-task, zero-retry pre-deploy job. Deploy the resulting application revision
+  with a candidate tag and zero production traffic.
+- Promote only after health, ownership, and controlled idempotent-write checks. Roll application
+  traffic back only to a schema-compatible revision; never automatically downgrade production.
+- Defer independent GCS backup/restore proof and incident response to Issue #27.
+
+The executable configuration and operator sequence are in [`runbook.md`](runbook.md) and
+`deploy/cloud-run/`.
+
+## Next Action
+
+Provision the empty Neon and GCP resources without importing private data. Verify both database URLs
+from the production image, execute the migration job, deploy the zero-traffic candidate, and capture
+safe smoke evidence before promotion.

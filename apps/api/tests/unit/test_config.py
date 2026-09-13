@@ -74,6 +74,7 @@ def test_production_accepts_explicit_database_url(
 ) -> None:
     database_url = (
         "postgresql+psycopg://api_user:production_password@db.example:5432/app"
+        "?sslmode=verify-full"
     )
     monkeypatch.setenv("APP_ENV", "production")
     monkeypatch.setenv("DATABASE_URL", database_url)
@@ -84,6 +85,54 @@ def test_production_accepts_explicit_database_url(
 
     assert settings.app_env is AppEnvironment.PRODUCTION
     assert settings.database_url.get_secret_value() == database_url
+
+
+def test_production_accepts_required_tls_channel_binding(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    database_url = (
+        "postgresql+psycopg://api_user:production_password@db.example:5432/app"
+        "?sslmode=require&channel_binding=require"
+    )
+    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setenv("DATABASE_URL", database_url)
+    monkeypatch.setenv("GOOGLE_OAUTH_CLIENT_ID", "production-client-id")
+    monkeypatch.setenv("CORS_ALLOWED_ORIGINS", '["https://app.example.com"]')
+
+    settings = load_settings()
+
+    assert settings.database_url.get_secret_value() == database_url
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "",
+        "?sslmode=disable",
+        "?sslmode=prefer",
+        "?sslmode=require",
+        "?channel_binding=require",
+    ],
+)
+def test_production_rejects_database_url_without_secure_transport(
+    monkeypatch: pytest.MonkeyPatch, query: str
+) -> None:
+    fake_password = "RECOGNIZABLE_FAKE_PASSWORD"
+    database_url = (
+        f"postgresql+psycopg://api_user:{fake_password}@db.example:5432/app{query}"
+    )
+    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setenv("DATABASE_URL", database_url)
+    monkeypatch.setenv("GOOGLE_OAUTH_CLIENT_ID", "production-client-id")
+    monkeypatch.setenv("CORS_ALLOWED_ORIGINS", '["https://app.example.com"]')
+
+    with pytest.raises(ConfigurationError) as captured_error:
+        load_settings()
+
+    message = str(captured_error.value)
+    assert "DATABASE_URL" in message
+    assert fake_password not in message
+    assert database_url not in message
 
 
 def test_production_rejects_disposable_local_database_url(
@@ -105,7 +154,7 @@ def test_production_requires_explicit_google_oauth_client_id(
     monkeypatch.setenv("APP_ENV", "production")
     monkeypatch.setenv(
         "DATABASE_URL",
-        "postgresql+psycopg://api_user:password@db.example:5432/app",
+        "postgresql+psycopg://api_user:password@db.example:5432/app?sslmode=verify-full",
     )
 
     with pytest.raises(ConfigurationError, match="GOOGLE_OAUTH_CLIENT_ID"):
@@ -118,7 +167,7 @@ def test_production_requires_explicit_cors_origins(
     monkeypatch.setenv("APP_ENV", "production")
     monkeypatch.setenv(
         "DATABASE_URL",
-        "postgresql+psycopg://api_user:password@db.example:5432/app",
+        "postgresql+psycopg://api_user:password@db.example:5432/app?sslmode=verify-full",
     )
     monkeypatch.setenv("GOOGLE_OAUTH_CLIENT_ID", "production-client-id")
 

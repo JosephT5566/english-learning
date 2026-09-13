@@ -174,3 +174,11 @@ Last updated: 2026-09-12
   URL. Live production verification remains dependent on an actual deployed API and CORS origin.
 - 2026-09-12: Added the provider-neutral Issue #26 API container and automated runtime smoke check.
   Provider, encrypted PostgreSQL, secret storage, and the real release pipeline remain undecided.
+- 2026-09-13: Selected Cloud Run `asia-southeast1` plus Neon AWS Singapore for the first production
+  deployment, with Neon as the sole writable source of truth and a USD 10 monthly ceiling. Rejected
+  a runtime provider switch, dual write, and a continuous Cloud SQL replica. The web and migration
+  identities receive distinct version-pinned pooled/runtime and direct/migration database secrets;
+  production rejects PostgreSQL URLs without verified TLS or required TLS channel binding. Releases
+  migrate once before a tagged zero-traffic candidate, require explicit smoke verification and
+  promotion, and roll application traffic back only within schema compatibility. Independent GCS
+  backup/restore proof remains Issue #27 scope.

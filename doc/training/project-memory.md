@@ -1,6 +1,6 @@
 # English Learning Project Memory
 
-Last updated: 2026-09-12
+Last updated: 2026-09-13
 
 ## Purpose
 
@@ -47,9 +47,13 @@ This is project evidence, not professional production-service experience.
 ## Active milestone
 
 Week 6 — deployment and operational ownership. Issue #25's local frontend/runtime cutover is
-verified, while its live checks remain dependent on deployment. Issue #26 Part 1 now has a locally
-verified locked non-root API container with automated liveness and graceful-SIGTERM checks. Provider,
-database, secrets, production CORS, deployment, and rollback rehearsal remain pending.
+verified, while its live checks remain dependent on deployment. Issue #26 Parts 1-2 now have a
+locally verified locked non-root API container plus a checked-in Cloud Run/Neon release contract.
+Cloud Run Singapore and Neon AWS Singapore are selected; Neon is the sole writable source of truth.
+Production TLS configuration, separate version-pinned runtime/migration secrets, migration-before-
+candidate ordering, explicit smoke/promotion, and compatible application rollback are encoded
+locally. Cloud resources, private-data migration, live traffic, and rollback rehearsal remain
+pending.
 
 The Weeks 0-3 milestone is complete and audited locally in
 [`issues/issue-12/README.md`](issues/issue-12/README.md). GitHub shows issues #4 through #11 closed,
@@ -290,13 +294,20 @@ injection, and deployment now rejects a missing or non-HTTPS FastAPI origin. The
 build contains no Apps Script value. The real API/CORS environment, remote CI, deployed read/write
 flows, and production rollback boundary remain unverified because no production API host is recorded.
 
-Issue #26's provider-neutral container boundary is complete locally. The two-stage image excludes
-development dependencies, runs as `10001:10001`, honors `PORT`, and exits `0` after Uvicorn completes
-FastAPI lifespan shutdown on SIGTERM. CI builds and smokes the image. No host, registry, managed
-database, encrypted production connection, or deployed behavior is claimed.
+Issue #26's provider-neutral container and provider/release design boundaries are complete locally.
+The two-stage image excludes development dependencies, runs as `10001:10001`, honors `PORT`, and
+exits `0` after Uvicorn completes FastAPI lifespan shutdown on SIGTERM. CI builds and smokes the
+image. Cloud Run `asia-southeast1` plus Neon AWS Singapore are selected under a USD 10 ceiling. The
+repository now rejects insecure production PostgreSQL URLs and defines distinct secret-scoped web
+and migration identities, migration-before-candidate ordering, zero-traffic smoke checks, promotion,
+and application rollback. The resulting 251-test PostgreSQL suite, Ruff lint/format, uv lock check,
+Bash syntax checks, invalid-input script checks, and whitespace validation pass locally. No registry
+push, managed production database, secret, remote migration, deployed revision, or live behavior is
+claimed.
 
 ## Next action
 
-Select the Issue #26 API host and managed PostgreSQL provider using actual cost, region, TLS,
-connection, secret, migration-job, backup, and rollback constraints. Then configure and deploy that
-boundary before finishing Issue #25's live read/write checks. Preserve rollback evidence and snapshots.
+Provision the empty Issue #26 Neon and GCP resources without importing private data. Verify the
+runtime and migration URLs from the production image, execute the migration job, deploy and smoke the
+zero-traffic candidate, then promote it before finishing Issue #25's live read/write checks. Preserve
+rollback evidence and snapshots.
