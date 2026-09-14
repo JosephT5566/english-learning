@@ -125,9 +125,13 @@ Before the first run:
    MIGRATION_SERVICE_ACCOUNT=english-learning-migrate@eng-learning-470909.iam.gserviceaccount.com
    MIGRATION_DATABASE_SECRET=english-learning-neon-migration-url
    MIGRATION_DATABASE_SECRET_VERSION=1
-   GOOGLE_OAUTH_CLIENT_ID=YOUR_GOOGLE_WEB_CLIENT_ID
+   PUBLIC_GOOGLE_AUTH_CLIENT_ID=YOUR_GOOGLE_WEB_CLIENT_ID
    CORS_ALLOWED_ORIGINS=["https://josepht5566.github.io"]
    ```
+
+   The workflow reuses the frontend's public OAuth client ID variable and maps it to the backend's
+   `GOOGLE_OAUTH_CLIENT_ID` process environment variable. The frontend and API must agree on this
+   token audience.
 
 To run it, first build and push the selected GitHub commit as the 12-character commit tag. In the
 Actions UI, select **Migrate production PostgreSQL**, choose that same ref, enter the exact

@@ -47,6 +47,10 @@ image 在進入 Artifact Registry 前，先通過可重現的 runtime contract�
 Workload Identity Federation（OIDC）換取短效 Google Cloud credential，不保存 GCP service
 account key，也不直接取得 Neon connection string。
 
+GitHub 端會重用既有的 `PUBLIC_GOOGLE_AUTH_CLIENT_ID` repository variable，並在 workflow 內映射為
+backend process 使用的 `GOOGLE_OAUTH_CLIENT_ID`。Frontend 取得的 ID token 與 backend 驗證的
+audience 因此會使用同一個 Google Web OAuth Client ID。
+
 這個 workflow 會依序：
 
 1. 驗證所有必要設定與人工 confirmation。
@@ -64,6 +68,157 @@ revision 或切換 traffic；資料搬移與應用程式發布仍是不同的操
 原本的 `.github/workflows/deploy.yml` 仍負責 SvelteKit frontend 的 GitHub Pages 發布；它不是
 Cloud Run API deployment。現階段 API candidate deployment 由 `deploy/cloud-run/release.sh`
 處理，production migration 則由上述手動 Action 處理，兩者刻意沒有混成一個無條件自動發布流程。
+
+## GitHub production Environment Variables 與來源
+
+下表列出 workflow 需要的全部 Variables。`PUBLIC_GOOGLE_AUTH_CLIENT_ID` 可直接沿用既有的 GitHub
+repository variable；其餘設定應加到 repository 的 **Settings → Environments → production →
+Environment variables**。它們都是資源名稱、位置或公開設定，不是 credential；GitHub
+`production` Environment 不需要保存 Neon URL 或 GCP service account JSON key。
+
+| Variable                            | 建議值或格式                                                                                         | 從哪裡取得                                                                                                                           |
+| ----------------------------------- | ---------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `ARTIFACT_REGION`                   | `asia-east1`                                                                                         | Artifact Registry → Repositories → `language-learning` 的 Location                                                                   |
+| `ARTIFACT_REPOSITORY`               | `language-learning`                                                                                  | Artifact Registry repository 名稱                                                                                                    |
+| `API_IMAGE_NAME`                    | `api`                                                                                                | 本專案自行約定；完整 image path 中 repository 後面的名稱                                                                             |
+| `API_BASE_URL`                      | `https://<Cloud-Run-service-host>`                                                                   | Cloud Run → Services → `english-learning-api` 詳情頁的 URL；只填 HTTPS origin，不加 path                                             |
+| `GCP_PROJECT_ID`                    | `eng-learning-470909`                                                                                | Google Cloud project selector／Dashboard 的 Project ID；不是數字 Project number                                                      |
+| `GCP_REGION`                        | `asia-southeast1`                                                                                    | Cloud Run service 與 migration job 選定的 Region                                                                                     |
+| `GCP_WORKLOAD_IDENTITY_PROVIDER`    | `projects/<PROJECT_NUMBER>/locations/global/workloadIdentityPools/<POOL_ID>/providers/<PROVIDER_ID>` | IAM & Admin → Workload Identity Federation → provider 詳情頁的完整 resource name                                                     |
+| `GCP_GITHUB_SERVICE_ACCOUNT`        | `github-production-migrate@eng-learning-470909.iam.gserviceaccount.com`                              | IAM & Admin → Service Accounts；建立給 GitHub production migration workflow 的 deployer identity                                     |
+| `MIGRATION_JOB`                     | `english-learning-api-migrate`                                                                       | 本專案自行約定的 Cloud Run job 名稱；Action 會建立或更新它                                                                           |
+| `MIGRATION_SERVICE_ACCOUNT`         | `english-learning-migrate@eng-learning-470909.iam.gserviceaccount.com`                               | IAM & Admin → Service Accounts；建立給 Cloud Run migration job 的 runtime identity                                                   |
+| `MIGRATION_DATABASE_SECRET`         | `english-learning-neon-migration-url`                                                                | Secret Manager 中保存 Neon direct migration URL 的 secret 名稱，不是 secret value                                                    |
+| `MIGRATION_DATABASE_SECRET_VERSION` | `1` 或目前核准的固定版本                                                                             | Secret Manager → 該 secret → Versions；密碼輪替後新增 version，再明確更新這個值                                                      |
+| `PUBLIC_GOOGLE_AUTH_CLIENT_ID`      | `<Google Web OAuth client ID>`                                                                       | 既有 GitHub repository variable；原始值在 APIs & Services → Credentials 的 Web OAuth client。Frontend 和 backend 共用 token audience |
+| `CORS_ALLOWED_ORIGINS`              | `["https://josepht5566.github.io"]`                                                                  | 正式 frontend 的 origin；使用 JSON array，不包含 repository path 或尾端 `/`                                                          |
+
+Workflow 內會將 `vars.PUBLIC_GOOGLE_AUTH_CLIENT_ID` 映射成 Cloud Run process 使用的
+`GOOGLE_OAUTH_CLIENT_ID`，因此不必再建立一份同值的 GitHub variable。Local
+`deploy/cloud-run/release.env` 仍使用 process-oriented 名稱 `GOOGLE_OAUTH_CLIENT_ID`，因為它是
+release script 的輸入，不是 GitHub variable 名稱。
+
+`GCP_WORKLOAD_IDENTITY_PROVIDER` 中必須使用數字 **Project number**，不能使用 Project ID。可從
+Dashboard 的 Project info 取得，或執行：
+
+```bash
+gcloud projects describe eng-learning-470909 \
+  --format='value(projectNumber)'
+```
+
+Provider 建立後，也可以直接取得 workflow 要保存的完整名稱：
+
+```bash
+gcloud iam workload-identity-pools providers describe english-learning \
+  --project=eng-learning-470909 \
+  --location=global \
+  --workload-identity-pool=github-actions \
+  --format='value(name)'
+```
+
+### WIF 的作用
+
+Workload Identity Federation（WIF）讓 GitHub Actions 使用該次 workflow 的 OIDC token 向 Google
+Security Token Service 證明「我是指定 repository、指定 environment 執行中的 GitHub job」。GCP
+驗證 issuer、claims 與 attribute condition 後，才允許它短暫 impersonate
+`GCP_GITHUB_SERVICE_ACCOUNT`。Credential 只在該次 job 有效，因此不需要建立、下載或保存長效
+service-account JSON key。
+
+信任鏈如下：
+
+```text
+GitHub production workflow
+  └─ GitHub OIDC token
+      └─ GCP Workload Identity Pool / Provider 驗證 repository 與 environment
+          └─ 短暫 impersonate GCP_GITHUB_SERVICE_ACCOUNT
+              ├─ 讀取 Artifact Registry image metadata
+              ├─ 建立／更新／執行 Cloud Run migration job
+              └─ 允許 job 使用 MIGRATION_SERVICE_ACCOUNT
+                  └─ 從 Secret Manager 讀取 Neon direct migration URL
+```
+
+這個分層刻意不讓 GitHub runner 或 `GCP_GITHUB_SERVICE_ACCOUNT` 讀取 Neon secret。只有實際執行
+Alembic 的 `MIGRATION_SERVICE_ACCOUNT` 具有該 secret 的 accessor 權限；即使 GitHub workflow 的
+deployer credential 被誤用，其資料庫 credential exposure 仍受到限制。
+
+### 建立 WIF 前要開通什麼
+
+到 **APIs & Services → Library** 確認以下 APIs 已啟用：
+
+- IAM API
+- Cloud Resource Manager API
+- Service Account Credentials API
+- Security Token Service API
+- Cloud Run Admin API
+- Artifact Registry API
+- Secret Manager API
+
+前四項用於 WIF 與 service account impersonation；後三項通常已在建立 Cloud Run、Artifact
+Registry 與 Secret Manager 時啟用。建立 WIF pool/provider 的操作者需要 Workload Identity Pool
+Admin 或等效權限；啟用 APIs 需要 Service Usage Admin 或等效權限。
+
+### 建立兩個 Service Accounts
+
+到 **IAM & Admin → Service Accounts** 建立兩個不同的 user-managed service accounts：
+
+1. `github-production-migrate` 是 GitHub deployer。它需要：
+   - 從 **IAM & Admin → IAM → Grant access**，在 Cloud Run job 或初次建立時的 project 上取得
+     `Cloud Run Developer`。
+   - 從 **Artifact Registry → Repositories → language-learning → Permissions → Grant access**，
+     取得 `Artifact Registry Reader`。
+   - 從 **IAM & Admin → Service Accounts → english-learning-migrate → Permissions／Manage access →
+     Grant access**，在該 service account 本身取得 `Service Account User`。
+   - 不取得 Secret Manager Secret Accessor。
+2. `english-learning-migrate` 是 Cloud Run migration job identity。從 **Secret Manager →
+   english-learning-neon-migration-url → Permissions → Grant access**，只在這一個 secret 上授予它
+   `Secret Manager Secret Accessor`。它不需要 Cloud Run Developer 或 Artifact Registry 管理權限。
+
+Google 的 Cloud Run job 權限要求中，deployer 需要 Cloud Run Developer、對 job service identity
+的 Service Account User，以及對 image repository 的 Artifact Registry Reader。若 migration job
+尚未存在，第一次由 Action 建立時可以先在 project 層授予 Cloud Run Developer；後續若要進一步
+縮小權限，可以預先管理 job 或建立包含實際必要 permissions 的 custom role。
+
+### 建立並限制 GitHub WIF Provider
+
+到 **IAM & Admin → Workload Identity Federation → Create Pool**，可使用：
+
+```text
+Pool ID: github-actions
+Provider ID: english-learning
+Provider type: OpenID Connect
+Issuer URL: https://token.actions.githubusercontent.com
+```
+
+Attribute mapping 至少包含：
+
+```text
+google.subject=assertion.sub
+attribute.repository=assertion.repository
+attribute.repository_owner=assertion.repository_owner
+```
+
+Provider condition 應同時限制 repository 與 GitHub Environment：
+
+```text
+assertion.repository == 'JosephT5566/english-learning' &&
+assertion.sub == 'repo:JosephT5566/english-learning:environment:production'
+```
+
+接著從 pool 選擇 **Grant access → Grant access using service account impersonation**，指定
+`github-production-migrate@eng-learning-470909.iam.gserviceaccount.com`，並只允許 subject：
+
+```text
+repo:JosephT5566/english-learning:environment:production
+```
+
+這會在 GitHub deployer service account 上授予符合條件的 federated principal `Workload Identity
+User`。Repository 名稱、大小寫與 GitHub Environment 名稱必須和 OIDC token 完全一致；IAM/WIF
+設定也可能需要數分鐘才會生效。
+
+參考資料：Google Cloud 的
+[deployment pipeline WIF 指南](https://docs.cloud.google.com/iam/docs/workload-identity-federation-with-deployment-pipelines)、
+[Cloud Run job 權限說明](https://docs.cloud.google.com/run/docs/create-jobs)，以及
+[`google-github-actions/auth` WIF 設定](https://github.com/google-github-actions/auth#workload-identity-federation)。
 
 ## 如何把 Docker image 發布到 Artifact Registry
 
