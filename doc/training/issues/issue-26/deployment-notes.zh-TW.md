@@ -71,17 +71,18 @@ Cloud Run API deployment。現階段 API candidate deployment 由 `deploy/cloud-
 
 ## GitHub production Environment Variables 與來源
 
-下表列出 workflow 需要的全部 Variables。`PUBLIC_GOOGLE_AUTH_CLIENT_ID` 可直接沿用既有的 GitHub
-repository variable；其餘設定應加到 repository 的 **Settings → Environments → production →
-Environment variables**。它們都是資源名稱、位置或公開設定，不是 credential；GitHub
-`production` Environment 不需要保存 Neon URL 或 GCP service account JSON key。
+下表列出 workflow 需要的全部 Variables。`PUBLIC_API_BASE_URL` 與
+`PUBLIC_GOOGLE_AUTH_CLIENT_ID` 可直接沿用既有的 GitHub repository variables；其餘設定應加到
+repository 的 **Settings → Environments → production → Environment variables**。它們都是資源
+名稱、位置或公開設定，不是 credential；GitHub `production` Environment 不需要保存 Neon URL
+或 GCP service account JSON key。
 
 | Variable                            | 建議值或格式                                                                                         | 從哪裡取得                                                                                                                           |
 | ----------------------------------- | ---------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
 | `ARTIFACT_REGION`                   | `asia-east1`                                                                                         | Artifact Registry → Repositories → `language-learning` 的 Location                                                                   |
 | `ARTIFACT_REPOSITORY`               | `language-learning`                                                                                  | Artifact Registry repository 名稱                                                                                                    |
 | `API_IMAGE_NAME`                    | `api`                                                                                                | 本專案自行約定；完整 image path 中 repository 後面的名稱                                                                             |
-| `API_BASE_URL`                      | `https://<Cloud-Run-service-host>`                                                                   | Cloud Run → Services → `english-learning-api` 詳情頁的 URL；只填 HTTPS origin，不加 path                                             |
+| `PUBLIC_API_BASE_URL`               | `https://<Cloud-Run-service-host>`                                                                   | 既有 GitHub repository variable；原始值在 Cloud Run → Services → `english-learning-api` 詳情頁。只填 HTTPS origin，不加 path         |
 | `GCP_PROJECT_ID`                    | `eng-learning-470909`                                                                                | Google Cloud project selector／Dashboard 的 Project ID；不是數字 Project number                                                      |
 | `GCP_REGION`                        | `asia-southeast1`                                                                                    | Cloud Run service 與 migration job 選定的 Region                                                                                     |
 | `GCP_WORKLOAD_IDENTITY_PROVIDER`    | `projects/<PROJECT_NUMBER>/locations/global/workloadIdentityPools/<POOL_ID>/providers/<PROVIDER_ID>` | IAM & Admin → Workload Identity Federation → provider 詳情頁的完整 resource name                                                     |
@@ -93,10 +94,11 @@ Environment variables**。它們都是資源名稱、位置或公開設定，不
 | `PUBLIC_GOOGLE_AUTH_CLIENT_ID`      | `<Google Web OAuth client ID>`                                                                       | 既有 GitHub repository variable；原始值在 APIs & Services → Credentials 的 Web OAuth client。Frontend 和 backend 共用 token audience |
 | `CORS_ALLOWED_ORIGINS`              | `["https://josepht5566.github.io"]`                                                                  | 正式 frontend 的 origin；使用 JSON array，不包含 repository path 或尾端 `/`                                                          |
 
-Workflow 內會將 `vars.PUBLIC_GOOGLE_AUTH_CLIENT_ID` 映射成 Cloud Run process 使用的
-`GOOGLE_OAUTH_CLIENT_ID`，因此不必再建立一份同值的 GitHub variable。Local
-`deploy/cloud-run/release.env` 仍使用 process-oriented 名稱 `GOOGLE_OAUTH_CLIENT_ID`，因為它是
-release script 的輸入，不是 GitHub variable 名稱。
+Workflow 內會將 `vars.PUBLIC_API_BASE_URL` 映射成 readiness check 使用的 `API_BASE_URL`，並將
+`vars.PUBLIC_GOOGLE_AUTH_CLIENT_ID` 映射成 Cloud Run process 使用的 `GOOGLE_OAUTH_CLIENT_ID`，
+因此不必再建立兩份同值的 GitHub variables。Local `deploy/cloud-run/release.env` 仍使用
+process-oriented 名稱 `GOOGLE_OAUTH_CLIENT_ID`；release script 本身會從 Cloud Run deployment
+結果取得 candidate URL，因此不需要 `PUBLIC_API_BASE_URL` 作為輸入。
 
 `GCP_WORKLOAD_IDENTITY_PROVIDER` 中必須使用數字 **Project number**，不能使用 Project ID。可從
 Dashboard 的 Project info 取得，或執行：

@@ -116,7 +116,7 @@ Before the first run:
    ARTIFACT_REGION=asia-east1
    ARTIFACT_REPOSITORY=language-learning
    API_IMAGE_NAME=api
-   API_BASE_URL=https://YOUR_CLOUD_RUN_SERVICE_URL
+   PUBLIC_API_BASE_URL=https://YOUR_CLOUD_RUN_SERVICE_URL
    GCP_PROJECT_ID=eng-learning-470909
    GCP_REGION=asia-southeast1
    GCP_WORKLOAD_IDENTITY_PROVIDER=projects/PROJECT_NUMBER/locations/global/workloadIdentityPools/POOL/providers/PROVIDER
@@ -129,9 +129,10 @@ Before the first run:
    CORS_ALLOWED_ORIGINS=["https://josepht5566.github.io"]
    ```
 
-   The workflow reuses the frontend's public OAuth client ID variable and maps it to the backend's
-   `GOOGLE_OAUTH_CLIENT_ID` process environment variable. The frontend and API must agree on this
-   token audience.
+   The workflow reuses the frontend's public API origin and OAuth client ID variables. It maps them
+   to the workflow's internal `API_BASE_URL` and the backend's `GOOGLE_OAUTH_CLIENT_ID` process
+   environment variable. The frontend and migration readiness check must target the same Cloud Run
+   API origin, while the frontend and API must agree on the token audience.
 
 To run it, first build and push the selected GitHub commit as the 12-character commit tag. In the
 Actions UI, select **Migrate production PostgreSQL**, choose that same ref, enter the exact
