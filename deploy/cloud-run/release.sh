@@ -5,7 +5,9 @@ set -euo pipefail
 readonly required_variables=(
 	GCP_PROJECT_ID
 	GCP_REGION
+	ARTIFACT_REGION
 	ARTIFACT_REPOSITORY
+	API_IMAGE_NAME
 	API_SERVICE
 	MIGRATION_JOB
 	RUNTIME_SERVICE_ACCOUNT
@@ -36,7 +38,7 @@ if [[ ! "${release_id}" =~ ^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$ ]]; then
 	exit 1
 fi
 
-readonly image="${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/${ARTIFACT_REPOSITORY}/api:${release_id}"
+readonly image="${ARTIFACT_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/${ARTIFACT_REPOSITORY}/${API_IMAGE_NAME}:${release_id}"
 readonly environment_variables="^@^APP_ENV=production@LOG_LEVEL=INFO@DATABASE_CONNECT_TIMEOUT_SECONDS=5@GOOGLE_OAUTH_CLIENT_ID=${GOOGLE_OAUTH_CLIENT_ID}@CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS}"
 
 echo "Building immutable release image ${image}."

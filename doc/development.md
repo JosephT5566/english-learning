@@ -100,6 +100,13 @@ candidate revision with zero production traffic. The smoke script checks `/healt
 promotion because Cloud Run supports startup and liveness probes but has no readiness-probe deploy
 setting.
 
+For later schema-only releases, `.github/workflows/migrate-production.yml` provides a manual,
+serialized production migration path. It requires a protected `production` GitHub environment,
+OIDC-based Google authentication, and an existing image tagged with the selected ref's 12-character
+commit hash. The GitHub runner never receives `DATABASE_URL`; the Cloud Run job reads its direct Neon
+URL from Secret Manager, verifies `alembic current --check-heads`, and checks the deployed API's
+database readiness after the upgrade.
+
 ## Validation Expectations
 
 Run `npm run check` after changing TypeScript, Svelte components, stores, or API contracts. Run

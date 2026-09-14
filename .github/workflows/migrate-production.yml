@@ -1,0 +1,182 @@
+name: Migrate production PostgreSQL
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: Type migrate-production to execute the production migration job
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: production-postgresql-migration
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    name: Upgrade and verify Neon schema
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: production
+    env:
+      ARTIFACT_REGION: ${{ vars.ARTIFACT_REGION }}
+      ARTIFACT_REPOSITORY: ${{ vars.ARTIFACT_REPOSITORY }}
+      API_IMAGE_NAME: ${{ vars.API_IMAGE_NAME }}
+      API_BASE_URL: ${{ vars.API_BASE_URL }}
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_REGION: ${{ vars.GCP_REGION }}
+      GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+      GCP_GITHUB_SERVICE_ACCOUNT: ${{ vars.GCP_GITHUB_SERVICE_ACCOUNT }}
+      MIGRATION_JOB: ${{ vars.MIGRATION_JOB }}
+      MIGRATION_SERVICE_ACCOUNT: ${{ vars.MIGRATION_SERVICE_ACCOUNT }}
+      MIGRATION_DATABASE_SECRET: ${{ vars.MIGRATION_DATABASE_SECRET }}
+      MIGRATION_DATABASE_SECRET_VERSION: ${{ vars.MIGRATION_DATABASE_SECRET_VERSION }}
+      GOOGLE_OAUTH_CLIENT_ID: ${{ vars.GOOGLE_OAUTH_CLIENT_ID }}
+      CORS_ALLOWED_ORIGINS: ${{ vars.CORS_ALLOWED_ORIGINS }}
+      CONFIRMATION: ${{ inputs.confirmation }}
+
+    steps:
+      - name: Validate protected migration configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "${CONFIRMATION}" != "migrate-production" ]]; then
+            echo "Confirmation must exactly match migrate-production." >&2
+            exit 1
+          fi
+
+          required_variables=(
+            ARTIFACT_REGION
+            ARTIFACT_REPOSITORY
+            API_IMAGE_NAME
+            API_BASE_URL
+            GCP_PROJECT_ID
+            GCP_REGION
+            GCP_WORKLOAD_IDENTITY_PROVIDER
+            GCP_GITHUB_SERVICE_ACCOUNT
+            MIGRATION_JOB
+            MIGRATION_SERVICE_ACCOUNT
+            MIGRATION_DATABASE_SECRET
+            MIGRATION_DATABASE_SECRET_VERSION
+            GOOGLE_OAUTH_CLIENT_ID
+            CORS_ALLOWED_ORIGINS
+          )
+
+          for variable_name in "${required_variables[@]}"; do
+            if [[ -z "${!variable_name:-}" ]]; then
+              echo "Missing GitHub production environment variable: ${variable_name}." >&2
+              exit 1
+            fi
+          done
+
+          if [[ ! "${API_BASE_URL}" =~ ^https://[^/]+/?$ ]]; then
+            echo "API_BASE_URL must be an HTTPS origin without a path." >&2
+            exit 1
+          fi
+
+      - name: Checkout selected release ref
+        uses: actions/checkout@v6
+
+      - name: Authenticate to Google Cloud with OIDC
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ env.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ env.GCP_GITHUB_SERVICE_ACCOUNT }}
+
+      - name: Set up Google Cloud CLI
+        uses: google-github-actions/setup-gcloud@v3
+        with:
+          project_id: ${{ env.GCP_PROJECT_ID }}
+
+      - name: Resolve immutable migration image
+        id: release
+        shell: bash
+        run: |
+          set -euo pipefail
+          release_id="${GITHUB_SHA:0:12}"
+          image="${ARTIFACT_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/${ARTIFACT_REPOSITORY}/${API_IMAGE_NAME}:${release_id}"
+          echo "release_id=${release_id}" >> "${GITHUB_OUTPUT}"
+          echo "image=${image}" >> "${GITHUB_OUTPUT}"
+
+      - name: Verify the commit-tagged image exists
+        shell: bash
+        env:
+          IMAGE: ${{ steps.release.outputs.image }}
+        run: |
+          set -euo pipefail
+          gcloud artifacts docker images describe "${IMAGE}" \
+            --project "${GCP_PROJECT_ID}"
+
+      - name: Configure the single-task migration job
+        shell: bash
+        env:
+          IMAGE: ${{ steps.release.outputs.image }}
+        run: |
+          set -euo pipefail
+          environment_variables="^@^APP_ENV=production@LOG_LEVEL=INFO@DATABASE_CONNECT_TIMEOUT_SECONDS=5@GOOGLE_OAUTH_CLIENT_ID=${GOOGLE_OAUTH_CLIENT_ID}@CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS}"
+
+          gcloud run jobs deploy "${MIGRATION_JOB}" \
+            --project "${GCP_PROJECT_ID}" \
+            --region "${GCP_REGION}" \
+            --image "${IMAGE}" \
+            --service-account "${MIGRATION_SERVICE_ACCOUNT}" \
+            --tasks 1 \
+            --parallelism 1 \
+            --max-retries 0 \
+            --task-timeout 10m \
+            --command alembic \
+            --args upgrade,head \
+            --set-env-vars "${environment_variables}" \
+            --set-secrets "DATABASE_URL=${MIGRATION_DATABASE_SECRET}:${MIGRATION_DATABASE_SECRET_VERSION}" \
+            --quiet
+
+      - name: Upgrade production schema
+        shell: bash
+        run: |
+          set -euo pipefail
+          gcloud run jobs execute "${MIGRATION_JOB}" \
+            --project "${GCP_PROJECT_ID}" \
+            --region "${GCP_REGION}" \
+            --wait
+
+      - name: Verify every Alembic head is applied
+        shell: bash
+        run: |
+          set -euo pipefail
+          gcloud run jobs execute "${MIGRATION_JOB}" \
+            --project "${GCP_PROJECT_ID}" \
+            --region "${GCP_REGION}" \
+            --args="current,--check-heads" \
+            --wait
+
+      - name: Verify deployed API database readiness
+        shell: bash
+        run: |
+          set -euo pipefail
+          api_base_url="${API_BASE_URL%/}"
+          curl --fail --silent --show-error \
+            --retry 4 \
+            --retry-all-errors \
+            --retry-delay 2 \
+            "${api_base_url}/health/ready" >/dev/null
+
+      - name: Record safe migration summary
+        shell: bash
+        env:
+          IMAGE: ${{ steps.release.outputs.image }}
+          RELEASE_ID: ${{ steps.release.outputs.release_id }}
+        run: |
+          {
+            echo "## Production PostgreSQL migration"
+            echo
+            echo "- Release: \`${RELEASE_ID}\`"
+            echo "- Image: \`${IMAGE}\`"
+            echo "- Job: \`${MIGRATION_JOB}\`"
+            echo "- Region: \`${GCP_REGION}\`"
+            echo "- Result: upgrade, Alembic head verification, and API database readiness succeeded"
+          } >> "${GITHUB_STEP_SUMMARY}"

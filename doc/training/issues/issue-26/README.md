@@ -1,6 +1,6 @@
 # Issue #26 - Deploy API and PostgreSQL with a safe release contract
 
-Last updated: 2026-09-13
+Last updated: 2026-09-14
 
 Source: [GitHub Issue #26](https://github.com/JosephT5566/english-learning/issues/26)
 
@@ -11,7 +11,16 @@ selects Cloud Run in Singapore plus Neon PostgreSQL in AWS Singapore, with Neon 
 of truth. The checked-in release contract now enforces production PostgreSQL transport security,
 separates version-pinned runtime and migration secrets, runs migration before a zero-traffic
 candidate, and defines smoke/promotion/rollback operations. Cloud resources, remote execution,
-private-data migration, production CORS, live traffic, and rollback rehearsal remain open.
+production CORS, live traffic, and rollback rehearsal were still open at that local checkpoint.
+
+On 2026-09-14, the operator reported that Cloud Run was deployed, the Neon schema was upgraded from
+the local checkout with `uv run alembic upgrade head`, and data was transferred with
+`pg_dump`/`pg_restore`. The operator also observed the deployed `/health/ready` response
+`{"status":"ready","checks":{"database":"ok"}}`, confirming that the running API could execute its
+database readiness query. Owner-scoped reads/writes, restored-data reconciliation, secret/role
+separation, and rollback have not yet been independently verified from repository evidence. Future
+schema upgrades now have a protected, OIDC-based GitHub Actions path that invokes the Secret
+Manager-backed Cloud Run migration job; remote execution of that workflow remains unverified.
 
 ## Delivery Slices
 
@@ -92,8 +101,13 @@ candidate behavior, traffic promotion, or rollback.
 The executable configuration and operator sequence are in [`runbook.md`](runbook.md) and
 `deploy/cloud-run/`.
 
+The manual production migration workflow is in `.github/workflows/migrate-production.yml`. It
+requires an already-pushed commit-tagged image, a protected `production` GitHub environment, and
+Workload Identity Federation. It never receives the Neon URL and never restores application data.
+
 ## Next Action
 
-Provision the empty Neon and GCP resources without importing private data. Verify both database URLs
-from the production image, execute the migration job, deploy the zero-traffic candidate, and capture
-safe smoke evidence before promotion.
+Configure the protected GitHub environment and Google Workload Identity Federation, then exercise
+the migration workflow against an already-current schema. Capture its safe job/revision evidence,
+verify live health plus owner-scoped reads/writes, reconcile the restored data, and rehearse
+application rollback before closing the issue.

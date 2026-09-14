@@ -1,6 +1,6 @@
 # Architecture Memory
 
-Last updated: 2026-09-13
+Last updated: 2026-09-14
 
 ## Stack
 
@@ -96,6 +96,8 @@ Last updated: 2026-09-13
 - `compose.yaml`: verified local `postgres:17-alpine` service with persistent development volume and
   health check, run through OrbStack's Docker-compatible engine.
 - `.github/workflows/ci.yml`: independent frontend and PostgreSQL-backed backend verification jobs.
+- `.github/workflows/migrate-production.yml`: protected manual OIDC workflow that serializes Neon
+  upgrades through the Secret Manager-backed Cloud Run migration job and verifies every Alembic head.
 - `deploy/cloud-run/release.sh`: clean-commit Cloud Build, single-task migration, and tagged
   zero-traffic Cloud Run candidate release boundary.
 - `deploy/cloud-run/smoke.sh`: public health, authenticated owned-read, and explicitly opted-in
@@ -138,6 +140,10 @@ Last updated: 2026-09-13
     tagged candidate revision with zero traffic. Health, owner scope, and one controlled idempotent
     write must pass before explicit traffic promotion. Rollback moves traffic only to a
     schema-compatible application revision and never automatically downgrades PostgreSQL.
+16. GitHub Actions never connects directly to Neon. A protected manual workflow uses Workload
+    Identity Federation to update and execute the Cloud Run migration job with an already-pushed
+    commit-tagged image. A second execution runs `alembic current --check-heads`; application
+    deployment, data restore, and traffic movement remain separate operations.
 
 The English review frontend and English/Japanese management read pages now target this FastAPI
 service. Normal review and management navigation makes no Apps Script call. Review and management

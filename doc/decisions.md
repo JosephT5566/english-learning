@@ -1,6 +1,6 @@
 # Decisions And Known Issues
 
-Last updated: 2026-09-12
+Last updated: 2026-09-14
 
 ## Durable Decisions
 
@@ -182,3 +182,11 @@ Last updated: 2026-09-12
   migrate once before a tagged zero-traffic candidate, require explicit smoke verification and
   promotion, and roll application traffic back only within schema compatibility. Independent GCS
   backup/restore proof remains Issue #27 scope.
+- 2026-09-14: Kept production migration credentials out of GitHub while adding repeatable schema
+  upgrades. A protected manual GitHub Actions workflow uses Workload Identity Federation to invoke
+  the single-task Cloud Run migration job with an existing commit-tagged image, serializes runs,
+  requires explicit confirmation, verifies `alembic current --check-heads`, and checks API database
+  readiness through the runtime role. Direct GitHub-to-Neon access, service-account keys, data
+  restore, automatic downgrade, application deployment, and traffic promotion were rejected from
+  this workflow. Artifact Registry `asia-east1` is configured independently from Cloud Run
+  `asia-southeast1`.

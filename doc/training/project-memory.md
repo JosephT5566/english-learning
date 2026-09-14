@@ -1,6 +1,6 @@
 # English Learning Project Memory
 
-Last updated: 2026-09-13
+Last updated: 2026-09-14
 
 ## Purpose
 
@@ -52,8 +52,17 @@ locally verified locked non-root API container plus a checked-in Cloud Run/Neon 
 Cloud Run Singapore and Neon AWS Singapore are selected; Neon is the sole writable source of truth.
 Production TLS configuration, separate version-pinned runtime/migration secrets, migration-before-
 candidate ordering, explicit smoke/promotion, and compatible application rollback are encoded
-locally. Cloud resources, private-data migration, live traffic, and rollback rehearsal remain
-pending.
+locally. The operator reports that Cloud Run and Neon are deployed, initial schema/data transfer is
+complete, and the live readiness database check passes. GitHub migration execution, authenticated
+production behavior, restored-data reconciliation, and rollback rehearsal remain pending.
+
+The operator reports that Neon received the schema through local Alembic plus data through
+`pg_dump`/`pg_restore`, and observed
+`{"status":"ready","checks":{"database":"ok"}}` from the deployed API. That confirms the reported
+runtime connection check but not owner-scoped reads/writes or restored-data integrity. Future
+upgrades now have a protected manual GitHub workflow that uses OIDC to invoke the Secret
+Manager-backed Cloud Run migration job, serializes production runs, and checks that every Alembic
+head is applied without exposing the Neon URL to GitHub.
 
 The Weeks 0-3 milestone is complete and audited locally in
 [`issues/issue-12/README.md`](issues/issue-12/README.md). GitHub shows issues #4 through #11 closed,
@@ -291,8 +300,9 @@ remain documented.
 Issue #25's local management write and runtime-configuration boundaries are complete. CI and Pages
 deployment no longer provide an Apps Script URL; the preserved wrapper requires explicit endpoint
 injection, and deployment now rejects a missing or non-HTTPS FastAPI origin. The configured static
-build contains no Apps Script value. The real API/CORS environment, remote CI, deployed read/write
-flows, and production rollback boundary remain unverified because no production API host is recorded.
+build contains no Apps Script value. A production API host and successful database readiness check
+are now operator-reported; exact CORS, remote CI, authenticated read/write flows, frontend cutover,
+and the production rollback boundary remain unverified.
 
 Issue #26's provider-neutral container and provider/release design boundaries are complete locally.
 The two-stage image excludes development dependencies, runs as `10001:10001`, honors `PORT`, and
@@ -302,12 +312,13 @@ repository now rejects insecure production PostgreSQL URLs and defines distinct 
 and migration identities, migration-before-candidate ordering, zero-traffic smoke checks, promotion,
 and application rollback. The resulting 251-test PostgreSQL suite, Ruff lint/format, uv lock check,
 Bash syntax checks, invalid-input script checks, and whitespace validation pass locally. No registry
-push, managed production database, secret, remote migration, deployed revision, or live behavior is
-claimed.
+or deployed behavior was verified at that local checkpoint. The operator now reports the registry,
+Cloud Run, Neon schema/data bootstrap, and successful live database readiness check; authenticated
+behavior, role separation, automated migration, reconciliation, and rollback remain unverified.
 
 ## Next action
 
-Provision the empty Issue #26 Neon and GCP resources without importing private data. Verify the
-runtime and migration URLs from the production image, execute the migration job, deploy and smoke the
-zero-traffic candidate, then promote it before finishing Issue #25's live read/write checks. Preserve
-rollback evidence and snapshots.
+Configure the Issue #26 protected GitHub environment and Google Workload Identity Federation, then
+exercise the production migration workflow against the already-current schema. Verify live health,
+owner-scoped reads/writes, and restored-data reconciliation before finishing Issue #25's cutover;
+preserve a timed rollback rehearsal and safe snapshots.

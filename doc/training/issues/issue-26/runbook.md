@@ -1,10 +1,12 @@
 # Issue #26 Cloud Run and Neon release runbook
 
-Last updated: 2026-09-13
+Last updated: 2026-09-14
 
 ## Release contract
 
 - Cloud Run runs the FastAPI container in `asia-southeast1`; Neon PostgreSQL runs in AWS Singapore.
+- Artifact Registry is in `asia-east1`. Release configuration keeps its location separate from the
+  Cloud Run region.
 - Neon is the only production source of truth. There is no database switch, dual write, or Cloud SQL
   replica.
 - The runtime uses a pooled Neon URL and a DML-only database role. The migration job uses a direct
@@ -55,7 +57,7 @@ independent GCS backup, restore proof, monitoring, alerts, and an incident exerc
    `sslmode=require&channel_binding=require`. Verify the chosen form from the production image.
 6. Create two user-managed Cloud Run service accounts. Grant each account Secret Manager access to
    only its matching database secret. Do not grant either account project Editor.
-7. Create an Artifact Registry Docker repository in `asia-southeast1` and two Secret Manager
+7. Use the Artifact Registry Docker repository in `asia-east1` and create two Secret Manager
    secrets. Add the URLs as secret versions without writing them to a repository file or shell log.
 8. Copy `deploy/cloud-run/release.env.example` to the ignored
    `deploy/cloud-run/release.env` and replace every placeholder. The file contains resource names
@@ -91,6 +93,52 @@ privileges automatically.
 
 For a repeated deployment of the same commit, set a new lowercase `RELEASE_ID`; never overwrite an
 existing image tag to disguise different source.
+
+## Protected GitHub migration workflow
+
+Future production schema upgrades can use `.github/workflows/migrate-production.yml`. The workflow
+does not receive a Neon connection string or a Google service-account key. GitHub exchanges its OIDC
+token for a short-lived Google credential, configures the existing Cloud Run migration job, and the
+job identity reads the direct database URL from Secret Manager.
+
+Before the first run:
+
+1. Create and protect a GitHub environment named `production`. Add a required reviewer before the
+   workflow is used; merely referencing an environment does not create review protection.
+2. Configure a Google Workload Identity Pool/provider restricted to this repository and the
+   `production` environment subject. Create a dedicated GitHub migration deployer service account.
+3. Grant that deployer Artifact Registry Reader, permission to create/update/execute the migration
+   Cloud Run job, and Service Account User on `MIGRATION_SERVICE_ACCOUNT`. Do not grant it Secret
+   Manager access. The migration job identity retains access only to its database secret.
+4. Add these non-secret values as GitHub `production` environment variables:
+
+   ```text
+   ARTIFACT_REGION=asia-east1
+   ARTIFACT_REPOSITORY=language-learning
+   API_IMAGE_NAME=api
+   API_BASE_URL=https://YOUR_CLOUD_RUN_SERVICE_URL
+   GCP_PROJECT_ID=eng-learning-470909
+   GCP_REGION=asia-southeast1
+   GCP_WORKLOAD_IDENTITY_PROVIDER=projects/PROJECT_NUMBER/locations/global/workloadIdentityPools/POOL/providers/PROVIDER
+   GCP_GITHUB_SERVICE_ACCOUNT=github-production-migrate@eng-learning-470909.iam.gserviceaccount.com
+   MIGRATION_JOB=english-learning-api-migrate
+   MIGRATION_SERVICE_ACCOUNT=english-learning-migrate@eng-learning-470909.iam.gserviceaccount.com
+   MIGRATION_DATABASE_SECRET=english-learning-neon-migration-url
+   MIGRATION_DATABASE_SECRET_VERSION=1
+   GOOGLE_OAUTH_CLIENT_ID=YOUR_GOOGLE_WEB_CLIENT_ID
+   CORS_ALLOWED_ORIGINS=["https://josepht5566.github.io"]
+   ```
+
+To run it, first build and push the selected GitHub commit as the 12-character commit tag. In the
+Actions UI, select **Migrate production PostgreSQL**, choose that same ref, enter the exact
+confirmation `migrate-production`, and approve the `production` environment. The workflow fails
+before mutation if the image does not exist, serializes production migrations, runs `alembic
+upgrade head` once with zero retries, and then runs `alembic current --check-heads` as a separate
+execution. It finally requires the deployed API's `/health/ready` check to pass through the runtime
+database role.
+
+This workflow never runs `pg_dump`, `pg_restore`, an Alembic downgrade, application deployment, or
+traffic promotion. Those remain separate, explicit release or recovery operations.
 
 ## Candidate verification
 
