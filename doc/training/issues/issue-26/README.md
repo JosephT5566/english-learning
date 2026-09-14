@@ -101,6 +101,10 @@ candidate behavior, traffic promotion, or rollback.
 The executable configuration and operator sequence are in [`runbook.md`](runbook.md) and
 `deploy/cloud-run/`.
 
+A Traditional Chinese walkthrough of the provider choice, Artifact Registry and Console deployment,
+Neon bootstrap, database roles, and migration automation is in
+[`deployment-notes.zh-TW.md`](deployment-notes.zh-TW.md).
+
 The manual production migration workflow is in `.github/workflows/migrate-production.yml`. It
 requires an already-pushed commit-tagged image, a protected `production` GitHub environment, and
 Workload Identity Federation. It never receives the Neon URL and never restores application data.
