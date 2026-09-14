@@ -36,3 +36,6 @@ __pycache__/
 /apps/api/legacy-google-sheet-cutover-v1.numbers
 /apps/api/legacy-google-sheet-confirmed-import.json
 /apps/api/legacy-google-sheet-reconciliation.json
+
+# Local cloud release configuration
+/deploy/cloud-run/release.env

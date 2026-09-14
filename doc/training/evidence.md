@@ -588,3 +588,28 @@ Use precise language such as “project,” “local load test,” or “deploye
 - Five-minute explanation practiced: Prepared in the Issue #25 artifact; Joseph has not yet practiced
   it end to end.
 - Candidate resume bullet: Not yet. Revisit after complete write cutover and deployment evidence.
+
+### Provider-neutral API container boundary
+
+- Date: 2026-09-12
+- Status: Verified locally; provider and deployment remain open
+- Problem: Make the FastAPI service independently deployable without root privileges, unlocked
+  dependencies, implicit schema mutation, or a process wrapper that absorbs termination signals.
+- Decision: Use a two-stage Python 3.12 slim image, synchronize runtime dependencies from `uv.lock`,
+  run a direct Python/Uvicorn PID 1 as numeric UID/GID `10001:10001`, honor `PORT`, and keep Alembic
+  as an explicit pre-deploy command.
+- Implementation references: `apps/api/Dockerfile`, `apps/api/.dockerignore`,
+  `apps/api/app/serve.py`, `apps/api/scripts/verify_container.sh`,
+  `apps/api/tests/unit/test_serve.py`, `.github/workflows/ci.yml`, and
+  `doc/training/issues/issue-26/README.md`.
+- Verification: The locked image built locally; the configured and effective identity was
+  `10001:10001`; `/health/live` succeeded through a random host port; SIGTERM completed FastAPI
+  lifespan shutdown and exited `0` without OOM termination. Readiness returned safe `503` without
+  PostgreSQL, and the final image contained no environment file or `uv` binary. Thirty-one focused
+  serve/config/health tests and scoped Ruff checks passed. CI now repeats the image build and runtime
+  smoke test.
+- Measured result: Local correctness only; no production availability, traffic, latency, or graceful
+  drain claim.
+- Limitations: Registry, remote CI, provider, encrypted PostgreSQL, external secrets, production
+  probes/CORS, migration execution, deployment, and rollback rehearsal are unverified.
+- Candidate resume bullet: Not yet. Revisit after deployment and recovery evidence.

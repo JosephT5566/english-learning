@@ -1,6 +1,6 @@
 # Decisions And Known Issues
 
-Last updated: 2026-09-12
+Last updated: 2026-09-14
 
 ## Durable Decisions
 
@@ -108,6 +108,10 @@ Last updated: 2026-09-12
   switch. Preserve the unused legacy wrapper and sanitized Sheet snapshot as evidence, but require
   deliberate endpoint injection for any legacy call. Fail deployment unless the FastAPI base is a
   configured HTTPS URL without credentials, a query, or a fragment.
+- Package the FastAPI service as a two-stage Debian slim image with dependencies synchronized from
+  `uv.lock`, a numeric non-root runtime identity, and a direct Python PID 1 entrypoint. Honor the
+  platform `PORT` and bound graceful shutdown to eight seconds. Include Alembic in the image, but
+  require migrations to run once as an explicit pre-deploy job instead of racing during web startup.
 - Allow browser review calls only from exact configured HTTP(S) origins. Permit the review
   transport's `GET`/`POST` methods and `Authorization`, `Content-Type`, and `Idempotency-Key`
   headers; expose `X-Request-ID`, keep credentialed cookies disabled, and reject wildcard or
@@ -168,3 +172,21 @@ Last updated: 2026-09-12
 - 2026-09-12: Removed Apps Script from frontend build/deployment configuration, made the preserved
   legacy wrapper explicitly injected, and added a deployment gate for the production FastAPI base
   URL. Live production verification remains dependent on an actual deployed API and CORS origin.
+- 2026-09-12: Added the provider-neutral Issue #26 API container and automated runtime smoke check.
+  Provider, encrypted PostgreSQL, secret storage, and the real release pipeline remain undecided.
+- 2026-09-13: Selected Cloud Run `asia-southeast1` plus Neon AWS Singapore for the first production
+  deployment, with Neon as the sole writable source of truth and a USD 10 monthly ceiling. Rejected
+  a runtime provider switch, dual write, and a continuous Cloud SQL replica. The web and migration
+  identities receive distinct version-pinned pooled/runtime and direct/migration database secrets;
+  production rejects PostgreSQL URLs without verified TLS or required TLS channel binding. Releases
+  migrate once before a tagged zero-traffic candidate, require explicit smoke verification and
+  promotion, and roll application traffic back only within schema compatibility. Independent GCS
+  backup/restore proof remains Issue #27 scope.
+- 2026-09-14: Kept production migration credentials out of GitHub while adding repeatable schema
+  upgrades. A protected manual GitHub Actions workflow uses Workload Identity Federation to invoke
+  the single-task Cloud Run migration job with an existing commit-tagged image, serializes runs,
+  requires explicit confirmation, verifies `alembic current --check-heads`, and checks API database
+  readiness through the runtime role. Direct GitHub-to-Neon access, service-account keys, data
+  restore, automatic downgrade, application deployment, and traffic promotion were rejected from
+  this workflow. Artifact Registry `asia-east1` is configured independently from Cloud Run
+  `asia-southeast1`.

@@ -33,6 +33,10 @@ canonical verified command reference.
 - Revert the latest development migration: `uv run alembic downgrade -1`
 - Lint: `uv run ruff check .`
 - Check formatting: `uv run ruff format --check .`
+- Build the locked non-root API image from the repository root:
+  `docker build --tag english-learning-api:local apps/api`
+- Verify its user, liveness, and graceful shutdown from the repository root:
+  `bash apps/api/scripts/verify_container.sh english-learning-api:local`
 
 Start the verified local PostgreSQL 17 service from the repository root with
 `docker compose up -d --wait postgres`. Inspect it with `docker compose ps` and stop it with
@@ -41,6 +45,9 @@ Start the verified local PostgreSQL 17 service from the repository root with
 Migration downgrades are exercised for local development and recovery verification. A production
 deployment must use a separately reviewed forward/backward-compatible rollout and rollback plan.
 PostgreSQL integration tests are explicitly opt-in and never fall back to SQLite.
+The API image contains Alembic, but the web process never runs migrations implicitly. Deployment
+must run `alembic upgrade head` once as an explicit pre-deploy job and stop before shifting traffic
+if that command fails.
 
 ## Environment Variables
 
@@ -79,6 +86,26 @@ The API accepts these server-side variables:
 
 These API values are server-side and must never use the SvelteKit `PUBLIC_` prefix. A local
 `apps/api/.env` is optional and ignored by Git; `.env.example` contains only disposable defaults.
+
+## Production Candidate Release
+
+Issue #26 targets Cloud Run in `asia-southeast1` with Neon PostgreSQL in AWS Singapore. Use
+`deploy/cloud-run/release.env.example` for nonsecret release configuration and follow
+`doc/training/issues/issue-26/runbook.md` for provisioning, migration, candidate smoke checks,
+promotion, and rollback. Database URLs belong only in their separate, version-pinned Secret
+Manager secrets; do not add them to the release environment file.
+
+The release script runs migrations through a single-task Cloud Run job, then creates a tagged
+candidate revision with zero production traffic. The smoke script checks `/health/ready` before
+promotion because Cloud Run supports startup and liveness probes but has no readiness-probe deploy
+setting.
+
+For later schema-only releases, `.github/workflows/migrate-production.yml` provides a manual,
+serialized production migration path. It requires a protected `production` GitHub environment,
+OIDC-based Google authentication, and an existing image tagged with the selected ref's 12-character
+commit hash. The GitHub runner never receives `DATABASE_URL`; the Cloud Run job reads its direct Neon
+URL from Secret Manager, verifies `alembic current --check-heads`, and checks the deployed API's
+database readiness after the upgrade.
 
 ## Validation Expectations
 

@@ -1,6 +1,6 @@
 # Project Memory
 
-Last updated: 2026-09-12
+Last updated: 2026-09-14
 
 ## Product
 
@@ -19,6 +19,22 @@ The app is optimized for a small, personal learning flow rather than a public mu
 An independently runnable FastAPI service exists under `apps/api/`, with liveness, typed and
 secret-safe startup configuration, a lazy SQLAlchemy engine lifecycle, and database-aware readiness.
 The English review flow and shared English/Japanese deck/card reads and writes now use it.
+
+The first production provider boundary is Cloud Run in Singapore plus Neon PostgreSQL in AWS
+Singapore. Neon remains the only writable source of truth; deployment does not add a database
+switch, dual write, or Cloud SQL replica. The checked-in release contract uses separate
+version-pinned runtime and migration database secrets, requires secure production PostgreSQL
+transport, migrates before a zero-traffic candidate, and keeps traffic promotion and compatible
+application rollback explicit. The operator reports that Cloud Run and Neon are deployed and that
+the live database readiness response is successful; authenticated behavior and rollback remain
+unverified.
+
+Future schema upgrades use a protected manual GitHub workflow that authenticates to GCP with OIDC
+and invokes the Secret Manager-backed Cloud Run migration job. GitHub never receives the Neon URL;
+data restore and traffic promotion remain separate. The operator reports a local Alembic upgrade and
+`pg_dump`/`pg_restore` transfer to Neon plus a deployed
+`{"status":"ready","checks":{"database":"ok"}}` response. This verifies the reported connection
+check, not owner-scoped application behavior or restored-data reconciliation.
 
 Persistence foundations are implemented locally: application-scoped SQLAlchemy session factories,
 explicit short-lived transaction ownership, an empty reversible Alembic baseline, PostgreSQL-only

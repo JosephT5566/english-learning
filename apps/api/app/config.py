@@ -24,6 +24,7 @@ DEFAULT_CORS_ALLOWED_ORIGINS = (
     "http://localhost:5173",
     "http://127.0.0.1:5173",
 )
+SECURE_DATABASE_SSL_MODES = frozenset({"verify-ca", "verify-full"})
 
 
 class AppEnvironment(StrEnum):
@@ -162,6 +163,19 @@ def load_settings() -> Settings:
         raise ConfigurationError(
             "Invalid configuration for DATABASE_URL; production requires an explicit value."
         )
+
+    if settings.app_env is AppEnvironment.PRODUCTION:
+        database_url = make_url(settings.database_url.get_secret_value())
+        sslmode = database_url.query.get("sslmode")
+        channel_binding = database_url.query.get("channel_binding")
+        secure_transport = sslmode in SECURE_DATABASE_SSL_MODES or (
+            sslmode == "require" and channel_binding == "require"
+        )
+        if not secure_transport:
+            raise ConfigurationError(
+                "Invalid configuration for DATABASE_URL; production requires "
+                "verified TLS or required TLS channel binding."
+            )
 
     if (
         settings.app_env is AppEnvironment.PRODUCTION

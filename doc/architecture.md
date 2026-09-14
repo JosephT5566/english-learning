@@ -1,6 +1,6 @@
 # Architecture Memory
 
-Last updated: 2026-09-12
+Last updated: 2026-09-14
 
 ## Stack
 
@@ -55,6 +55,8 @@ Last updated: 2026-09-12
 - `src/lib/components/AsyncButton.svelte`, `Modal.svelte`, `QuestionCard.svelte`, `QWordToMeaning.svelte`: reusable or older UI pieces.
 - `src/app.css`: global CSS, Tailwind import, and base layout styling.
 - `apps/api/app/main.py`: FastAPI application factory, lifespan boundary, and router composition.
+- `apps/api/app/serve.py`: production process entrypoint with platform-port validation and bounded
+  graceful shutdown.
 - `apps/api/app/config.py`: typed, secret-safe environment configuration loaded during lifespan.
 - `apps/api/app/cors.py`: exact-origin browser policy initialized from validated lifespan settings.
 - `apps/api/app/database.py`: lazy SQLAlchemy engine construction, application-scoped session factory,
@@ -77,6 +79,10 @@ Last updated: 2026-09-12
 - `apps/api/openapi.json`: committed deterministic API schema used for frontend type generation and
   contract-drift checks.
 - `apps/api/scripts/export_openapi.py`: deterministic OpenAPI export from the FastAPI application.
+- `apps/api/Dockerfile`: locked two-stage API build with a UID/GID `10001:10001` runtime and no
+  development dependencies or `uv` binary in the final image.
+- `apps/api/scripts/verify_container.sh`: disposable container check for effective identity,
+  liveness, SIGTERM handling, and a clean exit.
 - `apps/api/app/pagination.py`: versioned opaque cursor encoding, strict parsing, and normalized
   query-shape binding.
 - `apps/api/migrations/`: Alembic environment and reversible migration history; the empty baseline
@@ -90,6 +96,14 @@ Last updated: 2026-09-12
 - `compose.yaml`: verified local `postgres:17-alpine` service with persistent development volume and
   health check, run through OrbStack's Docker-compatible engine.
 - `.github/workflows/ci.yml`: independent frontend and PostgreSQL-backed backend verification jobs.
+- `.github/workflows/migrate-production.yml`: protected manual OIDC workflow that serializes Neon
+  upgrades through the Secret Manager-backed Cloud Run migration job and verifies every Alembic head.
+- `deploy/cloud-run/release.sh`: clean-commit Cloud Build, single-task migration, and tagged
+  zero-traffic Cloud Run candidate release boundary.
+- `deploy/cloud-run/smoke.sh`: public health, authenticated owned-read, and explicitly opted-in
+  idempotent review-write smoke checks for a candidate revision.
+- `deploy/cloud-run/release.env.example`: non-secret Cloud Run/Neon resource-name and public runtime
+  configuration contract. Database URLs remain version-pinned Secret Manager values.
 
 ## Backend Foundation Flow
 
@@ -113,6 +127,23 @@ Last updated: 2026-09-12
 11. The outer CORS middleware permits only configured HTTP(S) frontend origins, the product's
     `GET`/`POST`/`PATCH`/`DELETE` methods, and its bearer/content/idempotency headers. It exposes `X-Request-ID` for
     browser-visible support diagnostics without enabling credentialed cookies.
+12. The production container starts `app.serve` directly as PID 1. Uvicorn owns SIGTERM handling,
+    stops accepting work, completes FastAPI lifespan cleanup within its bounded drain window, and
+    exits. Schema migrations use the same image but run as a separate pre-deploy command; web
+    startup never mutates the schema.
+13. Production uses Cloud Run in `asia-southeast1` and Neon PostgreSQL in AWS Singapore. Neon is the
+    only writable source of truth; there is no runtime provider switch, dual write, or replica.
+14. The Cloud Run web identity receives only the pooled runtime database secret. A separate job
+    identity receives only the direct migration secret. Both use the standard `DATABASE_URL`
+    setting, with explicit production TLS validation.
+15. A release builds one commit-tagged image, runs a single zero-retry Alembic job, then creates a
+    tagged candidate revision with zero traffic. Health, owner scope, and one controlled idempotent
+    write must pass before explicit traffic promotion. Rollback moves traffic only to a
+    schema-compatible application revision and never automatically downgrades PostgreSQL.
+16. GitHub Actions never connects directly to Neon. A protected manual workflow uses Workload
+    Identity Federation to update and execute the Cloud Run migration job with an already-pushed
+    commit-tagged image. A second execution runs `alembic current --check-heads`; application
+    deployment, data restore, and traffic movement remain separate operations.
 
 The English review frontend and English/Japanese management read pages now target this FastAPI
 service. Normal review and management navigation makes no Apps Script call. Review and management
