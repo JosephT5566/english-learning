@@ -108,10 +108,13 @@ Neon bootstrap, database roles, and migration automation is in
 The manual production migration workflow is in `.github/workflows/migrate-production.yml`. It
 requires an already-pushed commit-tagged image, a protected `production` GitHub environment, and
 Workload Identity Federation. It never receives the Neon URL and never restores application data.
+The separate `.github/workflows/publish-api-image.yml` workflow manually builds and pushes that
+immutable image without running migrations, deploying Cloud Run, or moving traffic.
 
 ## Next Action
 
-Configure the protected GitHub environment and Google Workload Identity Federation, then exercise
-the migration workflow against an already-current schema. Capture its safe job/revision evidence,
-verify live health plus owner-scoped reads/writes, reconcile the restored data, and rehearse
-application rollback before closing the issue.
+Configure the protected GitHub environment, Google Workload Identity Federation, and separate
+least-privilege image publisher identity. Exercise the publish workflow and then the migration
+workflow against an already-current schema. Capture their safe evidence, verify live health plus
+owner-scoped reads/writes, reconcile the restored data, and rehearse application rollback before
+closing the issue.

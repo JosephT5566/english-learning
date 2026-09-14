@@ -1,0 +1,142 @@
+name: Publish API container
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: Type publish-api-image to build and publish this commit
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: production-api-image-publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Build and publish commit-tagged API image
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: production
+    env:
+      ARTIFACT_REGION: ${{ vars.ARTIFACT_REGION }}
+      ARTIFACT_REPOSITORY: ${{ vars.ARTIFACT_REPOSITORY }}
+      API_IMAGE_NAME: ${{ vars.API_IMAGE_NAME }}
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+      GCP_GITHUB_PUBLISH_SERVICE_ACCOUNT: ${{ vars.GCP_GITHUB_PUBLISH_SERVICE_ACCOUNT }}
+      CONFIRMATION: ${{ inputs.confirmation }}
+
+    steps:
+      - name: Validate protected publishing configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "${CONFIRMATION}" != "publish-api-image" ]]; then
+            echo "Confirmation must exactly match publish-api-image." >&2
+            exit 1
+          fi
+
+          required_variables=(
+            ARTIFACT_REGION
+            ARTIFACT_REPOSITORY
+            API_IMAGE_NAME
+            GCP_PROJECT_ID
+            GCP_WORKLOAD_IDENTITY_PROVIDER
+            GCP_GITHUB_PUBLISH_SERVICE_ACCOUNT
+          )
+
+          for variable_name in "${required_variables[@]}"; do
+            if [[ -z "${!variable_name:-}" ]]; then
+              echo "Missing GitHub production environment variable: ${variable_name}." >&2
+              exit 1
+            fi
+          done
+
+      - name: Checkout selected release ref
+        uses: actions/checkout@v6
+
+      - name: Authenticate to Google Cloud with OIDC
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ env.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ env.GCP_GITHUB_PUBLISH_SERVICE_ACCOUNT }}
+
+      - name: Set up Google Cloud CLI
+        uses: google-github-actions/setup-gcloud@v3
+        with:
+          project_id: ${{ env.GCP_PROJECT_ID }}
+
+      - name: Configure Artifact Registry authentication
+        shell: bash
+        run: |
+          set -euo pipefail
+          gcloud auth configure-docker "${ARTIFACT_REGION}-docker.pkg.dev" --quiet
+
+      - name: Resolve immutable release image
+        id: release
+        shell: bash
+        run: |
+          set -euo pipefail
+          release_id="${GITHUB_SHA:0:12}"
+          image="${ARTIFACT_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/${ARTIFACT_REPOSITORY}/${API_IMAGE_NAME}:${release_id}"
+          echo "release_id=${release_id}" >> "${GITHUB_OUTPUT}"
+          echo "image=${image}" >> "${GITHUB_OUTPUT}"
+
+      - name: Refuse to overwrite an existing release tag
+        shell: bash
+        env:
+          IMAGE: ${{ steps.release.outputs.image }}
+        run: |
+          set -euo pipefail
+
+          if gcloud artifacts docker images describe "${IMAGE}" \
+            --project "${GCP_PROJECT_ID}" >/dev/null 2>&1; then
+            echo "Release image already exists; immutable tags are never overwritten: ${IMAGE}" >&2
+            exit 1
+          fi
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and publish API image
+        shell: bash
+        env:
+          IMAGE: ${{ steps.release.outputs.image }}
+        run: |
+          set -euo pipefail
+          docker buildx build \
+            --platform linux/amd64 \
+            --tag "${IMAGE}" \
+            --push \
+            apps/api
+
+      - name: Verify the published image
+        shell: bash
+        env:
+          IMAGE: ${{ steps.release.outputs.image }}
+        run: |
+          set -euo pipefail
+          gcloud artifacts docker images describe "${IMAGE}" \
+            --project "${GCP_PROJECT_ID}"
+
+      - name: Record safe publishing summary
+        shell: bash
+        env:
+          IMAGE: ${{ steps.release.outputs.image }}
+          RELEASE_ID: ${{ steps.release.outputs.release_id }}
+        run: |
+          {
+            echo "## API container publication"
+            echo
+            echo "- Source commit: \`${GITHUB_SHA}\`"
+            echo "- Release: \`${RELEASE_ID}\`"
+            echo "- Image: \`${IMAGE}\`"
+            echo "- Platform: \`linux/amd64\`"
+            echo "- Result: commit-tagged image published and verified"
+          } >> "${GITHUB_STEP_SUMMARY}"

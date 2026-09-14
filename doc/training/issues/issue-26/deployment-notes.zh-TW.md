@@ -40,6 +40,22 @@ Container verification 不只檢查「能不能 build」，也會驗證非 root 
 image 不含 `.env` 或 build-only `uv`，以及 SIGTERM 時能正常完成 application shutdown。這讓同一個
 image 在進入 Artifact Registry 前，先通過可重現的 runtime contract。
 
+### Publish API container：手動 build 與發布 image
+
+`.github/workflows/publish-api-image.yml` 取代每次從本機執行 `gcloud auth` 與
+`docker buildx` 的必要性。它只由 `workflow_dispatch` 手動觸發；操作者選擇要發布的 Git ref、輸入
+完全相符的 `publish-api-image`，並通過 `production` Environment approval 後才會執行。
+
+Workflow 使用 GitHub OIDC 與 WIF impersonate 專用的
+`GCP_GITHUB_PUBLISH_SERVICE_ACCOUNT`，確認必要設定、以所選 commit SHA 前 12 碼組成 image tag，
+並在 tag 已存在時直接失敗，避免同一個 release tag 指向不同內容。接著它會以
+`linux/amd64` build `apps/api`、push 到 Artifact Registry、重新 describe image 確認存在，最後在
+GitHub job summary 記錄 source commit 與 image path。
+
+這個 Action 不執行 Alembic、不讀取 Neon secrets、不建立或部署 Cloud Run，也不切換 traffic。
+完成後再對同一個 Git ref 執行 migration Action，確保 migration workflow 找到的 commit-tagged
+image 就是剛剛發布並驗證的 artifact。
+
 ### Migrate production PostgreSQL：受保護的正式 migration
 
 `.github/workflows/migrate-production.yml` 是手動觸發的 production workflow。操作者必須輸入完全
@@ -77,22 +93,23 @@ repository 的 **Settings → Environments → production → Environment variab
 名稱、位置或公開設定，不是 credential；GitHub `production` Environment 不需要保存 Neon URL
 或 GCP service account JSON key。
 
-| Variable                            | 建議值或格式                                                                                         | 從哪裡取得                                                                                                                           |
-| ----------------------------------- | ---------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| `ARTIFACT_REGION`                   | `asia-east1`                                                                                         | Artifact Registry → Repositories → `language-learning` 的 Location                                                                   |
-| `ARTIFACT_REPOSITORY`               | `language-learning`                                                                                  | Artifact Registry repository 名稱                                                                                                    |
-| `API_IMAGE_NAME`                    | `api`                                                                                                | 本專案自行約定；完整 image path 中 repository 後面的名稱                                                                             |
-| `PUBLIC_API_BASE_URL`               | `https://<Cloud-Run-service-host>`                                                                   | 既有 GitHub repository variable；原始值在 Cloud Run → Services → `english-learning-api` 詳情頁。只填 HTTPS origin，不加 path         |
-| `GCP_PROJECT_ID`                    | `eng-learning-470909`                                                                                | Google Cloud project selector／Dashboard 的 Project ID；不是數字 Project number                                                      |
-| `GCP_REGION`                        | `asia-southeast1`                                                                                    | Cloud Run service 與 migration job 選定的 Region                                                                                     |
-| `GCP_WORKLOAD_IDENTITY_PROVIDER`    | `projects/<PROJECT_NUMBER>/locations/global/workloadIdentityPools/<POOL_ID>/providers/<PROVIDER_ID>` | IAM & Admin → Workload Identity Federation → provider 詳情頁的完整 resource name                                                     |
-| `GCP_GITHUB_SERVICE_ACCOUNT`        | `github-production-migrate@eng-learning-470909.iam.gserviceaccount.com`                              | IAM & Admin → Service Accounts；建立給 GitHub production migration workflow 的 deployer identity                                     |
-| `MIGRATION_JOB`                     | `english-learning-api-migrate`                                                                       | 本專案自行約定的 Cloud Run job 名稱；Action 會建立或更新它                                                                           |
-| `MIGRATION_SERVICE_ACCOUNT`         | `english-learning-migrate@eng-learning-470909.iam.gserviceaccount.com`                               | IAM & Admin → Service Accounts；建立給 Cloud Run migration job 的 runtime identity                                                   |
-| `MIGRATION_DATABASE_SECRET`         | `english-learning-neon-migration-url`                                                                | Secret Manager 中保存 Neon direct migration URL 的 secret 名稱，不是 secret value                                                    |
-| `MIGRATION_DATABASE_SECRET_VERSION` | `1` 或目前核准的固定版本                                                                             | Secret Manager → 該 secret → Versions；密碼輪替後新增 version，再明確更新這個值                                                      |
-| `PUBLIC_GOOGLE_AUTH_CLIENT_ID`      | `<Google Web OAuth client ID>`                                                                       | 既有 GitHub repository variable；原始值在 APIs & Services → Credentials 的 Web OAuth client。Frontend 和 backend 共用 token audience |
-| `CORS_ALLOWED_ORIGINS`              | `["https://josepht5566.github.io"]`                                                                  | 正式 frontend 的 origin；使用 JSON array，不包含 repository path 或尾端 `/`                                                          |
+| Variable                             | 建議值或格式                                                                                         | 從哪裡取得                                                                                                                           |
+| ------------------------------------ | ---------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `ARTIFACT_REGION`                    | `asia-east1`                                                                                         | Artifact Registry → Repositories → `language-learning` 的 Location                                                                   |
+| `ARTIFACT_REPOSITORY`                | `language-learning`                                                                                  | Artifact Registry repository 名稱                                                                                                    |
+| `API_IMAGE_NAME`                     | `api`                                                                                                | 本專案自行約定；完整 image path 中 repository 後面的名稱                                                                             |
+| `PUBLIC_API_BASE_URL`                | `https://<Cloud-Run-service-host>`                                                                   | 既有 GitHub repository variable；原始值在 Cloud Run → Services → `english-learning-api` 詳情頁。只填 HTTPS origin，不加 path         |
+| `GCP_PROJECT_ID`                     | `eng-learning-470909`                                                                                | Google Cloud project selector／Dashboard 的 Project ID；不是數字 Project number                                                      |
+| `GCP_REGION`                         | `asia-southeast1`                                                                                    | Cloud Run service 與 migration job 選定的 Region                                                                                     |
+| `GCP_WORKLOAD_IDENTITY_PROVIDER`     | `projects/<PROJECT_NUMBER>/locations/global/workloadIdentityPools/<POOL_ID>/providers/<PROVIDER_ID>` | IAM & Admin → Workload Identity Federation → provider 詳情頁的完整 resource name                                                     |
+| `GCP_GITHUB_PUBLISH_SERVICE_ACCOUNT` | `github-production-publish@eng-learning-470909.iam.gserviceaccount.com`                              | IAM & Admin → Service Accounts；建立給手動 image publishing workflow 的 Artifact-Registry-only identity                              |
+| `GCP_GITHUB_SERVICE_ACCOUNT`         | `github-production-migrate@eng-learning-470909.iam.gserviceaccount.com`                              | IAM & Admin → Service Accounts；建立給 GitHub production migration workflow 的 deployer identity                                     |
+| `MIGRATION_JOB`                      | `english-learning-api-migrate`                                                                       | 本專案自行約定的 Cloud Run job 名稱；Action 會建立或更新它                                                                           |
+| `MIGRATION_SERVICE_ACCOUNT`          | `english-learning-migrate@eng-learning-470909.iam.gserviceaccount.com`                               | IAM & Admin → Service Accounts；建立給 Cloud Run migration job 的 runtime identity                                                   |
+| `MIGRATION_DATABASE_SECRET`          | `english-learning-neon-migration-url`                                                                | Secret Manager 中保存 Neon direct migration URL 的 secret 名稱，不是 secret value                                                    |
+| `MIGRATION_DATABASE_SECRET_VERSION`  | `1` 或目前核准的固定版本                                                                             | Secret Manager → 該 secret → Versions；密碼輪替後新增 version，再明確更新這個值                                                      |
+| `PUBLIC_GOOGLE_AUTH_CLIENT_ID`       | `<Google Web OAuth client ID>`                                                                       | 既有 GitHub repository variable；原始值在 APIs & Services → Credentials 的 Web OAuth client。Frontend 和 backend 共用 token audience |
+| `CORS_ALLOWED_ORIGINS`               | `["https://josepht5566.github.io"]`                                                                  | 正式 frontend 的 origin；使用 JSON array，不包含 repository path 或尾端 `/`                                                          |
 
 Workflow 內會將 `vars.PUBLIC_API_BASE_URL` 映射成 readiness check 使用的 `API_BASE_URL`，並將
 `vars.PUBLIC_GOOGLE_AUTH_CLIENT_ID` 映射成 Cloud Run process 使用的 `GOOGLE_OAUTH_CLIENT_ID`，
@@ -132,16 +149,21 @@ service-account JSON key。
 GitHub production workflow
   └─ GitHub OIDC token
       └─ GCP Workload Identity Pool / Provider 驗證 repository 與 environment
-          └─ 短暫 impersonate GCP_GITHUB_SERVICE_ACCOUNT
-              ├─ 讀取 Artifact Registry image metadata
-              ├─ 建立／更新／執行 Cloud Run migration job
-              └─ 允許 job 使用 MIGRATION_SERVICE_ACCOUNT
-                  └─ 從 Secret Manager 讀取 Neon direct migration URL
+          ├─ Image publishing workflow
+          │   └─ 短暫 impersonate GCP_GITHUB_PUBLISH_SERVICE_ACCOUNT
+          │       └─ Build 並 push Artifact Registry image
+          └─ Migration workflow
+              └─ 短暫 impersonate GCP_GITHUB_SERVICE_ACCOUNT
+                  ├─ 讀取 Artifact Registry image metadata
+                  ├─ 建立／更新／執行 Cloud Run migration job
+                  └─ 允許 job 使用 MIGRATION_SERVICE_ACCOUNT
+                      └─ 從 Secret Manager 讀取 Neon direct migration URL
 ```
 
-這個分層刻意不讓 GitHub runner 或 `GCP_GITHUB_SERVICE_ACCOUNT` 讀取 Neon secret。只有實際執行
-Alembic 的 `MIGRATION_SERVICE_ACCOUNT` 具有該 secret 的 accessor 權限；即使 GitHub workflow 的
-deployer credential 被誤用，其資料庫 credential exposure 仍受到限制。
+這個分層刻意不讓 GitHub runner、publisher 或 migration deployer 讀取 Neon secret。只有實際執行
+Alembic 的 `MIGRATION_SERVICE_ACCOUNT` 具有該 secret 的 accessor 權限。Publisher 只能寫入指定
+Artifact Registry repository；migration deployer 只能讀取 image metadata 和管理 migration job，
+避免其中一個 workflow identity 同時擁有 artifact、compute 與 database secret 的全部權限。
 
 ### 建立 WIF 前要開通什麼
 
@@ -159,11 +181,14 @@ deployer credential 被誤用，其資料庫 credential exposure 仍受到限制
 Registry 與 Secret Manager 時啟用。建立 WIF pool/provider 的操作者需要 Workload Identity Pool
 Admin 或等效權限；啟用 APIs 需要 Service Usage Admin 或等效權限。
 
-### 建立兩個 Service Accounts
+### 建立三個 Service Accounts
 
-到 **IAM & Admin → Service Accounts** 建立兩個不同的 user-managed service accounts：
+到 **IAM & Admin → Service Accounts** 建立三個不同的 user-managed service accounts：
 
-1. `github-production-migrate` 是 GitHub deployer。它需要：
+1. `github-production-publish` 是 GitHub image publisher。從 **Artifact Registry → Repositories →
+   language-learning → Permissions → Grant access**，只授予它 `Artifact Registry Writer`。它不需要
+   Cloud Run、Service Account User 或 Secret Manager 權限。
+2. `github-production-migrate` 是 GitHub migration deployer。它需要：
    - 從 **IAM & Admin → IAM → Grant access**，在 Cloud Run job 或初次建立時的 project 上取得
      `Cloud Run Developer`。
    - 從 **Artifact Registry → Repositories → language-learning → Permissions → Grant access**，
@@ -171,7 +196,7 @@ Admin 或等效權限；啟用 APIs 需要 Service Usage Admin 或等效權限�
    - 從 **IAM & Admin → Service Accounts → english-learning-migrate → Permissions／Manage access →
      Grant access**，在該 service account 本身取得 `Service Account User`。
    - 不取得 Secret Manager Secret Accessor。
-2. `english-learning-migrate` 是 Cloud Run migration job identity。從 **Secret Manager →
+3. `english-learning-migrate` 是 Cloud Run migration job identity。從 **Secret Manager →
    english-learning-neon-migration-url → Permissions → Grant access**，只在這一個 secret 上授予它
    `Secret Manager Secret Accessor`。它不需要 Cloud Run Developer 或 Artifact Registry 管理權限。
 
@@ -206,8 +231,10 @@ assertion.repository == 'JosephT5566/english-learning' &&
 assertion.sub == 'repo:JosephT5566/english-learning:environment:production'
 ```
 
-接著從 pool 選擇 **Grant access → Grant access using service account impersonation**，指定
-`github-production-migrate@eng-learning-470909.iam.gserviceaccount.com`，並只允許 subject：
+接著從 pool 選擇 **Grant access → Grant access using service account impersonation**，分別允許
+`github-production-publish@eng-learning-470909.iam.gserviceaccount.com` 與
+`github-production-migrate@eng-learning-470909.iam.gserviceaccount.com` 被相同的 production subject
+impersonate：
 
 ```text
 repo:JosephT5566/english-learning:environment:production

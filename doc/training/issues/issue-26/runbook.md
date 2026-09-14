@@ -94,6 +94,36 @@ privileges automatically.
 For a repeated deployment of the same commit, set a new lowercase `RELEASE_ID`; never overwrite an
 existing image tag to disguise different source.
 
+## Protected GitHub image publishing workflow
+
+`.github/workflows/publish-api-image.yml` replaces the local `gcloud` and Docker publishing steps
+when an operator intentionally selects a release ref. It uses the protected `production` GitHub
+environment and WIF, requires the exact confirmation `publish-api-image`, and tags the image with
+the selected commit's first 12 SHA characters.
+
+Create a dedicated `github-production-publish` service account. Allow the same WIF provider's
+restricted production-environment subject to impersonate it, and grant it `Artifact Registry
+Writer` only on the `language-learning` repository. Do not grant this identity Cloud Run, Service
+Account User, or Secret Manager access. Add its email as this non-secret GitHub `production`
+environment variable:
+
+```text
+GCP_GITHUB_PUBLISH_SERVICE_ACCOUNT=github-production-publish@eng-learning-470909.iam.gserviceaccount.com
+```
+
+In the Actions UI, select **Publish API container**, choose the exact branch or tag to publish,
+enter `publish-api-image`, and approve the `production` environment. The workflow resolves that
+ref to its commit and then:
+
+1. Authenticates through GitHub OIDC without a service-account key.
+2. Resolves the immutable image tag from `GITHUB_SHA`.
+3. Refuses to overwrite the tag if it already exists.
+4. Builds `apps/api` for `linux/amd64` and pushes it to Artifact Registry.
+5. Verifies the published image and records a safe workflow summary.
+
+It does not run Alembic, read either database secret, deploy a Cloud Run service or job, or change
+traffic. After it succeeds, use the same selected ref when starting the migration workflow.
+
 ## Protected GitHub migration workflow
 
 Future production schema upgrades can use `.github/workflows/migrate-production.yml`. The workflow
@@ -106,9 +136,11 @@ Before the first run:
 1. Create and protect a GitHub environment named `production`. Add a required reviewer before the
    workflow is used; merely referencing an environment does not create review protection.
 2. Configure a Google Workload Identity Pool/provider restricted to this repository and the
-   `production` environment subject. Create a dedicated GitHub migration deployer service account.
-3. Grant that deployer Artifact Registry Reader, permission to create/update/execute the migration
-   Cloud Run job, and Service Account User on `MIGRATION_SERVICE_ACCOUNT`. Do not grant it Secret
+   `production` environment subject. Create dedicated GitHub publisher and migration deployer
+   service accounts.
+3. Grant the publisher Artifact Registry Writer only on the image repository. Grant the migration
+   deployer Artifact Registry Reader, permission to create/update/execute the migration Cloud Run
+   job, and Service Account User on `MIGRATION_SERVICE_ACCOUNT`. Do not grant either identity Secret
    Manager access. The migration job identity retains access only to its database secret.
 4. Add these non-secret values as GitHub `production` environment variables:
 
@@ -120,6 +152,7 @@ Before the first run:
    GCP_PROJECT_ID=eng-learning-470909
    GCP_REGION=asia-southeast1
    GCP_WORKLOAD_IDENTITY_PROVIDER=projects/PROJECT_NUMBER/locations/global/workloadIdentityPools/POOL/providers/PROVIDER
+   GCP_GITHUB_PUBLISH_SERVICE_ACCOUNT=github-production-publish@eng-learning-470909.iam.gserviceaccount.com
    GCP_GITHUB_SERVICE_ACCOUNT=github-production-migrate@eng-learning-470909.iam.gserviceaccount.com
    MIGRATION_JOB=english-learning-api-migrate
    MIGRATION_SERVICE_ACCOUNT=english-learning-migrate@eng-learning-470909.iam.gserviceaccount.com
@@ -134,13 +167,13 @@ Before the first run:
    environment variable. The frontend and migration readiness check must target the same Cloud Run
    API origin, while the frontend and API must agree on the token audience.
 
-To run it, first build and push the selected GitHub commit as the 12-character commit tag. In the
-Actions UI, select **Migrate production PostgreSQL**, choose that same ref, enter the exact
-confirmation `migrate-production`, and approve the `production` environment. The workflow fails
-before mutation if the image does not exist, serializes production migrations, runs `alembic
-upgrade head` once with zero retries, and then runs `alembic current --check-heads` as a separate
-execution. It finally requires the deployed API's `/health/ready` check to pass through the runtime
-database role.
+To run it, first use **Publish API container** to build and push the selected GitHub commit as the
+12-character commit tag. In the Actions UI, select **Migrate production PostgreSQL**, choose that
+same ref, enter the exact confirmation `migrate-production`, and approve the `production`
+environment. The workflow fails before mutation if the image does not exist, serializes production
+migrations, runs `alembic upgrade head` once with zero retries, and then runs `alembic current
+--check-heads` as a separate execution. It finally requires the deployed API's `/health/ready`
+check to pass through the runtime database role.
 
 This workflow never runs `pg_dump`, `pg_restore`, an Alembic downgrade, application deployment, or
 traffic promotion. Those remain separate, explicit release or recovery operations.

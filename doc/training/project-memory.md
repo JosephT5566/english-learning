@@ -60,9 +60,11 @@ The operator reports that Neon received the schema through local Alembic plus da
 `pg_dump`/`pg_restore`, and observed
 `{"status":"ready","checks":{"database":"ok"}}` from the deployed API. That confirms the reported
 runtime connection check but not owner-scoped reads/writes or restored-data integrity. Future
-upgrades now have a protected manual GitHub workflow that uses OIDC to invoke the Secret
-Manager-backed Cloud Run migration job, serializes production runs, and checks that every Alembic
-head is applied without exposing the Neon URL to GitHub.
+releases now have one protected manual GitHub workflow that uses OIDC and a dedicated
+Artifact-Registry-only identity to publish an immutable commit-tagged API image, followed by a
+separate workflow that invokes the Secret Manager-backed Cloud Run migration job, serializes
+production runs, and checks that every Alembic head is applied without exposing the Neon URL to
+GitHub. Remote execution of both workflows remains unverified.
 
 The Weeks 0-3 milestone is complete and audited locally in
 [`issues/issue-12/README.md`](issues/issue-12/README.md). GitHub shows issues #4 through #11 closed,
