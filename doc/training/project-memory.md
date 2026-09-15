@@ -4,334 +4,124 @@ Last updated: 2026-09-15
 
 ## Purpose
 
-Build credible full-stack and backend engineering depth by evolving the existing English-learning application into a deployed multilingual product. The work should demonstrate API and schema design, safe data migration, authorization, transactions, failure recovery, frontend integration, AI safety, and operational ownership.
+Build defensible full-stack and backend engineering depth by evolving the existing English-learning
+application into a deployed multilingual product. This repository is project evidence, not
+professional production-service experience.
 
-This is project evidence, not professional production-service experience.
+Implementation and test results are authoritative. Repository documents may lag behind the code.
+Production statements must distinguish repository-verified evidence from operator reports.
 
 ## Current system
 
-- SvelteKit 2 and Svelte 5 static frontend
-- GitHub Pages deployment
-- Google Identity Services sign-in in the browser
-- Legacy Google Apps Script/Sheet code retained for rollback evidence, but absent from normal review
-  and deck/card management read/write traffic and frontend build configuration
-- PostgreSQL-backed English review plus shared English/Japanese management reads and writes
-- English review routes and shared language-aware deck/card components
-- A semantic-search proposal exists but is not an active priority
-
-## Target system
-
-- One repository and modular monolith
-- Existing SvelteKit frontend
-- Python FastAPI backend
-- PostgreSQL with SQLAlchemy 2 and Alembic
-- Server-side Google token verification and per-user ownership enforcement
-- Shared language-aware model for English and Japanese
-- Transactional review history and current review state
-- Idempotent Google Sheets import and controlled cutover
-- AI-assisted definitions, readings, notes, and examples through editable drafts and explicit confirmation
-- Automated tests, CI, deployment, observability, rollback, and recovery documentation
-
-## Agreed decisions
-
-- Use this repository rather than starting a new primary full-stack repository.
-- Use Python first for the backend.
-- Keep frontend and backend together while deploying them independently.
-- Use PostgreSQL as the eventual source of truth.
-- Preserve Google Sheets during a controlled migration, then remove it from the runtime path.
-- Support English and Japanese through one backend and shared model.
-- Defer semantic search until the transactional core is dependable.
-- AI output cannot directly become confirmed learning content.
-- Avoid microservices and infrastructure without demonstrated need.
+- One repository with a SvelteKit 2/Svelte 5 static frontend and a Python FastAPI API.
+- GitHub Pages hosts the frontend; Google Identity Services provides browser sign-in.
+- Cloud Run in Singapore and Neon PostgreSQL in AWS Singapore are the selected production services.
+- PostgreSQL is the sole writable source of truth for the deployed product.
+- The backend verifies Google identity, maps it to internal users, and enforces ownership.
+- English review and shared English/Japanese deck and card management use the FastAPI API.
+- Review writes are transactional and idempotent; scheduling is derived by the backend.
+- Legacy Apps Script/Sheet code remains only as rollback and migration evidence and is absent from
+  normal runtime traffic and frontend deployment configuration.
+- AI-assisted authoring and semantic search are not active product capabilities.
 
 ## Active milestone
 
-Week 6 — deployment and operational ownership. Issue #25's local frontend/runtime cutover is
-verified, while its live checks remain dependent on deployment. Issue #26 Parts 1-2 now have a
-locally verified locked non-root API container plus a checked-in Cloud Run/Neon release contract.
-Cloud Run Singapore and Neon AWS Singapore are selected; Neon is the sole writable source of truth.
-Production TLS configuration, separate version-pinned runtime/migration secrets, migration-before-
-candidate ordering, explicit smoke/promotion, and compatible application rollback are encoded
-locally. The operator reports that Cloud Run, Neon, and the GitHub Pages frontend are deployed,
-initial schema/data transfer is complete, and live readiness plus authenticated frontend read/create
-calls pass. A controlled review write and exact idempotent replay passed against production; smoke
-checks also passed on the candidate, after promotion, and after rollback to a compatible revision.
-The operator reports that the new image-publishing and migration workflows also ran successfully
-through WIF. Restored-data reconciliation, database-role separation evidence, and remote execution
-of the new candidate-deployment workflow remain pending.
+**Week 6 - deployment and operational ownership, Issue
+[#26](issues/issue-26/README.md).**
 
-The operator reports that Neon received the schema through local Alembic plus data through
-`pg_dump`/`pg_restore`, and observed
-`{"status":"ready","checks":{"database":"ok"}}` from the deployed API. That confirms the reported
-runtime connection check but not owner-scoped reads/writes or restored-data integrity. Future
-releases now have one protected manual GitHub workflow that uses OIDC and a dedicated
-Artifact-Registry-only identity to publish an immutable commit-tagged API image, followed by a
-separate workflow that invokes the Secret Manager-backed Cloud Run migration job, serializes
-production runs, and checks that every Alembic head is applied without exposing the Neon URL to
-GitHub. The operator reports successful remote execution of both workflows through WIF. A third
-protected workflow now encodes zero-traffic candidate deployment and public health verification;
-its remote execution remains unverified.
+The provider-neutral container and Cloud Run/Neon release contract are complete locally. The
+repository defines production TLS requirements, separate version-pinned runtime and migration
+secrets, migration-before-candidate ordering, zero-traffic candidate verification, explicit
+promotion, and schema-compatible application rollback.
 
-The Weeks 0-3 milestone is complete and audited locally in
-[`issues/issue-12/README.md`](issues/issue-12/README.md). GitHub shows issues #4 through #11 closed,
-and their merged implementations are present on `main`. Final closeout verification passed all 171
-backend tests against healthy PostgreSQL 17, Ruff lint/format, the uv lock check, and the frontend
-production build. Existing frontend build warnings and the upstream `TestClient` warning remain
-visible. Remote CI, live Google verification, import, frontend cutover, deployment, and production
-behavior are not claimed. Roadmap issue #12 is closed with every exit criterion checked. Ten bounded
-Weeks 4-8 tickets are published as #22 through #31 without `ai-ready`; #22 and the synthetic
-implementation boundary for #23 are complete locally.
+### Repository-verified locally
 
-Issue #4 current-state trace is documented in
-[`current-state-flow-trace.md`](current-state-flow-trace.md). It includes the three request flows,
-trust boundaries, Apps Script and Sheet contracts, a current-state diagram, actual local command
-results, and a sanitized synthetic fixture.
+- Issue #25 completed the FastAPI frontend cutover and bilingual management read/write boundary.
+- The API image runs as numeric non-root user `10001:10001`, excludes development dependencies,
+  honors `PORT`, exposes meaningful health endpoints, and shuts down cleanly on SIGTERM.
+- Production configuration rejects insecure PostgreSQL connections and separates runtime and
+  migration credentials.
+- Protected workflows publish immutable commit-tagged images, invoke the Secret Manager-backed
+  migration job through WIF, and deploy a zero-traffic candidate.
+- The Issue #26 checkpoint passed 251 PostgreSQL-backed tests, Ruff lint and format checks, the `uv`
+  lock check, Bash syntax and invalid-input checks, and whitespace validation.
 
-Issue #5 multilingual product/API/schema design is complete locally. Its
-[`issues/issue-5/`](issues/issue-5/README.md) index and linked artifacts cover invariants, ownership,
-all 21 Sheet-field mappings, MVP API contracts,
-failure/recovery, schema constraints/indexes, request/trust-boundary diagrams, a safe future AI draft
-lifecycle, rejected alternatives, tradeoffs, and unresolved implementation choices. Joseph completed
-the design-defense check. No backend code or migration exists yet.
+### Operator-reported production results
 
-Issue #6 backend-foundation implementation is complete and verified locally. The decisions are recorded in
-[`issues/issue-6/README.md`](issues/issue-6/README.md): use `uv`, place the independent Python package
-under `apps/api/`, use typed secret-safe configuration with disposable local PostgreSQL defaults,
-keep liveness independent of PostgreSQL, return safe database-aware readiness results, and manage the
-database engine through FastAPI lifespan startup and shutdown. The `uv` package and lockfile exist,
-and the first liveness vertical slice is implemented through an application factory, isolated health
-router, explicit response model, and HTTP-level unit test. The unit test, Ruff lint, Ruff formatting,
-Uvicorn factory startup/shutdown, and a real `200` liveness request passed locally. Pytest currently
-emits one upstream FastAPI `TestClient`/`httpx` deprecation warning. `apps/api/README.md` is the
-canonical reference for verified API commands. Typed, frozen configuration now loads during FastAPI
-lifespan without import-time side effects. It validates supported environments and log levels, keeps
-the database URL secret, bounds connection timeout to 1-10 seconds, requires the Psycopg driver,
-rejects the disposable local URL in production, and translates raw validation failures into safe
-startup errors. The full unit suite passes with eleven tests; normal Uvicorn startup and deliberate
-secret-safe startup failure were both verified. SQLAlchemy engine construction and disposal now live
-in `app/database.py`; FastAPI lifespan creates the lazy engine without connecting, stores it in app
-state, and disposes its pool during shutdown. The bounded `SELECT 1` readiness probe and safe
-`200`/`503` endpoint now exist. Nineteen unit tests and two opt-in real-driver integration tests pass.
-A live PostgreSQL stop/restart exercise changed readiness `200 -> 503 -> 200` without restarting the
-API, while liveness stayed `200`. Initial available-database verification used an existing local
-`postgres:12` image after the old Docker Desktop stack failed to complete the selected image pull.
-After switching to OrbStack, the exact `postgres:17-alpine` Compose service pulled successfully,
-became healthy, passed both integration tests, and repeated the live `200 -> 503 -> 200` recovery
-exercise. The final combined suite passed all 21 unit and integration tests; Ruff lint and formatting
-checks also passed. The PostgreSQL 17 Compose service is currently running with its named development
-volume.
+These results are useful operational context but are not independently established by committed
+repository evidence unless a linked artifact says otherwise:
 
-Issue #7 persistence-foundation implementation and learning checkpoint are merged on `main` at
-`b1227ae`. The API now has application-scoped
-session factories, short-lived transaction ownership, an empty reversible
-Alembic baseline, isolated real-PostgreSQL migration and transaction patterns, a stable safe API
-error envelope with server request IDs, and independent frontend/backend CI jobs. The development
-database and a fresh temporary database both passed upgrade, downgrade, and re-upgrade. The full
-PostgreSQL-backed backend suite passes 32 tests; Ruff and lock checks pass. The frontend production
-build passes, while the already documented `npm run check` 6 errors/6 warnings and repository-wide
-Prettier drift remain outside this backend ticket.
+- Cloud Run, Neon, and the GitHub Pages frontend are deployed.
+- The Neon schema and initial data transfer completed.
+- Live readiness and authenticated owned read/create calls passed.
+- A controlled review write and exact idempotent replay passed.
+- Candidate, post-promotion, and schema-compatible rollback smoke checks passed.
+- The WIF image-publishing and production-migration workflows ran successfully.
 
-Issue #8 completed its initial coached design checkpoint. The accepted implementation boundary is
-recorded in [`issues/issue-8/`](issues/issue-8/README.md): confirmed cards require nonblank term and
-meaning, cards derive language from required owned decks, optional multilingual fields share one
-card table, one example remains embedded, review state uses `card_id` as its primary key, redundant
-constrained owner IDs enforce same-owner relationships, review history records before/after state,
-and indexes map to named list, language, due-review, and history queries. Revision `20260902_0002`
-now adds users, owned multilingual decks, confirmed learning cards, tags, card/tag associations,
-current review state, owned review batches, and retained review events.
-Cards use a composite owned deck foreign key, require nonblank term/meaning, share optional
-English/Japanese fields, and embed one example. Tags have normalized per-owner identity; two
-composite foreign keys prevent cross-owner attachment, and the association primary key prevents
-duplicates. Tag deletion cascades only to associations. Review-state `card_id` is the primary key;
-its composite card relationship, required scheduling values, range/time checks, and restricted card
-deletion are enforced by PostgreSQL. The temporary and development databases passed upgrade,
-baseline downgrade, and re-upgrade. Review batches enforce per-owner idempotency-key uniqueness;
-events use composite owned batch/card relationships, complete before/after values, transition
-checks, and duplicate-per-batch prevention. A deterministic synthetic fixture now spans every table
-with English and Japanese decks/cards, shared tags, current states, and matching batch events. The
-full local backend suite now passes 103 tests with one existing upstream warning. All named index
-definitions match their access patterns, and a PostgreSQL 17 integration test builds a deterministic
-representative dataset, runs `ANALYZE`, and verifies that all seven deliberate indexes are selected
-by their executed query shapes. The implemented ER diagram covers every table, foreign key,
-composite ownership constraint, cardinality, and deletion rule while separating future transaction
-guarantees. Planner evidence is local and distribution-specific, not a performance benchmark;
-atomic review behavior remains a future service responsibility.
+### Remaining Issue #26 gaps
 
-Issue #9 is implemented and verified locally. The FastAPI service now exposes owner-scoped deck
-list/detail, card list/detail with target-language and tag filtering, and due-review retrieval through
-one English/Japanese contract. Management lists use `updated_at DESC, id DESC`; due review uses
-`next_review_at ASC, card_id ASC` and carries a server-captured `as_of` instant across pages. Opaque
-versioned cursors are bound to endpoint, filters, limit, and last sort tuple. A named temporary owner
-dependency keeps clients from selecting identity until Issue #10 replaces it with verified auth.
-Revision `20260903_0003` adds owner/update indexes, and the PostgreSQL planner test now covers nine
-patterns. The full local backend suite passes 122 tests; Ruff format/lint and lock checks pass.
+- Reconcile restored production counts, relationships, and owner mappings without recording private
+  content.
+- Capture database runtime/migration role-separation evidence.
+- Commit and remotely exercise the candidate-deployment workflow; record safe run/revision IDs and
+  timings.
 
-Issue #10 is implemented and verified locally. All `/v1` product routes now require a Google ID
-token verified server-side for signature, issuer, configured audience, expiry, and verified-email
-status. Verified Google `sub` values map to stable generated internal users; normalized email is
-refreshable profile data rather than an ownership key. The reusable authenticated-user dependency
-replaces temporary owner `1`, and every deck, card, and due-review read binds the internal owner ID.
-Deck/card create, optimistic edit, and archive operations derive ownership from authenticated
-context. Cross-owner IDs are masked as not found, including foreign deck IDs on card creation. The
-authorization matrix matches unit and PostgreSQL horizontal-escalation tests. At that checkpoint the
-full backend suite passed 152 tests; Ruff format/lint and lock checks passed. Live Google
-verification, remote CI, and frontend cutover remain unverified or out of scope.
+## Completed milestone index
 
-Issue #11 is implemented and verified locally. `POST /v1/reviews` accepts a bounded unique-card
-batch plus a UUID idempotency key, derives all scheduling values from one backend clock, and commits
-the owned batch, immutable before/after events, and current states in one transaction. Canonical
-request hashes distinguish exact replay from conflicting key reuse. Target rows are locked in sorted
-card-ID order, while optimistic versions make a racing different-key request stale; same-key races
-replay one committed result. PostgreSQL tests cover multi-item success, authorization, validation,
-exact and conflicting retries, simultaneous requests, and injected rollback. The full backend suite
-passes 171 tests; Ruff checks pass. Frontend cutover, transient-deadlock retry policy, live traffic,
-remote CI, and deployment remain unverified or out of scope.
+- **Weeks 0-3 - multilingual backend core:** Issues #4-#11 traced the legacy system, designed and
+  implemented the shared domain, established FastAPI/PostgreSQL foundations, added deterministic
+  reads, enforced authentication and ownership, and made review writes transactional and
+  idempotent. The audited closeout is in
+  [`issues/issue-12/README.md`](issues/issue-12/README.md).
+- **Week 4 - controlled Sheets migration:** Issue
+  [#22](issues/issue-22/README.md) implemented read-only validation and Issue
+  [#23](issues/issue-23/README.md) implemented transactional import, replay, and reconciliation.
+- **Week 5 - frontend cutover:** Issue [#24](issues/issue-24/README.md) moved English review to the
+  authenticated API; Issue [#25](issues/issue-25/README.md) completed shared bilingual management
+  reads and writes plus runtime configuration cutover.
+- **Week 6 - deployment:** Issue [#26](issues/issue-26/README.md) is active.
 
-Issue #22 is implemented and verified locally. A local one-time CSV CLI validates the complete
-21-field legacy contract through trimmed NFC content, case-sensitive NFC source IDs, NFKC/case-fold
-collection identity, canonical versioned SHA-256 hashes, and bounded content-safe diagnostics.
-Revision `20260909_0004` persists only owner/deck-scoped `import_runs` and `import_items`; unchanged
-snapshots replay the existing audit run. English and Japanese synthetic reports are deterministic,
-and PostgreSQL tests prove cross-owner/language rejection plus zero card, tag, review-state, batch,
-or event mutations. All later imported cards will start with fresh backend scheduling. The ignored
-private 596-row CSV produced content-free aggregates of 11 accepted, 582 repairable, and 3 rejected:
-one missing required meaning and one duplicate legacy ID affecting two rows. No private values or
-report were committed. The full backend suite passed 187 tests against PostgreSQL 17; Ruff, format,
-lock, migration-cycle, and whitespace checks passed. See
-[`issues/issue-22/README.md`](issues/issue-22/README.md). These counts describe the Issue #22
-checkpoint; the source diagnostics were subsequently corrected before the final Issue #23 dry run.
+Use the linked issue indexes for acceptance criteria, implementation detail, verification commands,
+and historical limitations. Use [`evidence.md`](evidence.md) only when preparing or updating
+interview evidence.
 
-Issue #23 is implemented and verified locally. Revision `20260910_0005` adds confirmed-import runs
-plus composite, owner-constrained source-to-card mappings. The local CLI rereads and reproduces the
-approved Issue #22 snapshot, locks the dry run and existing active deck, and commits cards,
-normalized owned tags, associations, deterministic fresh review states, mappings, and the completed
-apply record in one transaction. Exact sequential and concurrent replay perform no product
-mutations. Seven pre-commit failure points roll back completely; a post-commit client failure is
-recovered by unchanged replay. Post-commit reconciliation checks counts, ownership, deck, hashes,
-tags, archived state, fresh states, deterministic samples, and review history while persisting no
-duplicate private content. The full backend suite passed 220 tests against PostgreSQL 17 with the
-existing upstream warning; Ruff, format, lock, migration-cycle, and whitespace checks passed. After
-the Issue #22 source diagnostics were corrected, the final zero-rejection private snapshot was
-applied locally. Reconciliation reported matching expected and actual counts for 596 cards,
-mappings, and fresh review states, 184 tags, 885 card/tag associations, zero archived cards, and no
-review batches or events; every boolean check passed and no diagnostic codes were reported. The
-private CSV and operational reports remain untracked. The runbook and sanitized evidence are
-indexed in [`issues/issue-23/README.md`](issues/issue-23/README.md). Frontend cutover and the
-source-of-truth transition are not claimed.
+## Durable decisions
 
-Issue #24 is implemented and verified locally. The English flip/swipe flow now reads
-`GET /v1/reviews/due` and submits `POST /v1/reviews` through a typed bearer-authenticated frontend
-client. `SwipeCards` emits decisions plus observed state versions and no longer calculates
-schedules. One account-scoped command/key pair persists for 24 hours across ambiguous, retryable,
-and same-account authentication recovery; success and definite rejection retire it, while stale
-state visibly saves nothing and refetches. There is no Apps Script fallback or dual write. Ten
-frontend contract/state/component tests, nine Playwright browser tests, and the complete 220-test
-PostgreSQL-backed backend suite passed locally. See
-[`issues/issue-24/README.md`](issues/issue-24/README.md).
-
-Issue #25 Part 1 is implemented and verified locally. `/decks?language=en|ja`, owned deck/card
-drill-down, active/archive filtering, conditional Japanese reading/romanization, and English
-pronunciation all share one FastAPI client and component/domain boundary. Missing language
-canonicalizes to English; invalid language performs no API request. FastAPI's deterministic checked-in
-OpenAPI schema generates checked-in TypeScript and CI rejects drift, while runtime guards still
-validate response JSON. Thirteen frontend tests and 20 Playwright Chrome flows pass, including loading,
-empty, authentication, non-disclosing not-found, retryable, archive, bilingual, mobile, static-path,
-and network checks. The combined review/management trace contains only `/v1` FastAPI persistence
-requests and no Apps Script URL. This is a read boundary only: create/edit/archive UI, idempotent
-create behavior, write failures, final rollback documentation, remote CI, and deployment remain.
-See [`issues/issue-25/README.md`](issues/issue-25/README.md).
-
-Issue #25 Part 2 is implemented and verified locally. Deck/card creation now requires UUID
-idempotency keys and uses the existing per-owner key/hash constraints for exact replay and
-different-content rejection; card replay preserves one card and one initial review state. Shared
-deck/card forms add create, optimistic edit, and confirmed archive behavior without splitting the
-English/Japanese application. Shared Drawer and ConfirmDialog wrappers now compose generated
-shadcn-svelte Sheet and Alert Dialog components, with Bits UI retained underneath, without changing
-the established styling. A 24-hour account-scoped pending creation locks the exact request after
-unclear outcomes. Stale edits keep values until an explicit reload/discard, and unclear archives
-refetch before success. The full 236-test PostgreSQL suite, 16 frontend tests, 28 Playwright flows,
-Svelte check, scoped lint/format, generated contract, and static subpath build pass locally.
-
-GitHub tracking:
-
-- [Weeks 0–3 roadmap issue](https://github.com/JosephT5566/english-learning/issues/12)
-- Training tickets: [#4](https://github.com/JosephT5566/english-learning/issues/4) through [#11](https://github.com/JosephT5566/english-learning/issues/11)
-
-Required outputs:
-
-- trace Google login and client-side token handling
-- trace vocabulary retrieval from Google Apps Script
-- trace review updates to Google Sheets
-- inventory current Sheet fields and migration risks
-- define English and Japanese card requirements
-- draft the AI generation → editable draft → confirmation boundary
-- propose the initial schema, API boundary, and trust-boundary diagram
+- Continue in this repository as a modular monolith; deploy frontend and backend independently.
+- Use Python/FastAPI first, SQLAlchemy 2 and Alembic, and PostgreSQL as the source of truth.
+- Use one owner-scoped, language-aware model for English and Japanese.
+- Verify identity, ownership, validation, and state transitions on the backend.
+- Use PostgreSQL constraints and explicit transactions for critical invariants.
+- Preserve Sheets only through controlled migration and rollback; do not dual-write.
+- Use Cloud Run `asia-southeast1` and Neon AWS Singapore under the documented low-traffic budget.
+- Treat AI input and output as untrusted; AI may create an editable draft but never a confirmed card.
+- Defer semantic search, queues, caches, and additional infrastructure until a measured need exists.
 
 ## Open decisions
 
-- Production API host and managed PostgreSQL provider
-- AI provider and model
-- Whether initial AI generation meets synchronous latency requirements
-- Exact migration rollback window and handling of source-row deletions
+- AI provider and model.
+- Whether observed AI-generation latency and failure behavior justify synchronous or durable
+  asynchronous generation.
+- The operational duration of the rollback-compatible migration window.
 
-## Current-state findings
+## Known non-blocking limitations
 
-- `getList` is unauthenticated. The Apps Script deployment is available to `Everyone` and executes
-  as the script owner.
-- `getList` mutates Sheet row order and contains zero-based/one-based index mismatches: intended
-  `lastReview` and `reviewStage` sorts operate on `intervalDays` and `status`; the final
-  `overdueDays` sort is correct.
-- Review submission authenticates the allowlisted caller but trusts client-selected card IDs and
-  client-calculated stage, ease factor, and dates.
-- Review rows are written one at a time, formula updates run separately, and the success response
-  is only `{ "ok": true }`; partial outcomes cannot be reconciled by the frontend.
-- No Sheet data-validation or uniqueness rules were identified. `overdueDays` is derived as
-  `TODAY() - nextReview`, while stored `intervalDays` is not updated by the current review payload.
-- The most important persistence-migration risk is carrying client-controlled state transitions
-  into PostgreSQL. The new backend must enforce ownership and derive and persist transitions
-  transactionally.
-
-## Current blockers
-
-The discovered browser preflight and collapsed-card-height blockers are fixed. Strict configurable
-CORS contracts and the mobile layout regression pass. Chrome then completed a live 10-card review
-through a real Google token and local FastAPI/PostgreSQL; the database contained one batch, 10
-distinct events, and 10 current states matching their recorded `srs-v1` results. The first remote
-frontend CI run exposed missing clean-runner exports for `$env/static/public`; a local workflow fix
-now supplies safe placeholders to every frontend step and passes the reproduced check/browser
-commands. The final production API/CORS values, deployment, and post-deployment behavior remain
-unverified.
-Repository-wide `npm run lint` still fails on the known Prettier baseline; touched frontend source
-and tests pass targeted ESLint. The Issue #23 operator replay and backup/restore evidence limits also
-remain documented.
-
-Issue #25's local management write and runtime-configuration boundaries are complete. CI and Pages
-deployment no longer provide an Apps Script URL; the preserved wrapper requires explicit endpoint
-injection, and deployment now rejects a missing or non-HTTPS FastAPI origin. The configured static
-build contains no Apps Script value. The operator now reports a deployed frontend using the
-production API, successful authenticated reads/creates, and complete review-write smoke checks
-across candidate, promotion, and rollback. Remote CI details and recorded revision/timing evidence
-remain unavailable.
-
-Issue #26's provider-neutral container and provider/release design boundaries are complete locally.
-The two-stage image excludes development dependencies, runs as `10001:10001`, honors `PORT`, and
-exits `0` after Uvicorn completes FastAPI lifespan shutdown on SIGTERM. CI builds and smokes the
-image. Cloud Run `asia-southeast1` plus Neon AWS Singapore are selected under a USD 10 ceiling. The
-repository now rejects insecure production PostgreSQL URLs and defines distinct secret-scoped web
-and migration identities, migration-before-candidate ordering, zero-traffic smoke checks, promotion,
-and application rollback. The resulting 251-test PostgreSQL suite, Ruff lint/format, uv lock check,
-Bash syntax checks, invalid-input script checks, and whitespace validation pass locally. No registry
-or deployed behavior was verified at that local checkpoint. The operator now reports the registry,
-Cloud Run, Neon schema/data bootstrap, frontend cutover, successful live database readiness,
-authenticated owned reads, a controlled review write with exact idempotent replay, candidate
-promotion, compatible rollback smoke checks, and successful WIF-based publish/migration workflow
-runs. Role separation, the new candidate workflow's remote execution, and restored-data
-reconciliation remain unverified.
+- Repository-wide `npm run lint` retains known Prettier baseline drift; touched frontend files pass
+  scoped checks.
+- The upstream FastAPI `TestClient` warning remains visible in backend tests.
+- Earlier private import data and operational reports remain untracked; committed evidence contains
+  only sanitized aggregates and fixtures.
 
 ## Next action
 
-Reconcile the restored production data with safe counts, relationships, and owner mappings. Commit
-and remotely exercise the candidate-deployment workflow through the already-working protected WIF
-path, using the same ref as the successful image-publishing and migration workflows. Preserve safe
-workflow/revision identifiers and timings; the live authenticated review write and compatible
-rollback rehearsal are already operator-reported as successful.
+Reconcile the restored production data using safe counts, relationships, and owner mappings without
+recording private content. Record the result in the Issue #26 artifacts and update this memory to the
+next single acceptance boundary.
+
+## Context pointers
+
+- Active issue: [`issues/issue-26/README.md`](issues/issue-26/README.md)
+- Active roadmap section: [Week 6](full-stack-backend-plan.md#week-6--deployment-and-operational-ownership)
+- Current operational sequence: [`issues/issue-26/runbook.md`](issues/issue-26/runbook.md)
+- Historical learning logs: [`logs/`](logs/), searched only when needed
+- Legacy-system baseline: [`current-state-flow-trace.md`](current-state-flow-trace.md)

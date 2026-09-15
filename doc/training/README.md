@@ -1,117 +1,59 @@
 # Training Documentation
 
-This directory is the persistent learning context for turning English Learning into a production-style multilingual full-stack application.
+This directory is the persistent learning context for turning English Learning into a
+production-style multilingual full-stack application.
 
-## Documents
+## Start here
 
-- [Full-stack backend plan](full-stack-backend-plan.md): roadmap, scope, weekly milestones, and completion criteria
-- [Project memory](project-memory.md): concise current state, active milestone, decisions, blockers, and next action
-- [Evidence ledger](evidence.md): verified implementation evidence for interviews and future resume work
-- [Current-state flow trace](current-state-flow-trace.md): issue #4 auth, vocabulary, review, Sheet contract, trust-boundary, and baseline evidence
-- [`issues/`](issues/): per-ticket design, implementation, and milestone artifacts; follow the active
-  issue link in project memory rather than maintaining a permanent issue list here
-- [`fixtures/`](fixtures/): sanitized synthetic datasets for future contract and migration tests
-- [`logs/`](logs/): chronological weekly learning archive, searched on demand rather than loaded as
-  default training context
-- [`decisions/`](decisions/): architecture decision records for consequential choices
+1. Read [`project-memory.md`](project-memory.md) to identify the active milestone, issue, evidence
+   level, and single next action.
+2. Read the active issue index or ticket when it affects the task.
+3. Read only the relevant section of [`full-stack-backend-plan.md`](full-stack-backend-plan.md) when
+   roadmap scope, sequencing, milestone criteria, or the definition of done matters.
+4. Choose one acceptance boundary and define its requirements, invariants, failure behavior, and
+   verification path.
 
-Product proposals that are not active training priorities live under [`../product/`](../product/).
+Prompt recipes and the optional GitHub automation path are in
+[`session-workflow.md`](session-workflow.md). They are not startup context.
 
-## Update rules
+## Document roles
 
+- [`project-memory.md`](project-memory.md): bounded current-state index, active issue, remaining gaps,
+  and one next action
+- [`full-stack-backend-plan.md`](full-stack-backend-plan.md): roadmap, scope, milestones, and completion
+  criteria; load by section
+- [`evidence.md`](evidence.md): verified implementation evidence for interviews and later resume work;
+  load only for evidence tasks
+- [`current-state-flow-trace.md`](current-state-flow-trace.md): Issue #4 legacy auth, vocabulary,
+  review, Sheet contract, and trust-boundary baseline
+- [`issues/`](issues/): canonical per-ticket design, implementation, verification, and milestone
+  artifacts
+- [`logs/`](logs/): chronological learning archive, searched on demand rather than loaded at startup
+- [`decisions/`](decisions/): records for consequential architectural choices
+- [`fixtures/`](fixtures/): sanitized synthetic contract and migration datasets
+
+Inactive product proposals live under [`../product/`](../product/).
+
+## Source and update rules
+
+- Treat implementation and test results as authoritative; plans and memory can become stale.
 - Update the plan only when scope or sequencing changes.
-- Update project memory after a material milestone or change of direction. Keep it as a bounded
-  active-state index: compress completed milestones and link to issue artifacts instead of copying
-  their detailed histories.
-- Use one log file per ISO week. Add a concise checkpoint only for a completed acceptance boundary
-  or a material decision, failure, correction, or remaining uncertainty; do not log every command
-  or intermediate step.
-- Treat logs as historical sources. Do not read them at session startup. Search and read the smallest
-  relevant excerpt only for explicit history tracing, retrospectives, unresolved context conflicts,
-  or evidence that cannot be established from code, tests, and issue artifacts.
-- When appending a checkpoint, inspect only the log tail and any directly related entry; appending
-  does not require loading the complete weekly log.
-- Add an evidence entry only after the implementation exists and relevant verification has run.
-- Link evidence to files, tests, issues, pull requests, reports, or measurements.
-- Keep private career assessments, credentials, tokens, and personal learning data out of the repository.
+- Keep project memory concise. Summarize completed milestones in one or two lines and link to their
+  issue indexes instead of copying detailed history.
+- Distinguish `repository-verified`, `operator-reported`, and `unverified` production claims.
+- Keep one active milestone, one set of remaining gaps, and one next action in project memory.
+- Use one log per ISO week. Add a concise checkpoint only for a completed acceptance boundary or a
+  material decision, failure, correction, or uncertainty.
+- Do not load weekly logs at startup. Search the smallest relevant excerpt for explicit history,
+  retrospectives, unresolved conflicts, or otherwise unavailable evidence.
+- Add evidence only after implementation exists and relevant verification has run. Link it to code,
+  tests, issues, pull requests, reports, or measurements.
+- Create an architecture decision record only for a consequential choice with credible alternatives.
+- Keep private career notes, credentials, tokens, and private learning data out of the repository.
 
-## Starting a training session
+## End a training session
 
-1. Read project memory to identify the active milestone, issue, and next action.
-2. Read the active local issue artifact or issue-tracker ticket when it is relevant and available.
-   Read only the relevant plan section when roadmap scope, sequencing, milestone criteria, or the
-   definition of done affects the task.
-3. Choose one acceptance boundary.
-4. State requirements, invariants, trust boundaries, and failure behavior before coding.
-5. Define how the result will be verified.
-
-## Using GitHub tickets with Codex
-
-Work on one training ticket at a time. The recommended path is interactive coaching, where Joseph owns the critical reasoning and implementation.
-
-### 1. Start a ticket in design mode
-
-Open a Codex session from this repository and explicitly invoke the training and GitHub skills:
-
-```text
-$full-stack-training-coach $github
-
-Open issue #4:
-https://github.com/JosephT5566/english-learning/issues/4
-
-Start in design mode. Do not edit files yet. Help me work through the issue one acceptance criterion at a time, and ask one substantial question at a time.
-```
-
-Replace the issue number and URL for later tickets. If the training skill does not appear, restart Codex so it rescans `.agents/skills`.
-
-### 2. Implement with coaching
-
-Ask for the next bounded step while retaining ownership of the risk-heavy work:
-
-```text
-$full-stack-training-coach
-
-Continue issue #4. Give me the next smallest implementation step. Let me write the critical part, then review my changes.
-```
-
-When delegating a well-understood portion, constrain it explicitly:
-
-```text
-$full-stack-training-coach
-
-We have completed the design for issue #4. Implement only [specific acceptance criterion], run the relevant checks, and explain the decisions I need to defend.
-```
-
-### 3. Request a review before fixes
-
-```text
-$full-stack-training-coach
-
-Review my current changes against issue #4. Do not modify files yet. Identify correctness gaps, missing evidence, and unverified acceptance criteria.
-```
-
-### 4. Verify and publish
-
-```text
-$full-stack-training-coach $github
-
-Verify issue #4, update project memory and the weekly log, add evidence only for verified outcomes, and create a draft PR that closes #4.
-```
-
-### Automated `ai-ready` mode
-
-Adding the `ai-ready` label triggers `.github/workflows/ai-agent.yml`. That workflow asks Codex to implement the entire issue, commit the result, push a branch, and open a pull request.
-
-Use `ai-ready` only when intentionally delegating a well-understood task or boilerplate. It is not the default training path because it reduces the design and implementation work Joseph performs personally.
-
-Before using the GitHub Action, commit and push `AGENTS.md`, `.agents/skills/`, and `doc/training/`; the remote agent cannot read local-only files.
-
-## Ending a training session
-
-1. Run the relevant checks.
-2. If the session completed an acceptance boundary or produced a material decision, failure,
-   correction, or uncertainty, append one concise weekly-log checkpoint after inspecting only the
-   relevant tail or prior entry.
-3. Update project memory if the repository state or next action changed, keeping completed history
-   behind links to issue artifacts.
-4. Add verified evidence only when the work is complete enough to defend.
+1. Run checks proportional to the change and record actual results.
+2. If warranted, append one concise checkpoint after inspecting only the relevant log tail or entry.
+3. Update project memory when the active state or next action changed.
+4. Add evidence only for outcomes that are implemented, verified, and defensible.
