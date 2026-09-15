@@ -1,10 +1,13 @@
 # Ticket 26：Cloud Run 與 Neon 部署筆記
 
-最後更新：2026-09-14
+最後更新：2026-09-15
 
 這份筆記整理 Ticket 26 實作與部署時做出的選擇、已完成的操作，以及後續 release
 應遵守的安全界線。Repository 內可以驗證的是 container、release script、GitHub Actions
 與 runbook；Cloud Run、Neon 和資料搬移結果則是本次由操作者回報的實際部署紀錄。
+
+GitHub Actions Variables、WIF、IAM service accounts、Secret Manager 與 Neon roles 的集中維護對照
+請見 [`github-gcp-neon-maintenance.zh-TW.md`](github-gcp-neon-maintenance.zh-TW.md)。
 
 ## 我們如何選擇資料庫部署平台
 
@@ -81,9 +84,36 @@ audience 因此會使用同一個 Google Web OAuth Client ID。
 都會停止流程。這個 Action **不會**執行 `pg_dump`、`pg_restore`、Alembic downgrade、部署 app
 revision 或切換 traffic；資料搬移與應用程式發布仍是不同的操作邊界。
 
+2026-09-15，操作者回報 image publishing 與 production migration Actions 都已透過 WIF 成功完成
+遠端執行。這證明 GitHub OIDC exchange、兩個 GitHub service accounts、Artifact Registry push/read、
+Cloud Run migration job、Alembic head verification 與 runtime readiness 的整段 automation path
+可以運作；run IDs 與安全的 revision identifiers 尚未寫入 repository。
+
+### Deploy API candidate：部署 zero-traffic revision
+
+`.github/workflows/deploy-api-candidate.yml` 接在 publish 與 migration Actions 後面，並要求選擇相同
+Git ref 與輸入 `deploy-api-candidate`。它使用既有的 `GCP_GITHUB_SERVICE_ACCOUNT`，確認同 SHA 的
+image 與 Cloud Run service 已存在，並拒絕覆寫同名 revision。
+
+部署前，Action 會記錄目前正承接 production traffic 的 revisions。接著使用 runtime service
+account、version-pinned pooled database secret、exact CORS、startup/liveness probes 與既有 resource
+limits 建立帶有 `candidate` tag 的新 revision，並指定 `--no-traffic`。部署後再確認 candidate tag
+指向預期 revision、該 revision 沒有正流量配置，最後檢查 candidate `/health/live` 與
+`/health/ready`。Action 不修改既有 service invocation IAM policy；如果 service 不是原本就能公開
+呼叫，public health gate 會失敗，而不是由 deployer 額外授予公開存取權。
+
+Action job summary 會保留 source commit、image、candidate revision/URL 與部署前 traffic，供人工
+smoke 和 rollback 使用。它不會 build image、執行 migration、取得 Google ID token、自動 promote
+或 rollback；authenticated review write 仍是人工 release gate。
+
+Publish、migration 與 candidate workflows 共用 `production-api-release` concurrency group，新的 run
+會排隊而不是取消進行中的 release step。不過 workflow 無法替操作者決定 release 順序，因此仍要
+以相同 ref 依序執行 publish → migrate → deploy candidate。
+
 原本的 `.github/workflows/deploy.yml` 仍負責 SvelteKit frontend 的 GitHub Pages 發布；它不是
-Cloud Run API deployment。現階段 API candidate deployment 由 `deploy/cloud-run/release.sh`
-處理，production migration 則由上述手動 Action 處理，兩者刻意沒有混成一個無條件自動發布流程。
+Cloud Run API deployment。Cloud Run release 現在拆成 publish、migration 與 candidate 三個受保護
+的手動 Actions；`deploy/cloud-run/release.sh` 則保留為本機 all-in-one 操作。Promotion 與 rollback
+仍是明確的人工 traffic 操作，沒有混成一個無條件自動發布流程。
 
 ## GitHub production Environment Variables 與來源
 
@@ -98,14 +128,18 @@ repository 的 **Settings → Environments → production → Environment variab
 | `ARTIFACT_REGION`                    | `asia-east1`                                                                                         | Artifact Registry → Repositories → `language-learning` 的 Location                                                                   |
 | `ARTIFACT_REPOSITORY`                | `language-learning`                                                                                  | Artifact Registry repository 名稱                                                                                                    |
 | `API_IMAGE_NAME`                     | `api`                                                                                                | 本專案自行約定；完整 image path 中 repository 後面的名稱                                                                             |
+| `API_SERVICE`                        | `english-learning-api`                                                                               | Cloud Run → Services 的正式 API service 名稱                                                                                         |
 | `PUBLIC_API_BASE_URL`                | `https://<Cloud-Run-service-host>`                                                                   | 既有 GitHub repository variable；原始值在 Cloud Run → Services → `english-learning-api` 詳情頁。只填 HTTPS origin，不加 path         |
 | `GCP_PROJECT_ID`                     | `eng-learning-470909`                                                                                | Google Cloud project selector／Dashboard 的 Project ID；不是數字 Project number                                                      |
 | `GCP_REGION`                         | `asia-southeast1`                                                                                    | Cloud Run service 與 migration job 選定的 Region                                                                                     |
 | `GCP_WORKLOAD_IDENTITY_PROVIDER`     | `projects/<PROJECT_NUMBER>/locations/global/workloadIdentityPools/<POOL_ID>/providers/<PROVIDER_ID>` | IAM & Admin → Workload Identity Federation → provider 詳情頁的完整 resource name                                                     |
 | `GCP_GITHUB_PUBLISH_SERVICE_ACCOUNT` | `github-production-publish@eng-learning-470909.iam.gserviceaccount.com`                              | IAM & Admin → Service Accounts；建立給手動 image publishing workflow 的 Artifact-Registry-only identity                              |
-| `GCP_GITHUB_SERVICE_ACCOUNT`         | `github-production-migrate@eng-learning-470909.iam.gserviceaccount.com`                              | IAM & Admin → Service Accounts；建立給 GitHub production migration workflow 的 deployer identity                                     |
+| `GCP_GITHUB_SERVICE_ACCOUNT`         | `github-production-migration@eng-learning-470909.iam.gserviceaccount.com`                            | IAM & Admin → Service Accounts；publish 以外的 production release deployer identity                                                  |
 | `MIGRATION_JOB`                      | `english-learning-api-migrate`                                                                       | 本專案自行約定的 Cloud Run job 名稱；Action 會建立或更新它                                                                           |
 | `MIGRATION_SERVICE_ACCOUNT`          | `english-learning-migrate@eng-learning-470909.iam.gserviceaccount.com`                               | IAM & Admin → Service Accounts；建立給 Cloud Run migration job 的 runtime identity                                                   |
+| `RUNTIME_SERVICE_ACCOUNT`            | `english-learning-api@eng-learning-470909.iam.gserviceaccount.com`                                   | IAM & Admin → Service Accounts；Cloud Run API service 使用的 runtime identity                                                        |
+| `RUNTIME_DATABASE_SECRET`            | `english-learning-neon-runtime-url`                                                                  | Secret Manager 中保存 Neon pooled runtime URL 的 secret 名稱                                                                         |
+| `RUNTIME_DATABASE_SECRET_VERSION`    | `1` 或目前核准的固定版本                                                                             | Secret Manager → runtime secret → Versions                                                                                           |
 | `MIGRATION_DATABASE_SECRET`          | `english-learning-neon-migration-url`                                                                | Secret Manager 中保存 Neon direct migration URL 的 secret 名稱，不是 secret value                                                    |
 | `MIGRATION_DATABASE_SECRET_VERSION`  | `1` 或目前核准的固定版本                                                                             | Secret Manager → 該 secret → Versions；密碼輪替後新增 version，再明確更新這個值                                                      |
 | `PUBLIC_GOOGLE_AUTH_CLIENT_ID`       | `<Google Web OAuth client ID>`                                                                       | 既有 GitHub repository variable；原始值在 APIs & Services → Credentials 的 Web OAuth client。Frontend 和 backend 共用 token audience |
@@ -156,8 +190,11 @@ GitHub production workflow
               └─ 短暫 impersonate GCP_GITHUB_SERVICE_ACCOUNT
                   ├─ 讀取 Artifact Registry image metadata
                   ├─ 建立／更新／執行 Cloud Run migration job
-                  └─ 允許 job 使用 MIGRATION_SERVICE_ACCOUNT
-                      └─ 從 Secret Manager 讀取 Neon direct migration URL
+                  ├─ 允許 job 使用 MIGRATION_SERVICE_ACCOUNT
+                  │   └─ 從 Secret Manager 讀取 Neon direct migration URL
+                  └─ Candidate workflow 建立 zero-traffic API revision
+                      └─ 允許 service 使用 RUNTIME_SERVICE_ACCOUNT
+                          └─ 從 Secret Manager 讀取 Neon pooled runtime URL
 ```
 
 這個分層刻意不讓 GitHub runner、publisher 或 migration deployer 讀取 Neon secret。只有實際執行
@@ -188,13 +225,15 @@ Admin 或等效權限；啟用 APIs 需要 Service Usage Admin 或等效權限�
 1. `github-production-publish` 是 GitHub image publisher。從 **Artifact Registry → Repositories →
    language-learning → Permissions → Grant access**，只授予它 `Artifact Registry Writer`。它不需要
    Cloud Run、Service Account User 或 Secret Manager 權限。
-2. `github-production-migrate` 是 GitHub migration deployer。它需要：
+2. `github-production-migration` 是 GitHub release deployer。它需要：
    - 從 **IAM & Admin → IAM → Grant access**，在 Cloud Run job 或初次建立時的 project 上取得
      `Cloud Run Developer`。
    - 從 **Artifact Registry → Repositories → language-learning → Permissions → Grant access**，
      取得 `Artifact Registry Reader`。
    - 從 **IAM & Admin → Service Accounts → english-learning-migrate → Permissions／Manage access →
-     Grant access**，在該 service account 本身取得 `Service Account User`。
+     Grant access**，在 migration service account 本身取得 `Service Account User`。
+   - 從 **IAM & Admin → Service Accounts → english-learning-api → Permissions／Manage access →
+     Grant access**，在 runtime service account 本身取得 `Service Account User`。
    - 不取得 Secret Manager Secret Accessor。
 3. `english-learning-migrate` 是 Cloud Run migration job identity。從 **Secret Manager →
    english-learning-neon-migration-url → Permissions → Grant access**，只在這一個 secret 上授予它
@@ -233,7 +272,7 @@ assertion.sub == 'repo:JosephT5566/english-learning:environment:production'
 
 接著從 pool 選擇 **Grant access → Grant access using service account impersonation**，分別允許
 `github-production-publish@eng-learning-470909.iam.gserviceaccount.com` 與
-`github-production-migrate@eng-learning-470909.iam.gserviceaccount.com` 被相同的 production subject
+`github-production-migration@eng-learning-470909.iam.gserviceaccount.com` 被相同的 production subject
 impersonate：
 
 ```text
@@ -363,6 +402,19 @@ smoke tests 後才切換 traffic。
 
 這能證明 deployed API 可透過 runtime connection 執行資料庫 readiness query，但還不能單獨證明
 登入、owner-scoped authorization、寫入、搬移資料完整性或 rollback 都正確。
+
+2026-09-15 的後續操作補上了 live application evidence。操作者回報正式 frontend 的 authenticated
+read/create API 正常，完整 smoke script 輸出：
+
+```text
+Public health and authenticated owned-read checks passed.
+Controlled review write and exact idempotent replay passed.
+```
+
+同一天，zero-traffic candidate、promotion 後的正式 endpoint，以及 rollback 回前一個相容 revision
+都通過 smoke tests。這證明本次 application revision 的登入、owner-scoped read、受控 review write、
+exact idempotent replay 與 schema-compatible traffic rollback 實際走通。這些結果是操作者回報的
+production evidence；尚未記錄 revision IDs、各階段時間或完整 restored-data reconciliation。
 
 ## 如何部署 Neon schema 與資料
 
@@ -541,9 +593,10 @@ Least privilege 不只是「多建立一個帳號」。我們需要理解 object
 相容的 app revision，而不是自動執行 Alembic downgrade。Console UI 很適合第一次理解與建立資源，
 但 script 與 Actions 才能提供日後需要的可重現性、review gate 與稽核紀錄。
 
-最後，`/health/ready` 成功是重要里程碑，但它只回答「API 現在能否查詢 database」。完成 Ticket 26
-前仍要驗證 authenticated `/v1/me`、owner-scoped reads、受控且可 idempotent replay 的 write、restore
-後資料 reconciliation、frontend API/CORS cutover，以及一次 schema-compatible rollback rehearsal。
+最後，`/health/ready` 只回答「API 現在能否查詢 database」。本次後續 smoke 已補上 authenticated
+`/v1/me`、owner-scoped read、受控且可 exact idempotent replay 的 review write、frontend API/CORS
+cutover，以及 schema-compatible rollback rehearsal。仍待完成的是 restored-data counts、relationships
+與 owner mappings reconciliation，以及新 publish/migration Actions 的第一次遠端執行紀錄。
 
 ## 相關檔案
 

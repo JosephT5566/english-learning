@@ -1,6 +1,9 @@
 # Issue #26 Cloud Run and Neon release runbook
 
-Last updated: 2026-09-14
+Last updated: 2026-09-15
+
+The identity, IAM, variable, and secret relationships behind this runbook are indexed in
+[`github-gcp-neon-maintenance.zh-TW.md`](github-gcp-neon-maintenance.zh-TW.md).
 
 ## Release contract
 
@@ -138,24 +141,29 @@ Before the first run:
 2. Configure a Google Workload Identity Pool/provider restricted to this repository and the
    `production` environment subject. Create dedicated GitHub publisher and migration deployer
    service accounts.
-3. Grant the publisher Artifact Registry Writer only on the image repository. Grant the migration
-   deployer Artifact Registry Reader, permission to create/update/execute the migration Cloud Run
-   job, and Service Account User on `MIGRATION_SERVICE_ACCOUNT`. Do not grant either identity Secret
-   Manager access. The migration job identity retains access only to its database secret.
+3. Grant the publisher Artifact Registry Writer only on the image repository. Grant the release
+   deployer Artifact Registry Reader, permission to manage the migration job and API service, and
+   Service Account User on both `MIGRATION_SERVICE_ACCOUNT` and `RUNTIME_SERVICE_ACCOUNT`. Do not
+   grant either GitHub identity Secret Manager access. Each Cloud Run identity retains access only
+   to its matching database secret.
 4. Add these non-secret values as GitHub `production` environment variables:
 
    ```text
    ARTIFACT_REGION=asia-east1
    ARTIFACT_REPOSITORY=language-learning
    API_IMAGE_NAME=api
+   API_SERVICE=english-learning-api
    PUBLIC_API_BASE_URL=https://YOUR_CLOUD_RUN_SERVICE_URL
    GCP_PROJECT_ID=eng-learning-470909
    GCP_REGION=asia-southeast1
    GCP_WORKLOAD_IDENTITY_PROVIDER=projects/PROJECT_NUMBER/locations/global/workloadIdentityPools/POOL/providers/PROVIDER
    GCP_GITHUB_PUBLISH_SERVICE_ACCOUNT=github-production-publish@eng-learning-470909.iam.gserviceaccount.com
-   GCP_GITHUB_SERVICE_ACCOUNT=github-production-migrate@eng-learning-470909.iam.gserviceaccount.com
+   GCP_GITHUB_SERVICE_ACCOUNT=github-production-migration@eng-learning-470909.iam.gserviceaccount.com
    MIGRATION_JOB=english-learning-api-migrate
    MIGRATION_SERVICE_ACCOUNT=english-learning-migrate@eng-learning-470909.iam.gserviceaccount.com
+   RUNTIME_SERVICE_ACCOUNT=english-learning-api@eng-learning-470909.iam.gserviceaccount.com
+   RUNTIME_DATABASE_SECRET=english-learning-neon-runtime-url
+   RUNTIME_DATABASE_SECRET_VERSION=1
    MIGRATION_DATABASE_SECRET=english-learning-neon-migration-url
    MIGRATION_DATABASE_SECRET_VERSION=1
    PUBLIC_GOOGLE_AUTH_CLIENT_ID=YOUR_GOOGLE_WEB_CLIENT_ID
@@ -177,6 +185,40 @@ check to pass through the runtime database role.
 
 This workflow never runs `pg_dump`, `pg_restore`, an Alembic downgrade, application deployment, or
 traffic promotion. Those remain separate, explicit release or recovery operations.
+
+The publish, migration, and candidate workflows share the `production-api-release` concurrency
+group. Runs queue instead of cancelling one another, so two release steps cannot mutate production
+at the same time. The operator must still select the same ref and run them in order.
+
+## Protected GitHub candidate deployment workflow
+
+After the publish and migration workflows succeed for the same ref, run
+`.github/workflows/deploy-api-candidate.yml`. In the Actions UI, select **Deploy API candidate**,
+choose that ref, enter the exact confirmation `deploy-api-candidate`, and approve the protected
+`production` environment.
+
+Before the first run, grant `GCP_GITHUB_SERVICE_ACCOUNT` Service Account User on
+`RUNTIME_SERVICE_ACCOUNT`. The release deployer already needs Cloud Run Developer and Artifact
+Registry Reader. It does not need Secret Manager access; the runtime service account reads only its
+version-pinned runtime database secret.
+
+The workflow:
+
+1. Resolves the same commit-tagged image and deterministic Cloud Run revision name.
+2. Requires the image and existing API service to exist, and refuses to overwrite an existing
+   revision.
+3. Records the current positive traffic allocations for rollback evidence.
+4. Deploys the image with the checked-in runtime settings, `candidate` tag, and zero production
+   traffic. It preserves the existing service invocation IAM policy rather than trying to grant or
+   revoke public access.
+5. Verifies that the candidate tag points to the expected revision and that the revision has no
+   positive production traffic allocation.
+6. Calls the candidate `/health/live` and `/health/ready` endpoints and records its URL, revision,
+   image, and previous traffic in the job summary.
+
+This is only the public candidate gate. Obtain a fresh Google ID token and run the authenticated
+smoke script below before promotion. The workflow never promotes or rolls back traffic, reruns
+Alembic, rebuilds the image, or reads a database secret.
 
 ## Candidate verification
 

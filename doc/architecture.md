@@ -1,6 +1,6 @@
 # Architecture Memory
 
-Last updated: 2026-09-14
+Last updated: 2026-09-15
 
 ## Stack
 
@@ -96,14 +96,20 @@ Last updated: 2026-09-14
 - `compose.yaml`: verified local `postgres:17-alpine` service with persistent development volume and
   health check, run through OrbStack's Docker-compatible engine.
 - `.github/workflows/ci.yml`: independent frontend and PostgreSQL-backed backend verification jobs.
+- `.github/workflows/publish-api-image.yml`: protected manual WIF workflow that builds and publishes
+  an immutable commit-tagged API image through an Artifact-Registry-only identity.
 - `.github/workflows/migrate-production.yml`: protected manual OIDC workflow that serializes Neon
   upgrades through the Secret Manager-backed Cloud Run migration job and verifies every Alembic head.
+- `.github/workflows/deploy-api-candidate.yml`: protected manual WIF workflow that deploys the same
+  commit-tagged image as a verified zero-traffic Cloud Run candidate.
 - `deploy/cloud-run/release.sh`: clean-commit Cloud Build, single-task migration, and tagged
   zero-traffic Cloud Run candidate release boundary.
 - `deploy/cloud-run/smoke.sh`: public health, authenticated owned-read, and explicitly opted-in
   idempotent review-write smoke checks for a candidate revision.
 - `deploy/cloud-run/release.env.example`: non-secret Cloud Run/Neon resource-name and public runtime
   configuration contract. Database URLs remain version-pinned Secret Manager values.
+- `doc/training/issues/issue-26/github-gcp-neon-maintenance.zh-TW.md`: centralized GitHub variable,
+  WIF, IAM identity, Secret Manager, and Neon role relationship map for production maintenance.
 
 ## Backend Foundation Flow
 
@@ -140,10 +146,12 @@ Last updated: 2026-09-14
     tagged candidate revision with zero traffic. Health, owner scope, and one controlled idempotent
     write must pass before explicit traffic promotion. Rollback moves traffic only to a
     schema-compatible application revision and never automatically downgrades PostgreSQL.
-16. GitHub Actions never connects directly to Neon. A protected manual workflow uses Workload
-    Identity Federation to update and execute the Cloud Run migration job with an already-pushed
-    commit-tagged image. A second execution runs `alembic current --check-heads`; application
-    deployment, data restore, and traffic movement remain separate operations.
+16. GitHub Actions never connects directly to Neon. Three protected manual workflows use Workload
+    Identity Federation to publish an immutable commit-tagged image, update and execute the Cloud
+    Run migration job, and deploy a zero-traffic candidate. Separate Cloud Run migration and API
+    identities read only their matching version-pinned database secrets. A second migration-job
+    execution runs `alembic current --check-heads`; data restore, authenticated candidate smoke,
+    promotion, and traffic rollback remain separate operations.
 
 The English review frontend and English/Japanese management read pages now target this FastAPI
 service. Normal review and management navigation makes no Apps Script call. Review and management

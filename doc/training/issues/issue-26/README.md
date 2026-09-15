@@ -1,6 +1,6 @@
 # Issue #26 - Deploy API and PostgreSQL with a safe release contract
 
-Last updated: 2026-09-14
+Last updated: 2026-09-15
 
 Source: [GitHub Issue #26](https://github.com/JosephT5566/english-learning/issues/26)
 
@@ -21,6 +21,17 @@ database readiness query. Owner-scoped reads/writes, restored-data reconciliatio
 separation, and rollback have not yet been independently verified from repository evidence. Future
 schema upgrades now have a protected, OIDC-based GitHub Actions path that invokes the Secret
 Manager-backed Cloud Run migration job; remote execution of that workflow remains unverified.
+
+On 2026-09-15, the operator reported that the GitHub Pages frontend was deployed and its
+authenticated read/create API calls succeeded. The production smoke script then reported
+`Public health and authenticated owned-read checks passed` plus
+`Controlled review write and exact idempotent replay passed`. The operator subsequently reported
+successful smoke checks against the zero-traffic candidate, after promotion, and after routing
+traffic back during the rollback rehearsal. This completes the reported live authenticated
+read/review-write and schema-compatible application rollback boundary. Revision identifiers,
+timings, restored-data reconciliation, and database-role separation have not yet been captured as
+repository evidence. The operator later reported successful WIF-based executions of both the image
+publishing and production migration workflows; their run IDs remain unrecorded.
 
 ## Delivery Slices
 
@@ -105,16 +116,24 @@ A Traditional Chinese walkthrough of the provider choice, Artifact Registry and 
 Neon bootstrap, database roles, and migration automation is in
 [`deployment-notes.zh-TW.md`](deployment-notes.zh-TW.md).
 
+The centralized maintenance map for GitHub Actions variables, WIF, Google Cloud service accounts,
+IAM bindings, Secret Manager resources, and Neon roles is in
+[`github-gcp-neon-maintenance.zh-TW.md`](github-gcp-neon-maintenance.zh-TW.md).
+
 The manual production migration workflow is in `.github/workflows/migrate-production.yml`. It
 requires an already-pushed commit-tagged image, a protected `production` GitHub environment, and
 Workload Identity Federation. It never receives the Neon URL and never restores application data.
 The separate `.github/workflows/publish-api-image.yml` workflow manually builds and pushes that
 immutable image without running migrations, deploying Cloud Run, or moving traffic.
+`.github/workflows/deploy-api-candidate.yml` then deploys the same commit-tagged image with zero
+production traffic, verifies the candidate tag and public health, and leaves authenticated smoke,
+promotion, and rollback as explicit operator gates.
 
 ## Next Action
 
-Configure the protected GitHub environment, Google Workload Identity Federation, and separate
-least-privilege image publisher identity. Exercise the publish workflow and then the migration
-workflow against an already-current schema. Capture their safe evidence, verify live health plus
-owner-scoped reads/writes, reconcile the restored data, and rehearse application rollback before
-closing the issue.
+Reconcile restored table counts, relationships, and owner mappings without recording private
+content. Commit and remotely exercise the candidate deployment workflow after its local checks,
+using the already-working WIF publishing and migration path for the same ref. Record safe
+workflow/revision identifiers and timings. The live frontend, authenticated review write, manual
+candidate promotion, compatible rollback rehearsal, and remote publish/migration workflows are
+already operator-reported as successful.

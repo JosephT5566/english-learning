@@ -1,6 +1,6 @@
 # English Learning Project Memory
 
-Last updated: 2026-09-14
+Last updated: 2026-09-15
 
 ## Purpose
 
@@ -52,9 +52,13 @@ locally verified locked non-root API container plus a checked-in Cloud Run/Neon 
 Cloud Run Singapore and Neon AWS Singapore are selected; Neon is the sole writable source of truth.
 Production TLS configuration, separate version-pinned runtime/migration secrets, migration-before-
 candidate ordering, explicit smoke/promotion, and compatible application rollback are encoded
-locally. The operator reports that Cloud Run and Neon are deployed, initial schema/data transfer is
-complete, and the live readiness database check passes. GitHub migration execution, authenticated
-production behavior, restored-data reconciliation, and rollback rehearsal remain pending.
+locally. The operator reports that Cloud Run, Neon, and the GitHub Pages frontend are deployed,
+initial schema/data transfer is complete, and live readiness plus authenticated frontend read/create
+calls pass. A controlled review write and exact idempotent replay passed against production; smoke
+checks also passed on the candidate, after promotion, and after rollback to a compatible revision.
+The operator reports that the new image-publishing and migration workflows also ran successfully
+through WIF. Restored-data reconciliation, database-role separation evidence, and remote execution
+of the new candidate-deployment workflow remain pending.
 
 The operator reports that Neon received the schema through local Alembic plus data through
 `pg_dump`/`pg_restore`, and observed
@@ -64,7 +68,9 @@ releases now have one protected manual GitHub workflow that uses OIDC and a dedi
 Artifact-Registry-only identity to publish an immutable commit-tagged API image, followed by a
 separate workflow that invokes the Secret Manager-backed Cloud Run migration job, serializes
 production runs, and checks that every Alembic head is applied without exposing the Neon URL to
-GitHub. Remote execution of both workflows remains unverified.
+GitHub. The operator reports successful remote execution of both workflows through WIF. A third
+protected workflow now encodes zero-traffic candidate deployment and public health verification;
+its remote execution remains unverified.
 
 The Weeks 0-3 milestone is complete and audited locally in
 [`issues/issue-12/README.md`](issues/issue-12/README.md). GitHub shows issues #4 through #11 closed,
@@ -302,9 +308,10 @@ remain documented.
 Issue #25's local management write and runtime-configuration boundaries are complete. CI and Pages
 deployment no longer provide an Apps Script URL; the preserved wrapper requires explicit endpoint
 injection, and deployment now rejects a missing or non-HTTPS FastAPI origin. The configured static
-build contains no Apps Script value. A production API host and successful database readiness check
-are now operator-reported; exact CORS, remote CI, authenticated read/write flows, frontend cutover,
-and the production rollback boundary remain unverified.
+build contains no Apps Script value. The operator now reports a deployed frontend using the
+production API, successful authenticated reads/creates, and complete review-write smoke checks
+across candidate, promotion, and rollback. Remote CI details and recorded revision/timing evidence
+remain unavailable.
 
 Issue #26's provider-neutral container and provider/release design boundaries are complete locally.
 The two-stage image excludes development dependencies, runs as `10001:10001`, honors `PORT`, and
@@ -315,12 +322,16 @@ and migration identities, migration-before-candidate ordering, zero-traffic smok
 and application rollback. The resulting 251-test PostgreSQL suite, Ruff lint/format, uv lock check,
 Bash syntax checks, invalid-input script checks, and whitespace validation pass locally. No registry
 or deployed behavior was verified at that local checkpoint. The operator now reports the registry,
-Cloud Run, Neon schema/data bootstrap, and successful live database readiness check; authenticated
-behavior, role separation, automated migration, reconciliation, and rollback remain unverified.
+Cloud Run, Neon schema/data bootstrap, frontend cutover, successful live database readiness,
+authenticated owned reads, a controlled review write with exact idempotent replay, candidate
+promotion, compatible rollback smoke checks, and successful WIF-based publish/migration workflow
+runs. Role separation, the new candidate workflow's remote execution, and restored-data
+reconciliation remain unverified.
 
 ## Next action
 
-Configure the Issue #26 protected GitHub environment and Google Workload Identity Federation, then
-exercise the production migration workflow against the already-current schema. Verify live health,
-owner-scoped reads/writes, and restored-data reconciliation before finishing Issue #25's cutover;
-preserve a timed rollback rehearsal and safe snapshots.
+Reconcile the restored production data with safe counts, relationships, and owner mappings. Commit
+and remotely exercise the candidate-deployment workflow through the already-working protected WIF
+path, using the same ref as the successful image-publishing and migration workflows. Preserve safe
+workflow/revision identifiers and timings; the live authenticated review write and compatible
+rollback rehearsal are already operator-reported as successful.

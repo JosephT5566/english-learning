@@ -1,0 +1,278 @@
+name: Deploy API candidate
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: Type deploy-api-candidate to deploy this commit with zero traffic
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: production-api-release
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy and verify zero-traffic API candidate
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: production
+    env:
+      ARTIFACT_REGION: ${{ vars.ARTIFACT_REGION }}
+      ARTIFACT_REPOSITORY: ${{ vars.ARTIFACT_REPOSITORY }}
+      API_IMAGE_NAME: ${{ vars.API_IMAGE_NAME }}
+      API_SERVICE: ${{ vars.API_SERVICE }}
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_REGION: ${{ vars.GCP_REGION }}
+      GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+      GCP_GITHUB_SERVICE_ACCOUNT: ${{ vars.GCP_GITHUB_SERVICE_ACCOUNT }}
+      RUNTIME_SERVICE_ACCOUNT: ${{ vars.RUNTIME_SERVICE_ACCOUNT }}
+      RUNTIME_DATABASE_SECRET: ${{ vars.RUNTIME_DATABASE_SECRET }}
+      RUNTIME_DATABASE_SECRET_VERSION: ${{ vars.RUNTIME_DATABASE_SECRET_VERSION }}
+      GOOGLE_OAUTH_CLIENT_ID: ${{ vars.PUBLIC_GOOGLE_AUTH_CLIENT_ID }}
+      CORS_ALLOWED_ORIGINS: ${{ vars.CORS_ALLOWED_ORIGINS }}
+      CONFIRMATION: ${{ inputs.confirmation }}
+
+    steps:
+      - name: Validate protected candidate configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "${CONFIRMATION}" != "deploy-api-candidate" ]]; then
+            echo "Confirmation must exactly match deploy-api-candidate." >&2
+            exit 1
+          fi
+
+          required_variables=(
+            ARTIFACT_REGION
+            ARTIFACT_REPOSITORY
+            API_IMAGE_NAME
+            API_SERVICE
+            GCP_PROJECT_ID
+            GCP_REGION
+            GCP_WORKLOAD_IDENTITY_PROVIDER
+            GCP_GITHUB_SERVICE_ACCOUNT
+            RUNTIME_SERVICE_ACCOUNT
+            RUNTIME_DATABASE_SECRET
+            RUNTIME_DATABASE_SECRET_VERSION
+            GOOGLE_OAUTH_CLIENT_ID
+            CORS_ALLOWED_ORIGINS
+          )
+
+          for variable_name in "${required_variables[@]}"; do
+            if [[ -z "${!variable_name:-}" ]]; then
+              echo "Missing GitHub production environment variable: ${variable_name}." >&2
+              exit 1
+            fi
+          done
+
+          if [[ ! "${RUNTIME_DATABASE_SECRET_VERSION}" =~ ^[1-9][0-9]*$ ]]; then
+            echo "RUNTIME_DATABASE_SECRET_VERSION must be a pinned numeric secret version, not latest." >&2
+            exit 1
+          fi
+
+      - name: Checkout selected release ref
+        uses: actions/checkout@v6
+
+      - name: Authenticate to Google Cloud with OIDC
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ env.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ env.GCP_GITHUB_SERVICE_ACCOUNT }}
+
+      - name: Set up Google Cloud CLI
+        uses: google-github-actions/setup-gcloud@v3
+        with:
+          project_id: ${{ env.GCP_PROJECT_ID }}
+
+      - name: Resolve immutable candidate image and revision
+        id: release
+        shell: bash
+        run: |
+          set -euo pipefail
+          release_id="${GITHUB_SHA:0:12}"
+          image="${ARTIFACT_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/${ARTIFACT_REPOSITORY}/${API_IMAGE_NAME}:${release_id}"
+          revision="${API_SERVICE}-${release_id}"
+          echo "release_id=${release_id}" >> "${GITHUB_OUTPUT}"
+          echo "image=${image}" >> "${GITHUB_OUTPUT}"
+          echo "revision=${revision}" >> "${GITHUB_OUTPUT}"
+
+      - name: Verify image and existing service
+        shell: bash
+        env:
+          IMAGE: ${{ steps.release.outputs.image }}
+          REVISION: ${{ steps.release.outputs.revision }}
+        run: |
+          set -euo pipefail
+
+          gcloud artifacts docker images describe "${IMAGE}" \
+            --project "${GCP_PROJECT_ID}" >/dev/null
+
+          gcloud run services describe "${API_SERVICE}" \
+            --project "${GCP_PROJECT_ID}" \
+            --region "${GCP_REGION}" >/dev/null
+
+          if gcloud run revisions describe "${REVISION}" \
+            --project "${GCP_PROJECT_ID}" \
+            --region "${GCP_REGION}" >/dev/null 2>&1; then
+            echo "Candidate revision already exists and will not be overwritten: ${REVISION}" >&2
+            exit 1
+          fi
+
+      - name: Record current production traffic
+        id: previous
+        shell: bash
+        run: |
+          set -euo pipefail
+          service_file="${RUNNER_TEMP}/service-before.json"
+
+          gcloud run services describe "${API_SERVICE}" \
+            --project "${GCP_PROJECT_ID}" \
+            --region "${GCP_REGION}" \
+            --format=json > "${service_file}"
+
+          previous_traffic="$(python3 -c '
+          import json
+          import sys
+
+          with open(sys.argv[1], encoding="utf-8") as source:
+              service = json.load(source)
+
+          allocations = []
+          for target in service.get("status", {}).get("traffic", []):
+              percent = target.get("percent", 0)
+              if percent > 0:
+                  revision = target.get("revisionName", "latest")
+                  allocations.append(f"{revision}={percent}%")
+
+          print(", ".join(allocations) or "none")
+          ' "${service_file}")"
+
+          echo "traffic=${previous_traffic}" >> "${GITHUB_OUTPUT}"
+
+      - name: Deploy zero-traffic candidate
+        shell: bash
+        env:
+          IMAGE: ${{ steps.release.outputs.image }}
+          RELEASE_ID: ${{ steps.release.outputs.release_id }}
+        run: |
+          set -euo pipefail
+          environment_variables="^@^APP_ENV=production@LOG_LEVEL=INFO@DATABASE_CONNECT_TIMEOUT_SECONDS=5@GOOGLE_OAUTH_CLIENT_ID=${GOOGLE_OAUTH_CLIENT_ID}@CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS}"
+
+          gcloud run deploy "${API_SERVICE}" \
+            --project "${GCP_PROJECT_ID}" \
+            --region "${GCP_REGION}" \
+            --image "${IMAGE}" \
+            --revision-suffix "${RELEASE_ID}" \
+            --tag candidate \
+            --no-traffic \
+            --ingress all \
+            --service-account "${RUNTIME_SERVICE_ACCOUNT}" \
+            --port 8080 \
+            --cpu 1 \
+            --memory 512Mi \
+            --concurrency 20 \
+            --min-instances 0 \
+            --max-instances 1 \
+            --timeout 30s \
+            --set-env-vars "${environment_variables}" \
+            --set-secrets "DATABASE_URL=${RUNTIME_DATABASE_SECRET}:${RUNTIME_DATABASE_SECRET_VERSION}" \
+            --startup-probe httpGet.path=/health/live,initialDelaySeconds=0,timeoutSeconds=2,periodSeconds=2,failureThreshold=15 \
+            --liveness-probe httpGet.path=/health/live,initialDelaySeconds=0,timeoutSeconds=2,periodSeconds=10,failureThreshold=3 \
+            --quiet
+
+      - name: Resolve and verify candidate traffic state
+        id: candidate
+        shell: bash
+        env:
+          EXPECTED_REVISION: ${{ steps.release.outputs.revision }}
+        run: |
+          set -euo pipefail
+          service_file="${RUNNER_TEMP}/service-after.json"
+
+          gcloud run services describe "${API_SERVICE}" \
+            --project "${GCP_PROJECT_ID}" \
+            --region "${GCP_REGION}" \
+            --format=json > "${service_file}"
+
+          candidate="$(python3 -c '
+          import json
+          import sys
+
+          expected_revision = sys.argv[2]
+          with open(sys.argv[1], encoding="utf-8") as source:
+              service = json.load(source)
+
+          traffic = service.get("status", {}).get("traffic", [])
+          tagged = [target for target in traffic if target.get("tag") == "candidate"]
+          if len(tagged) != 1:
+              raise SystemExit("Expected exactly one candidate traffic tag")
+
+          candidate = tagged[0]
+          if candidate.get("revisionName") != expected_revision:
+              raise SystemExit("Candidate tag does not point to the expected revision")
+
+          serving_revisions = {
+              target.get("revisionName")
+              for target in traffic
+              if target.get("percent", 0) > 0
+          }
+          if expected_revision in serving_revisions:
+              raise SystemExit("Candidate unexpectedly received production traffic")
+
+          candidate_url = candidate.get("url")
+          if not candidate_url:
+              raise SystemExit("Candidate tag has no URL")
+
+          print(f"{expected_revision}\t{candidate_url}")
+          ' "${service_file}" "${EXPECTED_REVISION}")"
+
+          IFS=$'\t' read -r candidate_revision candidate_url <<< "${candidate}"
+          echo "revision=${candidate_revision}" >> "${GITHUB_OUTPUT}"
+          echo "url=${candidate_url}" >> "${GITHUB_OUTPUT}"
+
+      - name: Verify candidate public health
+        shell: bash
+        env:
+          CANDIDATE_URL: ${{ steps.candidate.outputs.url }}
+        run: |
+          set -euo pipefail
+
+          curl --fail --silent --show-error \
+            --retry 6 \
+            --retry-all-errors \
+            --retry-delay 2 \
+            "${CANDIDATE_URL}/health/live" >/dev/null
+
+          curl --fail --silent --show-error \
+            --retry 6 \
+            --retry-all-errors \
+            --retry-delay 2 \
+            "${CANDIDATE_URL}/health/ready" >/dev/null
+
+      - name: Record safe candidate summary
+        shell: bash
+        env:
+          CANDIDATE_URL: ${{ steps.candidate.outputs.url }}
+          IMAGE: ${{ steps.release.outputs.image }}
+          PREVIOUS_TRAFFIC: ${{ steps.previous.outputs.traffic }}
+          REVISION: ${{ steps.candidate.outputs.revision }}
+        run: |
+          {
+            echo "## Zero-traffic API candidate"
+            echo
+            echo "- Source commit: \`${GITHUB_SHA}\`"
+            echo "- Image: \`${IMAGE}\`"
+            echo "- Revision: \`${REVISION}\`"
+            echo "- Candidate URL: ${CANDIDATE_URL}"
+            echo "- Previous production traffic: \`${PREVIOUS_TRAFFIC}\`"
+            echo "- Result: zero production traffic, liveness passed, and readiness passed"
+            echo
+            echo "Run the authenticated smoke checks before manually promoting this revision."
+          } >> "${GITHUB_STEP_SUMMARY}"

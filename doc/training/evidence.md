@@ -613,3 +613,35 @@ Use precise language such as “project,” “local load test,” or “deploye
 - Limitations: Registry, remote CI, provider, encrypted PostgreSQL, external secrets, production
   probes/CORS, migration execution, deployment, and rollback rehearsal are unverified.
 - Candidate resume bullet: Not yet. Revisit after deployment and recovery evidence.
+
+### Cloud Run and Neon staged-release rehearsal
+
+- Date: 2026-09-15
+- Status: Operator-verified production rehearsal and WIF publishing/migration automation; safe
+  identifiers and data reconciliation remain open
+- Problem: Prove that the deployed frontend/API/database path supports authenticated owned access,
+  a real transactional review write, staged candidate verification, promotion, and
+  schema-compatible application rollback.
+- Decision: Keep Neon as the only production source of truth, migrate before deploying a
+  zero-traffic Cloud Run candidate, require authenticated smoke checks before promotion, and roll
+  application traffic back without automatically downgrading PostgreSQL.
+- Implementation references: `deploy/cloud-run/smoke.sh`, `deploy/cloud-run/release.sh`,
+  `.github/workflows/migrate-production.yml`, `.github/workflows/publish-api-image.yml`,
+  `.github/workflows/deploy-api-candidate.yml`, and `doc/training/issues/issue-26/runbook.md`.
+- Verification: The operator reported that the deployed GitHub Pages frontend's authenticated
+  read/create API calls succeeded. The production smoke script printed
+  `Public health and authenticated owned-read checks passed` and
+  `Controlled review write and exact idempotent replay passed`. The operator then reported
+  successful smoke checks for the zero-traffic candidate, the promoted revision, and the compatible
+  rollback target. The operator later reported successful remote runs of the protected WIF image
+  publishing and production migration workflows.
+- Measured result: One live owned-read path and one controlled review transaction with exact
+  same-key replay succeeded; smoke checks passed across candidate, promotion, and rollback stages.
+  This is not a latency, availability, scale, or SLA measurement.
+- Limitations: This evidence is operator-reported and does not include workflow run/revision IDs,
+  timings, raw logs, complete restored-data counts/relationships, independent database-role proof,
+  or a remote execution of the new candidate-deployment workflow.
+- Candidate resume bullet: Deployed a containerized FastAPI/PostgreSQL application to Cloud Run and
+  Neon using staged candidate verification, an authenticated transactional smoke test with
+  idempotent replay, and schema-compatible traffic rollback. Describe this as project experience,
+  not professional production-service ownership.

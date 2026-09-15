@@ -1,6 +1,6 @@
 # Development Memory
 
-Last updated: 2026-09-12
+Last updated: 2026-09-15
 
 ## Commands
 
@@ -95,17 +95,20 @@ Issue #26 targets Cloud Run in `asia-southeast1` with Neon PostgreSQL in AWS Sin
 promotion, and rollback. Database URLs belong only in their separate, version-pinned Secret
 Manager secrets; do not add them to the release environment file.
 
+Use `doc/training/issues/issue-26/github-gcp-neon-maintenance.zh-TW.md` when changing GitHub
+Environment Variables, WIF, service accounts, IAM bindings, Secret Manager resources, or Neon
+roles. It maps each identity and variable to the publish, migration, and candidate workflows.
+
 The release script runs migrations through a single-task Cloud Run job, then creates a tagged
 candidate revision with zero production traffic. The smoke script checks `/health/ready` before
 promotion because Cloud Run supports startup and liveness probes but has no readiness-probe deploy
 setting.
 
-For later schema-only releases, `.github/workflows/migrate-production.yml` provides a manual,
-serialized production migration path. It requires a protected `production` GitHub environment,
-OIDC-based Google authentication, and an existing image tagged with the selected ref's 12-character
-commit hash. The GitHub runner never receives `DATABASE_URL`; the Cloud Run job reads its direct Neon
-URL from Secret Manager, verifies `alembic current --check-heads`, and checks the deployed API's
-database readiness after the upgrade.
+Three protected manual workflows publish the immutable commit-tagged image, migrate production, and
+deploy a zero-traffic candidate. They share a concurrency group and must use the same selected ref.
+They require OIDC-based Google authentication and a protected `production` GitHub environment. The
+GitHub runner never receives `DATABASE_URL`; the migration job and API revision read separate direct
+and pooled Neon URLs from Secret Manager through their own runtime identities.
 
 ## Validation Expectations
 
