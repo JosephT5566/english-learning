@@ -1,6 +1,6 @@
 # Ticket 26：Cloud Run 與 Neon 部署筆記
 
-最後更新：2026-09-15
+最後更新：2026-09-16
 
 這份筆記整理 Ticket 26 實作與部署時做出的選擇、已完成的操作，以及後續 release
 應遵守的安全界線。Repository 內可以驗證的是 container、release script、GitHub Actions
@@ -28,6 +28,55 @@ Cloud SQL replica。Cloud SQL 仍可在後續作為 GCP 的練習題，但若沒
 這個選擇也有已接受的限制：Neon Free 與 scale-to-zero 可能有冷啟動、資源與還原時效限制，
 初期也沒有私有網路或平台 SLA。獨立備份到 GCS、restore proof、監控與 incident drill 留到
 Issue 27 處理。
+
+## 一個 image，兩種 Cloud Run 執行方式
+
+Cloud Run Service 和 Cloud Run Job 都是 serverless container resources；Google 管理底層機器、
+container 啟停與執行環境，我們管理 image、啟動命令、identity、secrets 和資源限制。兩者的主要
+差異是 lifecycle，而不是一定要使用不同的 image：
+
+| Resource | 工作模式 | 本專案用途 |
+| --- | --- | --- |
+| Cloud Run Service | 提供穩定 HTTPS endpoint；instance 監聽 `PORT`、處理多個 requests，並可隨流量縮到零再啟動 | FastAPI API |
+| Cloud Run Job | 每次 execution 啟動一個或多個 tasks；process 完成並 exit 後結束，不提供 HTTP service endpoint | Alembic schema migration |
+
+Service 是持續存在的 Cloud Run resource，但底下的 container instance 是可拋棄的。本專案設定
+`min instances = 0`，所以沒有流量時可以沒有正在執行的 instance；之後收到 request 時再 cold
+start。Job definition 也會持續存在，但每次 Job execution 都是 run-to-completion；可以由 operator、
+schedule 或 workflow 重複觸發，並不是只能執行一次。本專案 migration 設為一個 task、parallelism
+一、零 retry，避免多個 Alembic processes 同時修改 schema。
+
+`apps/api/Dockerfile` 將 FastAPI application、Alembic、migration files 和 dependencies 放進同一個
+image，並提供預設 `CMD`：
+
+```dockerfile
+CMD ["python", "-m", "app.serve"]
+```
+
+`CMD` 是 image metadata 中的預設 container command，不會在 image build 時執行。API Service 透過
+`gcloud run deploy` 使用這個預設，因此 container 的主要 process 是長時間監聽 `PORT` 的
+`python -m app.serve`。Migration Job 則透過 `gcloud run jobs deploy` 明確覆寫 command 和 args：
+
+```text
+--command alembic --args upgrade,head
+```
+
+因此同一個 immutable image 有兩條啟動路徑：
+
+```text
+commit-tagged API image
+  ├─ Cloud Run Service → image default CMD → python -m app.serve
+  └─ Cloud Run Job    → deployment override → alembic upgrade head
+```
+
+Dockerfile 沒有宣告兩個 `ENTRYPOINT`，也沒有為 Service 和 Job build 兩份 image。它只提供一個
+預設 `CMD`；Cloud Run Job 的 resource configuration 在啟動時覆寫它。這也確保 application code 和
+與它相容的 Alembic revisions 來自同一個 commit-tagged artifact。
+
+未來一般 Neon schema 變更仍走相同路徑：新增並測試 Alembic revision、publish 新 image、以同一
+ref 執行 migration Job、確認 `current --check-heads`，再部署 zero-traffic API candidate、smoke 並
+promotion。`pg_dump`、`pg_restore`、大量資料搬移或更換 database provider 不屬於這個 schema
+migration Job 的責任。
 
 ## 我們新增或擴充了哪些 GitHub Actions
 

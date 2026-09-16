@@ -1,6 +1,6 @@
 # GitHub、GCP 與 Neon 身份和設定維護筆記
 
-最後更新：2026-09-15
+最後更新：2026-09-16
 
 這份文件集中記錄 production release automation 中 GitHub Actions、Google Cloud 與 Neon 的
 信任關係、身份、權限、Variables 和 secrets。實際執行步驟仍以 [`runbook.md`](runbook.md) 為準；
@@ -48,6 +48,43 @@ flowchart TD
 GitHub runner 不會取得 Neon URL。`--set-secrets` 只把 Secret Manager resource reference 寫入
 Cloud Run job 或 service；真正啟動 container 時，對應的 Cloud Run runtime identity 才能讀取
 secret payload。
+
+### WIF、service account 與 IAM 的分工
+
+這三個名詞代表不同責任：
+
+- **Workload Identity Federation（WIF）** 是外部 identity 到 GCP identity 的信任橋樑。Provider
+  驗證 GitHub Actions OIDC token 的 issuer、repository、environment 等 claims；WIF 本身不執行
+  `gcloud` 指令，也不直接提供 Artifact Registry、Cloud Run 或 Secret Manager 權限。
+- **Service account（SA）** 是給 workload 使用的 GCP principal，不是人類 Google account。
+  GitHub runner 通過 WIF 驗證後，取得指定 GitHub SA 的短效 credential；後續仍由 runner 呼叫
+  GCP APIs，只是每個 request 代表該 SA。
+- **IAM role 與 policy binding** 決定 principal 能對哪個 scope 的 resource 做哪些操作。SA 是
+  身份，IAM 是授權系統，role 是一組 permissions；不宜把 SA 籠統稱為「IAM account」。
+
+需要同時完成兩層授權：
+
+1. 在目標 GitHub SA 上，將 `Workload Identity User` 授予符合 provider conditions 的 WIF
+   principal，允許 GitHub workflow impersonate 該 SA。
+2. 在實際 GCP resources 上，將工作需要的最小 roles 授予該 SA，例如 publisher 的 Artifact
+   Registry Writer，或 release deployer 的 Artifact Registry Reader 與 Cloud Run Developer。
+
+GitHub release deployer 與 Cloud Run runtime identities 也必須分開理解：deployer 使用 `Service
+Account User`（`iam.serviceAccounts.actAs`）把指定 runtime SA attach 到 Job 或 Service，但不因此
+取得該 runtime SA 能讀取的 secret。真正啟動 container 後，才由 migration 或 API runtime SA
+讀取各自的 Secret Manager secret：
+
+```text
+GitHub OIDC token
+  → WIF 驗證 claims
+  → GitHub runner 暫時 impersonate release deployer SA
+  → deployer 建立／更新 Cloud Run resource 並 attach runtime SA
+  → Cloud Run container 以 runtime SA 執行
+  → runtime SA 讀取唯一對應的 database secret
+```
+
+因此排查時要分辨錯誤發生在哪一層：OIDC/WIF 驗證、WIF principal impersonation、deployer 對
+GCP resource 的 IAM permission、`actAs` runtime SA，或 runtime SA 對 secret 的存取權。
 
 ## 身份與責任
 
