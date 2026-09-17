@@ -68,6 +68,25 @@ def _emit_request_event(request: Request, response: Response, elapsed_ms: int) -
         pass
 
 
+def emit_review_outcome(request: Request) -> None:
+    """Record a review result only after its request transaction commits."""
+
+    outcome = getattr(request.state, "review_outcome", None)
+    item_count = getattr(request.state, "review_item_count", None)
+    if outcome not in {"committed", "replayed"} or not isinstance(item_count, int):
+        return
+    event = {
+        "event": "review_submission_completed",
+        "request_id": str(request.state.request_id),
+        "outcome": outcome,
+        "item_count": item_count,
+    }
+    try:
+        print(json.dumps(event, separators=(",", ":")), flush=True)
+    except OSError:
+        pass
+
+
 async def add_request_id(
     request: Request,
     call_next: Callable[[Request], Awaitable[Response]],

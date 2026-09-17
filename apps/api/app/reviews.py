@@ -18,7 +18,7 @@ from app.database import database_session
 from app.errors import ApiError
 
 router = APIRouter(prefix="/v1")
-SessionDependency = Annotated[Session, Depends(database_session)]
+SessionDependency = Annotated[Session, Depends(database_session, scope="function")]
 Decision = Literal["no", "no_a_bit", "yes_a_bit", "yes"]
 ALGORITHM_VERSION = "srs-v1"
 TAIPEI = ZoneInfo("Asia/Taipei")
@@ -304,6 +304,8 @@ def submit_reviews(
                 code="idempotency_key_reused",
                 message="The idempotency key was already used for different content.",
             )
+        request.state.review_outcome = "replayed"
+        request.state.review_item_count = len(payload.items)
         return _replay_result(session, batch)
 
     card_ids = sorted(item.card_id for item in payload.items)
@@ -471,6 +473,8 @@ def submit_reviews(
         if updated.rowcount != 1:
             raise RuntimeError("locked review state changed unexpectedly")
 
+    request.state.review_outcome = "committed"
+    request.state.review_item_count = len(results)
     return ReviewResult(
         batch_id=batch.id,
         reviewed_at=reviewed_at,

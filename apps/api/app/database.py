@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.config import Settings
 from app.errors import ApiError
+from app.request_context import emit_review_outcome
 
 
 def create_database_engine(settings: Settings) -> Engine:
@@ -58,6 +59,7 @@ def database_session(request: Request) -> Iterator[Session]:
     try:
         yield session
         session.commit()
+        emit_review_outcome(request)
     except IntegrityError:
         session.rollback()
         raise ApiError(

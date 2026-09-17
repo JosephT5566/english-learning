@@ -112,7 +112,7 @@ def _credentials(
 def current_user(
     request: Request,
     token: Annotated[str, Depends(_credentials)],
-    session: Annotated[Session, Depends(database_session)],
+    session: Annotated[Session, Depends(database_session, scope="function")],
 ) -> AuthenticatedUser:
     """Verify identity, upsert by Google subject, and return internal ownership."""
 

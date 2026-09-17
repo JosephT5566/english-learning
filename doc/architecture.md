@@ -62,8 +62,8 @@ Last updated: 2026-09-15
 - `apps/api/app/database.py`: lazy SQLAlchemy engine construction, application-scoped session factory,
   explicit transaction ownership, readiness queries, and pool disposal.
 - `apps/api/app/errors.py`: stable safe API error models and application/framework exception handlers.
-- `apps/api/app/request_context.py`: per-request UUID generation for response headers, error
-  correlation, and future structured logs.
+- `apps/api/app/request_context.py`: per-request UUID generation and bounded JSON completion
+  events for HTTP requests and committed/replayed review submissions.
 - `apps/api/app/health.py`: database-independent liveness and database-aware readiness contracts.
 - `apps/api/app/auth.py`: Google ID-token verification, verified-claim allowlisting, stable subject
   to internal-user mapping, and the reusable authenticated-user dependency.

@@ -20,7 +20,8 @@ Last updated: 2026-09-14
   only `ok` or `unavailable`, and can recover without restarting the API.
 - Keep the SQLAlchemy session factory application-scoped but make each unit of work own one
   short-lived session and transaction. The boundary commits only on success, rolls back on caller or
-  commit failure, and always closes the session.
+  commit failure, and always closes the session. FastAPI yield dependencies use function scope so
+  request commits and their errors finish before the HTTP response is sent.
 - Keep Alembic inside the independently runnable API package and load its database connection through
   the same validated, secret-safe settings and engine factories as the application. Start migration
   history with an empty reversible baseline before domain tables are introduced.

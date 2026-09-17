@@ -135,9 +135,10 @@ interview evidence.
 
 ## Next action
 
-The operator deferred Issue #27's zero-traffic candidate verification. Next,
-define safe review/import outcome signals locally while preserving transaction
-truth. The deployed request-ID lookup, proposed narrow platform-log exclusion
+The operator deferred Issue #27's zero-traffic candidate verification. Local
+review outcome logging now occurs after transaction commit and distinguishes
+new batches from replays. Next, define safe import outcome signals. The deployed
+request-ID lookup, proposed narrow platform-log exclusion
 (raw URLs currently retain for 30 days in `_Default`), and one alert remain
 open. The initial restored-data reconciliation remains deferred, not verified;
 Issue #27's independent backup/restore proof is a separate boundary.

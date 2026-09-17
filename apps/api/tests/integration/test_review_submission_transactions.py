@@ -1,5 +1,6 @@
 """HTTP/PostgreSQL tests for atomic and idempotent review submissions."""
 
+import json
 import os
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
@@ -11,6 +12,7 @@ from uuid import uuid4
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import Engine, text
+from sqlalchemy.exc import SQLAlchemyError
 
 import app.reviews as reviews_module
 from app.auth import VerifiedGoogleIdentity
@@ -106,6 +108,70 @@ def review_counts(engine: Engine) -> tuple[int, int]:
                 """
             )
         ).one()
+
+
+def review_outcome_events(
+    capsys: pytest.CaptureFixture[str],
+) -> list[dict[str, object]]:
+    return [
+        event
+        for line in capsys.readouterr().out.splitlines()
+        if (event := json.loads(line))["event"] == "review_submission_completed"
+    ]
+
+
+def test_review_signal_distinguishes_commit_and_replay_without_private_data(
+    api_client: TestClient,
+    migrated_database_engine: Engine,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    key = str(uuid4())
+    first = post_review(api_client, key=key)
+    replay = post_review(api_client, key=key)
+
+    assert first.status_code == replay.status_code == 200
+    assert review_counts(migrated_database_engine) == (2, 3)
+    events = review_outcome_events(capsys)
+    assert [event["outcome"] for event in events] == ["committed", "replayed"]
+    assert [event["request_id"] for event in events] == [
+        first.headers["X-Request-ID"],
+        replay.headers["X-Request-ID"],
+    ]
+    for event in events:
+        assert set(event) == {"event", "request_id", "outcome", "item_count"}
+        assert event["item_count"] == 1
+        assert key not in json.dumps(event)
+        assert ENGLISH_CARD_ID not in json.dumps(event)
+
+
+def test_failed_review_commit_emits_no_success_signal(
+    api_client: TestClient,
+    migrated_database_engine: Engine,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    original_factory = api_client.app.state.database_session_factory
+
+    def failing_factory():
+        session = original_factory()
+
+        def fail_commit() -> None:
+            raise SQLAlchemyError("injected commit failure with private-card-text")
+
+        session.commit = fail_commit
+        return session
+
+    monkeypatch.setattr(
+        api_client.app.state, "database_session_factory", failing_factory
+    )
+    response = post_review(api_client, key=str(uuid4()))
+
+    assert response.status_code == 503
+    assert response.json()["error"]["code"] == "database_unavailable"
+    assert review_counts(migrated_database_engine) == (1, 2)
+    captured = capsys.readouterr()
+    assert "review_submission_completed" not in captured.out
+    assert "private-card-text" not in captured.out + captured.err
 
 
 def test_success_writes_one_event_and_matching_state_transition(
@@ -315,6 +381,7 @@ def test_injected_failure_between_event_and_state_rolls_back_everything(
     api_client: TestClient,
     migrated_database_engine: Engine,
     monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     def fail(_session: object) -> None:
         raise RuntimeError("injected after event insert")
@@ -331,6 +398,7 @@ def test_injected_failure_between_event_and_state_rolls_back_everything(
             {"id": ENGLISH_CARD_ID},
         ).scalar_one()
     assert version == 2
+    assert review_outcome_events(capsys) == []
 
 
 def test_concurrent_different_keys_produce_one_transition_and_one_stale_conflict(

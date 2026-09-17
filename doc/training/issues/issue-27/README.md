@@ -195,7 +195,7 @@ failure before marking this boundary deployed and verified.
 | Request ID, rate, latency, status, error class | Bounded JSON event and local/CI tests pass | Verify parsing and lookup on a zero-traffic candidate |
 | Database readiness | Failed probe has `database` outcome locally | Check deployed signal; design pool-usage signal if justified |
 | Authentication failures | Stable auth class locally | Check deployed counts and alert noise |
-| Review outcomes | Route/status identifies HTTP success and failure | Distinguish committed new review from exact replay and failed transaction safely |
+| Review outcomes | Local `review_submission_completed` event distinguishes committed batches from exact replays after transaction completion; integration tests cover failed commit and rollback without a false success event | Verify deployed event and query; tune operational use from observed traffic |
 | Import outcomes | Existing CLI reports and audit rows exist | Define safe completion/failure events and operator query; imports are not HTTP requests |
 | Alerting | Failure query and response steps drafted | Observe baseline, choose owner/threshold, configure and test alert |
 | Retention/privacy | Application event excludes tested private values; platform URL/retention audit completed | Verify deployed events and decide narrow platform-log exclusion |
@@ -203,6 +203,33 @@ failure before marking this boundary deployed and verified.
 The operator deferred the candidate workflow on 2026-09-17. No image was
 published and no new revision or alert was created from this branch. Local
 signal design can continue; deployed acceptance remains open.
+
+### Review transaction signal, 2026-09-17
+
+The review endpoint marks a proposed `committed` or `replayed` outcome in
+request state. The shared transaction dependency emits the bounded
+`review_submission_completed` JSON event only after `session.commit()` succeeds.
+It contains the server request ID, outcome, and item count; it omits card IDs,
+content, owner identity, and idempotency keys. Failed writes use the existing
+HTTP completion event and emit no review success event. Query drafts:
+
+```text
+resource.type="cloud_run_revision"
+resource.labels.service_name="SERVICE_NAME"
+jsonPayload.event="review_submission_completed"
+jsonPayload.request_id="REPORTED_REQUEST_UUID"
+```
+
+An injected commit failure exposed that FastAPI's default request-scoped yield
+cleanup could send HTTP 200 before commit failed. All HTTP database-session
+dependencies now use function scope, so commit and its safe error response
+finish before response delivery. This also keeps authentication and the route
+on the same cached session. The focused PostgreSQL review suite passed 14
+tests, including fresh commit, exact replay, injected commit failure, and an
+  injected failure between event and state writes. The complete PostgreSQL
+  integration suite passed 149 tests, and the unit suite passed 109; scoped
+  Ruff lint and format checks passed. These are local results, not deployed
+  signal evidence.
 
 ## Later boundaries
 
