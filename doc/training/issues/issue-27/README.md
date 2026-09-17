@@ -196,7 +196,7 @@ failure before marking this boundary deployed and verified.
 | Database readiness | Failed probe has `database` outcome locally | Check deployed signal; design pool-usage signal if justified |
 | Authentication failures | Stable auth class locally | Check deployed counts and alert noise |
 | Review outcomes | Local `review_submission_completed` event distinguishes committed batches from exact replays after transaction completion; integration tests cover failed commit and rollback without a false success event | Verify deployed event and query; tune operational use from observed traffic |
-| Import outcomes | Existing CLI reports and audit rows exist | Define safe completion/failure events and operator query; imports are not HTTP requests |
+| Import outcomes | Local CLI event records bounded operation, outcome, phase, commit state, completed report count, and replay state; tests cover failure after commit | Capture and inspect a real operator run when imports are next needed; CLI events are not Cloud Run HTTP metrics |
 | Alerting | Failure query and response steps drafted | Observe baseline, choose owner/threshold, configure and test alert |
 | Retention/privacy | Application event excludes tested private values; platform URL/retention audit completed | Verify deployed events and decide narrow platform-log exclusion |
 
@@ -226,10 +226,35 @@ dependencies now use function scope, so commit and its safe error response
 finish before response delivery. This also keeps authentication and the route
 on the same cached session. The focused PostgreSQL review suite passed 14
 tests, including fresh commit, exact replay, injected commit failure, and an
-  injected failure between event and state writes. The complete PostgreSQL
-  integration suite passed 149 tests, and the unit suite passed 109; scoped
-  Ruff lint and format checks passed. These are local results, not deployed
-  signal evidence.
+injected failure between event and state writes. The complete PostgreSQL
+integration suite passed 149 tests, and the unit suite passed 109; scoped
+Ruff lint and format checks passed. These are local results, not deployed
+signal evidence.
+
+### Local import command signal, 2026-09-17
+
+The dry-run and confirmed-import CLIs now print one allowlisted
+`import_command_completed` JSON line on command completion. It contains
+`operation`, `outcome`, `phase`, `database_committed`, `reports_written`, and
+`replayed`. It excludes owner/source identifiers, hashes, card content, CSV
+paths, report paths, and exception text. Values have bounded vocabularies.
+The commands remain local migration tools, so this event does not appear in
+Cloud Run request logs unless a future job explicitly runs them there.
+
+For the dry run, `database_committed=true` is set only after the audit
+transaction exits. For confirmed import, it is set only after the apply
+transaction returns; reconciliation and report writing happen afterward. Thus
+an error in those later phases preserves the committed fact and calls for
+same-snapshot replay/reconciliation, not a new import. `reports_written` counts
+completed report writes; a partial file from a failed write is not counted.
+Existing CLI safe error output remains available on stderr. Import events are
+operational hints; the persisted audit and reconciliation reports remain the
+source of truth. Local tests exercise a pre-commit failure, post-commit report
+failure, post-commit reconciliation failure, exact replay success, and
+allowlist redaction.
+The complete backend checks passed locally: 112 unit tests, 149 PostgreSQL
+integration tests, Ruff lint/format, and `git diff --check`. No operator CLI
+run or deployed import event was observed.
 
 ## Later boundaries
 

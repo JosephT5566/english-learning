@@ -74,6 +74,8 @@ Last updated: 2026-09-15
   idempotent replay, and deterministic row-lock concurrency control.
 - `apps/api/app/imports.py`: bounded CSV reading, validation, canonicalization, hashing, dry-run
   audit persistence, and private in-memory confirmed-import candidates.
+- `apps/api/app/import_events.py`: bounded local import-command outcome events without source
+  content, identities, hashes, or file paths.
 - `apps/api/app/confirmed_imports.py`: approved-snapshot verification, atomic confirmed import,
   exact replay, post-commit reconciliation, safe reports, and the local operator CLI.
 - `apps/api/openapi.json`: committed deterministic API schema used for frontend type generation and
