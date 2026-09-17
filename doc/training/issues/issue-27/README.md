@@ -124,8 +124,41 @@ Cloud Logging filter language at:
   raw-path logging, bounded auth/database/validation/conflict/unexpected
   classes, failed-readiness classification, and exclusion of synthetic query,
   token, and exception secrets.
-- No deployed candidate log lookup, platform-log privacy audit, configured
-  alert, or incident/restore proof has run yet.
+- No deployed candidate application-event lookup, configured alert, or
+  incident/restore proof has run yet.
+
+### Read-only Cloud Logging baseline, 2026-09-17
+
+The existing deployed revision does not contain the new application event.
+A metadata-only read of the latest 100 Cloud Run platform request logs for
+`english-learning-api` in the previous seven days found `httpRequest.requestUrl`
+in all 100; 21 included a query string. Sample status counts were 85 `200`,
+5 `401`, 6 `404`, and 4 `503`. This bounded recent sample is not an error-rate
+baseline. No URLs, query values, or private payloads were displayed or saved
+in the repository. The project `_Default` bucket has 30-day retention and the
+`_Required` bucket has 400-day retention; the `_Default` sink currently has
+no user-defined exclusions. Cloud Run's platform request logs therefore
+remain a distinct data-minimization concern despite disabling Uvicorn access
+logs. The new application event has not been inspected in Cloud Logging.
+
+After the candidate's safe application events are verified, evaluate a narrow
+`_Default` sink exclusion for only this service's platform request log:
+
+```text
+resource.type="cloud_run_revision"
+resource.labels.service_name="english-learning-api"
+log_id("run.googleapis.com/requests")
+```
+
+This is a proposed production logging change, not an applied exclusion. It
+would remove future platform request-log entries from that sink, including
+their raw URLs, while retaining container events and other services' logs.
+Confirm the actual sink behavior, other destinations, and monitoring coverage
+before applying it. Existing stored entries require a separate retention or
+deletion decision. Cloud Run documents that request logs are generated
+automatically and can be managed through Cloud Logging exclusions:
+https://cloud.google.com/run/docs/logging. The routing rules are documented at
+https://cloud.google.com/logging/docs/routing/overview.
 
 ## Later boundaries
 

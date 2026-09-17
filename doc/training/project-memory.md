@@ -136,8 +136,9 @@ interview evidence.
 ## Next action
 
 Verify Issue #27's locally implemented request event on a deployed candidate:
-confirm request-ID lookup, audit Cloud Run platform/request logs for private
-fields and retention, then set one actionable failure signal using observed
+confirm request-ID lookup and parsed JSON fields, then review the proposed
+narrow exclusion of platform request logs, which currently retain raw URLs
+for 30 days in `_Default`. Set one actionable failure signal using observed
 traffic. The initial restored-data reconciliation remains deferred, not
 verified; Issue #27's independent backup/restore proof is a separate boundary.
 
