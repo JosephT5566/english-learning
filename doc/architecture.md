@@ -290,6 +290,15 @@ Machine-readable `code` values are the client contract; messages are human-reada
 field-level codes, and fallback messages. The readiness endpoint retains its purpose-specific health
 contract rather than masquerading dependency unavailability as an application exception.
 
+The API also emits one JSON `http_request_completed` event for each request
+that reaches its request middleware. It joins the browser-visible server
+`request_id` to a matched route template, status, duration, bounded outcome,
+and optional stable error code. It excludes request values and user identity.
+The web process disables Uvicorn access logging of raw URLs. CORS preflights
+are answered by outer middleware and are not included in this event stream.
+Cloud Run platform request logs remain a separate privacy and retention audit
+boundary; deployed JSON ingestion and lookup are pending Issue #27 verification.
+
 ## Data Contracts
 
 `WordItem` is the core sheet-backed model. Important fields:

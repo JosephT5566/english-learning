@@ -45,4 +45,5 @@ def test_main_binds_all_interfaces_and_configures_graceful_shutdown(
         host="0.0.0.0",
         port=9000,
         timeout_graceful_shutdown=8,
+        access_log=False,
     )

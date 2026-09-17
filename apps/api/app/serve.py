@@ -33,6 +33,7 @@ def main() -> None:
         host="0.0.0.0",
         port=load_port(),
         timeout_graceful_shutdown=GRACEFUL_SHUTDOWN_SECONDS,
+        access_log=False,
     )
 
 

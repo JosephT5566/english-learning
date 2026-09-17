@@ -128,6 +128,13 @@ Last updated: 2026-09-14
 
 ## Change Log
 
+- 2026-09-17: For Issue #27's first observability boundary, emit one bounded JSON
+  completion event per routed API request using the server-generated request ID,
+  matched route template, status, duration, outcome class, and stable error code.
+  Disable Uvicorn access logging of raw URLs and convert unexpected endpoint
+  exceptions to the existing safe error envelope inside request middleware.
+  Deployed Cloud Run log parsing, platform-log privacy, alerting, and retention
+  still require verification; local tests alone do not establish those claims.
 - 2026-08-02: Created repo memory docs and root agent instructions.
 - 2026-09-01: Added the initial FastAPI liveness, readiness, typed configuration, and SQLAlchemy
   engine lifecycle boundaries; the frontend remains on Google Apps Script while backend migration

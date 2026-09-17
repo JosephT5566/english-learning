@@ -1,6 +1,7 @@
 # Issue #27 - Operational Ownership
 
-Status: in progress (baseline inspection only). Last updated: 2026-09-17.
+Status: in progress (local request tracing implemented; deployed verification
+and alert are pending). Last updated: 2026-09-17.
 
 ## First acceptance boundary
 
@@ -45,7 +46,7 @@ local and deployed verification.
    threshold rationale, and runbook action. Mark unmeasured thresholds as
    assumptions.
 
-## Recommended first design (to verify in implementation)
+## First design and local implementation
 
 Emit one JSON completion event for each API request with an allowlisted shape:
 `event`, `request_id`, HTTP method, matched route template (or `unmatched`),
@@ -70,6 +71,61 @@ The first actionable signal should be a saved Cloud Logging query for
 `database` and `unexpected` request outcomes, paired with a runbook action and
 an explicitly provisional alert threshold after observing baseline traffic.
 Do not invent a production SLO or page on ordinary validation/conflict traffic.
+
+`apps/api/app/request_context.py` now emits the bounded JSON completion event.
+`apps/api/app/errors.py` sets the stable error code for that event, readiness
+marks a failed database probe, and `apps/api/app/serve.py` disables Uvicorn
+access logging. An unexpected endpoint exception is converted inside the
+request middleware to the existing safe `internal_error` envelope so its raw
+exception text is not printed by the server error path. The CORS middleware
+answers preflights before this request middleware, so they are not included in
+these events. Cloud Run's own request logs are separate and have not yet been
+audited for fields or retention.
+
+The proposed Logs Explorer lookup is:
+
+```text
+resource.type="cloud_run_revision"
+resource.labels.service_name="SERVICE_NAME"
+jsonPayload.event="http_request_completed"
+jsonPayload.request_id="REPORTED_REQUEST_UUID"
+```
+
+For a first failure signal, replace the last line with:
+
+```text
+jsonPayload.outcome=("database" OR "unexpected")
+```
+
+This is a query draft, not a configured alert. Its service name, parsed JSON
+fields, ingestion delay, and actual baseline must be checked on a deployed
+candidate before defining a threshold. The operator response is: inspect the
+route, status, error code, and time window; check `/health/ready` and Cloud Run
+revision status; follow the existing Issue #26 rollback/runbook if a deployed
+revision is unhealthy. Do not retry ambiguous review writes with a new
+idempotency key.
+
+Google documents single-line JSON stdout as Cloud Run `jsonPayload` and the
+Cloud Logging filter language at:
+
+- https://cloud.google.com/run/docs/logging
+- https://cloud.google.com/logging/docs/view/logging-query-language
+
+### Local verification, 2026-09-17
+
+- Focused request/error/serve/health tests: 21 passed (one existing upstream
+  Starlette deprecation warning).
+- Complete backend unit suite: 109 passed (same warning).
+- PostgreSQL integration suite: 147 passed against the running local
+  `postgres:17-alpine` service (same warning). The first attempt was blocked by
+  the filesystem/network sandbox; the permitted local-database run passed.
+- Ruff lint and format checks for touched Python files passed.
+- Tests verified response/log request-ID equality, route-template rather than
+  raw-path logging, bounded auth/database/validation/conflict/unexpected
+  classes, failed-readiness classification, and exclusion of synthetic query,
+  token, and exception secrets.
+- No deployed candidate log lookup, platform-log privacy audit, configured
+  alert, or incident/restore proof has run yet.
 
 ## Later boundaries
 

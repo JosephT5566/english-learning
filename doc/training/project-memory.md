@@ -135,10 +135,11 @@ interview evidence.
 
 ## Next action
 
-Agree on the minimal privacy-safe request event and failure classification for Issue #27's first
-boundary, then implement and verify request-ID lookup and one actionable failure signal. The
-initial restored-data reconciliation remains deferred, not verified; Issue #27's independent
-backup/restore proof is a separate boundary.
+Verify Issue #27's locally implemented request event on a deployed candidate:
+confirm request-ID lookup, audit Cloud Run platform/request logs for private
+fields and retention, then set one actionable failure signal using observed
+traffic. The initial restored-data reconciliation remains deferred, not
+verified; Issue #27's independent backup/restore proof is a separate boundary.
 
 ## Context pointers
 
