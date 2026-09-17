@@ -135,12 +135,12 @@ interview evidence.
 
 ## Next action
 
-Verify Issue #27's locally implemented request event on a deployed candidate:
-confirm request-ID lookup and parsed JSON fields, then review the proposed
-narrow exclusion of platform request logs, which currently retain raw URLs
-for 30 days in `_Default`. Set one actionable failure signal using observed
-traffic. The initial restored-data reconciliation remains deferred, not
-verified; Issue #27's independent backup/restore proof is a separate boundary.
+The operator deferred Issue #27's zero-traffic candidate verification. Next,
+define safe review/import outcome signals locally while preserving transaction
+truth. The deployed request-ID lookup, proposed narrow platform-log exclusion
+(raw URLs currently retain for 30 days in `_Default`), and one alert remain
+open. The initial restored-data reconciliation remains deferred, not verified;
+Issue #27's independent backup/restore proof is a separate boundary.
 
 ## Context pointers
 

@@ -1,7 +1,7 @@
 # Issue #27 - Operational Ownership
 
-Status: in progress (local request tracing implemented; deployed verification
-and alert are pending). Last updated: 2026-09-17.
+Status: in progress (local request tracing implemented and CI passed; the
+operator deferred candidate verification). Last updated: 2026-09-17.
 
 ## First acceptance boundary
 
@@ -10,7 +10,7 @@ and failure class without logging tokens, raw card content, database URLs,
 rejected input, or unnecessary personal data. Define and verify one actionable
 failure signal before adding broader dashboards or backup work.
 
-## Repository baseline
+## Repository baseline before Issue #27 changes
 
 - `apps/api/app/request_context.py` creates a new server UUID for each request
   and puts it in `X-Request-ID`. It does not log a request event.
@@ -30,9 +30,8 @@ failure signal before adding broader dashboards or backup work.
   it was not executed and is distinct from #27's independent backup/restore
   proof.
 
-These findings are from repository inspection, not deployed telemetry or a
-production log audit. The behavior and privacy of server/access logs still need
-local and deployed verification.
+These initial findings were from repository inspection, before the local
+changes and read-only Cloud Logging audit recorded below.
 
 ## Verification path for this boundary
 
@@ -79,8 +78,8 @@ access logging. An unexpected endpoint exception is converted inside the
 request middleware to the existing safe `internal_error` envelope so its raw
 exception text is not printed by the server error path. The CORS middleware
 answers preflights before this request middleware, so they are not included in
-these events. Cloud Run's own request logs are separate and have not yet been
-audited for fields or retention.
+these events. Cloud Run's own request logs are separate; their metadata-only
+audit is recorded below.
 
 The proposed Logs Explorer lookup is:
 
@@ -123,8 +122,9 @@ Cloud Logging filter language at:
   false negative: `docker logs | grep --quiet` under `pipefail` could close the
   pipe before `docker logs` finished once JSON events increased output. The
   script now captures logs before checking the shutdown marker. Bash syntax,
-  local image build, and the container runtime smoke passed after the fix;
-  CI on this fix remains pending.
+  local image build, and the container runtime smoke passed after the fix.
+  [CI run 35211160518](https://github.com/JosephT5566/english-learning/actions/runs/35211160518)
+  passed on the latest committed fix.
 - Ruff lint and format checks for touched Python files passed.
 - Tests verified response/log request-ID equality, route-template rather than
   raw-path logging, bounded auth/database/validation/conflict/unexpected
@@ -187,6 +187,22 @@ content, or exception detail. Check the platform request log separately; do
 not mistake Uvicorn access-log suppression for platform-log suppression.
 Record candidate revision, CI/workflow run IDs, observed result, and any
 failure before marking this boundary deployed and verified.
+
+## Logging and signal status
+
+| Signal | Current evidence | Remaining work |
+| --- | --- | --- |
+| Request ID, rate, latency, status, error class | Bounded JSON event and local/CI tests pass | Verify parsing and lookup on a zero-traffic candidate |
+| Database readiness | Failed probe has `database` outcome locally | Check deployed signal; design pool-usage signal if justified |
+| Authentication failures | Stable auth class locally | Check deployed counts and alert noise |
+| Review outcomes | Route/status identifies HTTP success and failure | Distinguish committed new review from exact replay and failed transaction safely |
+| Import outcomes | Existing CLI reports and audit rows exist | Define safe completion/failure events and operator query; imports are not HTTP requests |
+| Alerting | Failure query and response steps drafted | Observe baseline, choose owner/threshold, configure and test alert |
+| Retention/privacy | Application event excludes tested private values; platform URL/retention audit completed | Verify deployed events and decide narrow platform-log exclusion |
+
+The operator deferred the candidate workflow on 2026-09-17. No image was
+published and no new revision or alert was created from this branch. Local
+signal design can continue; deployed acceptance remains open.
 
 ## Later boundaries
 
