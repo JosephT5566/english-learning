@@ -1,8 +1,9 @@
 # Issue #27 - Operational Ownership
 
-Status: in progress (local request/review/import signals and a synthetic
-isolated restore verified; independent production backup explicitly deferred;
-candidate verification remains open). Last updated: 2026-09-18.
+Status: in progress (local request/review/import signals, a synthetic isolated
+restore, and a checked first-alert query; independent production backup
+explicitly deferred; candidate verification remains open). Last updated:
+2026-09-18.
 
 ## Owner scope decision, 2026-09-18
 
@@ -216,7 +217,7 @@ failure before marking this boundary deployed and verified.
 | Authentication failures | Stable auth class locally | Check deployed counts and alert noise |
 | Review outcomes | Local `review_submission_completed` event distinguishes committed batches from exact replays after transaction completion; integration tests cover failed commit and rollback without a false success event | Verify deployed event and query; tune operational use from observed traffic |
 | Import outcomes | Local CLI event records bounded operation, outcome, phase, commit state, completed report count, and replay state; tests cover failure after commit | Capture and inspect a real operator run when imports are next needed; CLI events are not Cloud Run HTTP metrics |
-| Alerting | Failure query and response steps drafted | Observe baseline, choose owner/threshold, configure and test alert |
+| Alerting | First stdout JSON failure filter accepted by Cloud Logging; owner, provisional one-event condition, notification spacing, and response runbook defined in [`failure-alert.md`](failure-alert.md) | Deploy and verify safe event, choose/test channel, enable and test policy; no live alert yet |
 | Retention/privacy | Application event excludes tested private values; platform URL/retention audit completed | Verify deployed events and decide narrow platform-log exclusion |
 
 The operator deferred the candidate workflow on 2026-09-17. No image was
@@ -279,6 +280,9 @@ run or deployed import event was observed.
 
 - Request, database readiness/pool, authentication, review, and import signals.
 - Actionable alert set and retention rules.
+- The first proposed failure condition and runbook are in
+  [`failure-alert.md`](failure-alert.md); its activation waits for candidate
+  application-event verification.
 - Independent production backup and restore are deferred by owner decision;
   the synthetic isolated restore and future operator option are in
   [`backup-restore.md`](backup-restore.md).

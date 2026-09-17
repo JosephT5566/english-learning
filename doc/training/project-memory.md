@@ -148,10 +148,14 @@ backup schedule to avoid additional cost. Repository workflows have no cron
 trigger; the checked GCP project has Cloud Scheduler disabled and only the
 manual migration Cloud Run Job. This is a conscious exception to Issue #27's
 original production backup/restore criterion, not completion evidence.
-Next, define and test the first actionable failure alert and runbook response.
-The deployed request-ID lookup, proposed narrow platform-log exclusion
-(raw URLs currently retain for 30 days in `_Default`), and one alert remain
-open. The initial restored-data reconciliation remains deferred, not verified.
+The first failure-alert filter, owner, provisional one-event condition, and
+response steps are in [`issues/issue-27/failure-alert.md`](issues/issue-27/failure-alert.md).
+Cloud Logging accepted the filter but found no deployed application event; no
+policy or notification channel was created. Next, run one labeled local
+failure exercise and record detection, response, recovery, and correction.
+The deployed request-ID lookup, proposed narrow platform-log exclusion (raw
+URLs currently retain for 30 days in `_Default`), and live alert verification
+remain open. The initial restored-data reconciliation remains deferred.
 
 ## Context pointers
 
