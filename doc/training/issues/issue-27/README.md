@@ -119,6 +119,12 @@ Cloud Logging filter language at:
 - PostgreSQL integration suite: 147 passed against the running local
   `postgres:17-alpine` service (same warning). The first attempt was blocked by
   the filesystem/network sandbox; the permitted local-database run passed.
+- The first PR CI run passed. A later CI run exposed a container smoke-script
+  false negative: `docker logs | grep --quiet` under `pipefail` could close the
+  pipe before `docker logs` finished once JSON events increased output. The
+  script now captures logs before checking the shutdown marker. Bash syntax,
+  local image build, and the container runtime smoke passed after the fix;
+  CI on this fix remains pending.
 - Ruff lint and format checks for touched Python files passed.
 - Tests verified response/log request-ID equality, route-template rather than
   raw-path logging, bounded auth/database/validation/conflict/unexpected
