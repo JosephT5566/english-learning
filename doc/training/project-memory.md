@@ -27,7 +27,7 @@ Production statements must distinguish repository-verified evidence from operato
 ## Active milestone
 
 **Week 6 - operational ownership, Issue
-[#27](https://github.com/JosephT5566/english-learning/issues/27), not yet started.** Issue
+[#27](https://github.com/JosephT5566/english-learning/issues/27), baseline inspection started.** Issue
 [#26](issues/issue-26/README.md) is closed after the staged deployment and rollback rehearsal.
 
 The provider-neutral container and Cloud Run/Neon release contract are complete locally. The
@@ -135,13 +135,15 @@ interview evidence.
 
 ## Next action
 
-Define the first acceptance boundary for Issue #27: privacy-safe request tracing and an actionable
-failure signal. The initial restored-data reconciliation remains deferred, not verified; Issue #27's
-independent backup/restore proof is a separate boundary.
+Agree on the minimal privacy-safe request event and failure classification for Issue #27's first
+boundary, then implement and verify request-ID lookup and one actionable failure signal. The
+initial restored-data reconciliation remains deferred, not verified; Issue #27's independent
+backup/restore proof is a separate boundary.
 
 ## Context pointers
 
 - Active issue: [Issue #27](https://github.com/JosephT5566/english-learning/issues/27)
+- Issue #27 baseline: [`issues/issue-27/README.md`](issues/issue-27/README.md)
 - Completed deployment issue: [`issues/issue-26/README.md`](issues/issue-26/README.md)
 - Active roadmap section: [Week 6](full-stack-backend-plan.md#week-6--deployment-and-operational-ownership)
 - Current operational sequence: [`issues/issue-26/runbook.md`](issues/issue-26/runbook.md)
