@@ -1,6 +1,6 @@
 # Issue #26 - Deploy API and PostgreSQL with a safe release contract
 
-Last updated: 2026-09-15
+Last updated: 2026-09-17
 
 Source: [GitHub Issue #26](https://github.com/JosephT5566/english-learning/issues/26)
 
@@ -32,6 +32,27 @@ read/review-write and schema-compatible application rollback boundary. Revision 
 timings, restored-data reconciliation, and database-role separation have not yet been captured as
 repository evidence. The operator later reported successful WIF-based executions of both the image
 publishing and production migration workflows; their run IDs remain unrecorded.
+
+On 2026-09-17, the operator chose to defer the initial `pg_dump`/`pg_restore` data reconciliation.
+The optional read-only procedure and commands are documented in [`runbook.md`](runbook.md), but
+they have not been executed. The restored-data completeness and owner-mapping comparison therefore
+remain unverified; successful API reads and idempotent review replay are not substitutes.
+
+The operator also reports checking effective GCP IAM permissions for the two attached Cloud Run
+service accounts: the API runtime identity can access only the runtime Neon connection secret, and
+the migration job identity can access only the migration secret. This closes the operator-level GCP
+secret-access check, not an independently captured IAM audit. The operator subsequently replaced
+the overly privileged `app_user` with `app_runtime_limited`, updated the runtime secret, observed
+`can_create_schema = false` and `can_create_in_public = false`, passed a runtime smoke test, and
+removed `app_user` through the Neon UI. These are operator-reported PostgreSQL role checks, not an
+independent role/ownership audit.
+
+GitHub Actions confirms that Deploy API candidate run
+[`35185725352`](https://github.com/JosephT5566/english-learning/actions/runs/35185725352)
+completed successfully, including zero-traffic candidate verification and public health checks.
+The operator reports that it created revision `english-learning-api-156073439e6e`, and that
+authenticated candidate smoke, traffic promotion, and post-promotion checks on the stable API URL
+passed. The final traffic allocation and execution timings have not been independently captured.
 
 ## Delivery Slices
 
@@ -131,9 +152,9 @@ promotion, and rollback as explicit operator gates.
 
 ## Next Action
 
-Reconcile restored table counts, relationships, and owner mappings without recording private
-content. Commit and remotely exercise the candidate deployment workflow after its local checks,
-using the already-working WIF publishing and migration path for the same ref. Record safe
-workflow/revision identifiers and timings. The live frontend, authenticated review write, manual
-candidate promotion, compatible rollback rehearsal, and remote publish/migration workflows are
-already operator-reported as successful.
+Issue #26 is closed after the staged deployment and rollback rehearsal. The candidate Action's
+successful result is independently confirmed; runtime role separation, authenticated smoke,
+promotion, and stable-URL checks remain operator-reported. Execution timings and the final traffic
+allocation were not captured independently. The initial restored-data reconciliation is deferred
+and remains an explicit evidence limit. Continue with Issue #27's backup, observability, and
+incident-exercise scope.

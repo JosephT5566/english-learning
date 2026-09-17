@@ -1,6 +1,6 @@
 # Issue #26 Cloud Run and Neon release runbook
 
-Last updated: 2026-09-15
+Last updated: 2026-09-17
 
 The identity, IAM, variable, and secret relationships behind this runbook are indexed in
 [`github-gcp-neon-maintenance.zh-TW.md`](github-gcp-neon-maintenance.zh-TW.md).
@@ -28,6 +28,83 @@ The identity, IAM, variable, and secret relationships behind this runbook are in
 Accepted initial limits are Neon Free compute/storage quotas, scale-to-zero cold starts, a six-hour
 provider restore window, no private network/IP allowlist, and no platform SLA. Issue #27 owns an
 independent GCS backup, restore proof, monitoring, alerts, and an incident exercise.
+
+## Optional one-time restored-data reconciliation (not executed)
+
+The initial local PostgreSQL-to-Neon `pg_dump`/`pg_restore` transfer was not independently
+reconciled. The operator chose to defer this check for the initial deployment. The local Issue #23
+CSV import reconciliation and the live review idempotency replay test cover different boundaries;
+neither proves that the database transfer preserved every row. Do not mark the restore as verified
+without executing and recording the checks below. This is an operator-invoked, read-only check,
+not a scheduled job. Issue #27's independent backup/restore proof is separate.
+
+For a future transfer, record a source manifest during the dump's consistent snapshot, before
+production writes resume. For this already-live transfer, use the preserved dump restored into an
+isolated temporary database, or a source database known to be unchanged since the dump. If neither
+exists, current source and Neon totals are not an exact transfer comparison. In particular, live
+deck/card creation and review writes can legitimately increase the Neon totals and change review
+states after cutover. Do not infer transfer completeness from matching only the 596-card private
+import report.
+
+Configure two local, untracked libpq service entries named `source_snapshot` and `neon_readonly`.
+Use read-only database credentials and TLS; keep passwords in a private passfile, not in shell
+arguments, documentation, or committed files. Open each database separately:
+
+```bash
+psql -X -v ON_ERROR_STOP=1 "service=source_snapshot"
+psql -X -v ON_ERROR_STOP=1 "service=neon_readonly"
+```
+
+In each `psql` session, run the following read-only transaction. Record only table names and
+counts in the evidence report. The transaction gives each session an internally consistent view;
+it does **not** make two independently changing databases share a snapshot.
+
+```sql
+BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY;
+
+SELECT 'users' AS table_name, count(*) FROM users
+UNION ALL SELECT 'learning_decks', count(*) FROM learning_decks
+UNION ALL SELECT 'learning_cards', count(*) FROM learning_cards
+UNION ALL SELECT 'tags', count(*) FROM tags
+UNION ALL SELECT 'learning_card_tags', count(*) FROM learning_card_tags
+UNION ALL SELECT 'review_states', count(*) FROM review_states
+UNION ALL SELECT 'review_batches', count(*) FROM review_batches
+UNION ALL SELECT 'review_events', count(*) FROM review_events
+UNION ALL SELECT 'import_runs', count(*) FROM import_runs
+UNION ALL SELECT 'import_items', count(*) FROM import_items
+UNION ALL SELECT 'confirmed_import_runs', count(*) FROM confirmed_import_runs
+UNION ALL SELECT 'confirmed_import_mappings', count(*) FROM confirmed_import_mappings
+ORDER BY table_name;
+
+SELECT count(*) AS cards_with_wrong_deck_owner
+FROM learning_cards AS c
+LEFT JOIN learning_decks AS d ON d.id = c.deck_id
+WHERE d.id IS NULL OR d.owner_id <> c.owner_id;
+
+SELECT count(*) AS states_with_wrong_card_owner
+FROM review_states AS s
+LEFT JOIN learning_cards AS c ON c.id = s.card_id
+WHERE c.id IS NULL OR c.owner_id <> s.owner_id;
+
+SELECT count(*) AS mappings_with_wrong_owner_or_deck
+FROM confirmed_import_mappings AS m
+LEFT JOIN confirmed_import_runs AS r ON r.id = m.confirmed_import_run_id
+LEFT JOIN learning_cards AS c ON c.id = m.learning_card_id
+WHERE r.id IS NULL OR c.id IS NULL
+   OR r.owner_id <> m.owner_id OR c.owner_id <> m.owner_id
+   OR c.deck_id <> r.deck_id;
+
+COMMIT;
+```
+
+All three mismatch counts should be zero. Compare same-snapshot table counts and the approved
+import-run metadata, then perform an authenticated owned read against Neon. An all-zero mismatch
+result proves these relationships only; it does not prove that every content field survived.
+For stronger transfer proof, compare deterministic per-row digests in a private operator workspace
+against the same snapshot, never commit raw rows or low-entropy content hashes. Record the source
+snapshot identity, transfer time, checked revision, safe expected/actual counts, mismatch counts,
+and any unresolved differences. If a check fails, stop claiming transfer verification and diagnose
+before any repair; do not auto-write to production.
 
 ## One-time provisioning
 

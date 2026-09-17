@@ -1,6 +1,6 @@
 # GitHub、GCP 與 Neon 身份和設定維護筆記
 
-最後更新：2026-09-16
+最後更新：2026-09-17
 
 這份文件集中記錄 production release automation 中 GitHub Actions、Google Cloud 與 Neon 的
 信任關係、身份、權限、Variables 和 secrets。實際執行步驟仍以 [`runbook.md`](runbook.md) 為準；
@@ -12,13 +12,18 @@ Google ID token、OIDC token 或 service-account key 寫進 repository。
 
 ## 目前狀態
 
-| 邊界                          | 狀態                         | 證據限制                                                              |
-| ----------------------------- | ---------------------------- | --------------------------------------------------------------------- |
-| GitHub OIDC → GCP WIF         | 操作者回報已成功             | Publish 與 migration Actions 均已透過 WIF 執行；run ID 尚未記錄       |
-| Publish API container         | 操作者回報已成功             | Artifact Registry image 已能由 Action 發布與驗證                      |
-| Migrate production PostgreSQL | 操作者回報已成功             | Cloud Run job、Alembic upgrade/head check 與 runtime readiness 已通過 |
-| Deploy API candidate          | Workflow 已在本機建立並檢查  | 遠端 Action 尚未執行                                                  |
-| API runtime service account   | Candidate 首次執行前必須確認 | 建立狀態與 IAM bindings 尚未記錄為已驗證                              |
+| 邊界                          | 狀態                     | 證據限制                                                              |
+| ----------------------------- | ------------------------ | --------------------------------------------------------------------- |
+| GitHub OIDC → GCP WIF         | 操作者回報已成功         | Publish 與 migration Actions 均已透過 WIF 執行；run ID 尚未記錄       |
+| Publish API container         | 操作者回報已成功         | Artifact Registry image 已能由 Action 發布與驗證                      |
+| Migrate production PostgreSQL | 操作者回報已成功         | Cloud Run job、Alembic upgrade/head check 與 runtime readiness 已通過 |
+| Deploy API candidate          | GitHub job 成功          | Run 與 revision ID 見下方；正式流量狀態未獨立檢查                     |
+| API runtime service account   | 操作者回報有效權限已確認 | 僅可讀 runtime secret；未保存獨立 IAM 稽核資料                        |
+
+Candidate run [35185725352](https://github.com/JosephT5566/english-learning/actions/runs/35185725352)
+的 zero-traffic candidate 與公開健康檢查步驟均成功。操作者回報對應 revision 為
+`english-learning-api-156073439e6e`，且 authenticated smoke、promotion 與正式 URL 檢查通過；
+執行時間和最終流量配置尚未獨立記錄。
 
 ## 整體信任與執行關係
 
@@ -42,7 +47,7 @@ flowchart TD
 
   CRS -->|runs as| RUNSA
   RUNSA -->|Secret Accessor: one secret| RUNSECRET[Runtime DATABASE_URL secret]
-  RUNSECRET -->|pooled TLS connection| APP[Neon app_user role]
+  RUNSECRET -->|pooled TLS connection| APP[Neon app_runtime_limited role]
 ```
 
 GitHub runner 不會取得 Neon URL。`--set-secrets` 只把 Secret Manager resource reference 寫入
@@ -95,7 +100,7 @@ GCP resource 的 IAM permission、`actAs` runtime SA，或 runtime SA 對 secret
 | Migration runtime identity | `MIGRATION_SERVICE_ACCOUNT` → `english-learning-migrate@eng-learning-470909.iam.gserviceaccount.com`                  | Cloud Run migration job 的執行身份；只讀 migration secret                                            | Cloud Run Developer、Artifact Registry 管理、runtime secret   |
 | API runtime identity       | `RUNTIME_SERVICE_ACCOUNT` → `english-learning-api@eng-learning-470909.iam.gserviceaccount.com`                        | Cloud Run API revision 的執行身份；只讀 runtime secret                                               | Cloud Run Developer、Artifact Registry 管理、migration secret |
 | Neon schema identity       | 目前為 `neondb_owner`                                                                                                 | Alembic schema migration 與擁有既有 database objects                                                 | 不提供給 web runtime                                          |
-| Neon application identity  | `app_user`                                                                                                            | 應用程式所需 table DML 與 sequence use/select                                                        | 建立/修改 schema、owner 或 Neon 高權限 membership             |
+| Neon application identity  | `app_runtime_limited`                                                                                                 | 應用程式所需 table DML 與 sequence use/select                                                        | 建立/修改 schema、owner 或 Neon 高權限 membership             |
 
 Service account 的顯示名稱不影響 workflow；GitHub Variable 必須保存完整 email。若 Console 中的
 實際 email 不同，以 **IAM & Admin → Service Accounts** 顯示的 email 為準，並同步修改 GitHub
@@ -189,7 +194,7 @@ candidate smoke 與 promotion，再讓新 frontend 接收正常流量。
 | Secret resource                       | Secret payload              | 讀取者               | Neon endpoint / role                    | 使用時機                             |
 | ------------------------------------- | --------------------------- | -------------------- | --------------------------------------- | ------------------------------------ |
 | `english-learning-neon-migration-url` | 完整 SQLAlchemy/Psycopg URL | Migration runtime SA | direct endpoint / 目前為 `neondb_owner` | Alembic upgrade 與 head verification |
-| `english-learning-neon-runtime-url`   | 完整 SQLAlchemy/Psycopg URL | API runtime SA       | pooled endpoint / `app_user`            | FastAPI reads、writes 與 readiness   |
+| `english-learning-neon-runtime-url`   | 完整 SQLAlchemy/Psycopg URL | API runtime SA       | pooled endpoint / `app_runtime_limited` | FastAPI reads、writes 與 readiness   |
 
 兩個 connection strings 都以 `DATABASE_URL` 注入 container，因為同一個 image 同時包含 FastAPI
 與 Alembic。差異來自「哪一個 Cloud Run resource、runtime identity、secret 和 Neon role」在執行，
@@ -267,7 +272,7 @@ asia-east1-docker.pkg.dev/eng-learning-470909/language-learning/api:<12-char-sha
 | `iam.serviceAccounts.actAs` denied | Release deployer 是否在正確的 migration/runtime SA 上有 Service Account User                                               |
 | Container 無法取得 `DATABASE_URL`  | Cloud Run resource 是否 attach 正確 runtime SA；該 SA 是否只在正確 secret 上有 Secret Accessor；version 是否存在且 enabled |
 | Alembic permission denied          | Migration URL 是否走 direct endpoint；Neon schema role 是否擁有/可修改 objects                                             |
-| FastAPI query permission denied    | `app_user` 的既有 object grants 與 owner role 的 default privileges                                                        |
+| FastAPI query permission denied    | `app_runtime_limited` 的既有 object grants 與 owner role 的 default privileges                                             |
 | API 回傳 `401`                     | Frontend token audience 與 `PUBLIC_GOOGLE_AUTH_CLIENT_ID` 是否一致                                                         |
 | Browser CORS 失敗但 curl 正常      | `CORS_ALLOWED_ORIGINS` 是否為正確 JSON array，且只填 origin                                                                |
 | Candidate 意外有流量               | 應停止 promotion；檢查 revision traffic 與 workflow 的 `--no-traffic` 驗證結果                                             |

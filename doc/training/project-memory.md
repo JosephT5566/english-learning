@@ -1,6 +1,6 @@
 # English Learning Project Memory
 
-Last updated: 2026-09-15
+Last updated: 2026-09-17
 
 ## Purpose
 
@@ -26,8 +26,9 @@ Production statements must distinguish repository-verified evidence from operato
 
 ## Active milestone
 
-**Week 6 - deployment and operational ownership, Issue
-[#26](issues/issue-26/README.md).**
+**Week 6 - operational ownership, Issue
+[#27](https://github.com/JosephT5566/english-learning/issues/27), not yet started.** Issue
+[#26](issues/issue-26/README.md) is closed after the staged deployment and rollback rehearsal.
 
 The provider-neutral container and Cloud Run/Neon release contract are complete locally. The
 repository defines production TLS requirements, separate version-pinned runtime and migration
@@ -57,14 +58,30 @@ repository evidence unless a linked artifact says otherwise:
 - A controlled review write and exact idempotent replay passed.
 - Candidate, post-promotion, and schema-compatible rollback smoke checks passed.
 - The WIF image-publishing and production-migration workflows ran successfully.
+- The operator checked effective GCP IAM permissions: the API runtime and migration job identities
+  can access only their respective Neon connection secrets. No independent IAM artifact is recorded.
+- The operator replaced `app_user` with `app_runtime_limited`, updated the runtime secret, observed
+  `can_create_schema = false` and `can_create_in_public = false`, passed a smoke test, and removed
+  the old role in Neon UI.
+- The operator reports that Deploy API candidate produced revision
+  `english-learning-api-156073439e6e`; authenticated candidate smoke, traffic promotion, and
+  stable-URL checks were reported successful.
 
-### Remaining Issue #26 gaps
+### Remotely verified release result
 
-- Reconcile restored production counts, relationships, and owner mappings without recording private
-  content.
-- Capture database runtime/migration role-separation evidence.
-- Commit and remotely exercise the candidate-deployment workflow; record safe run/revision IDs and
-  timings.
+- Deploy API candidate run
+  [`35185725352`](https://github.com/JosephT5566/english-learning/actions/runs/35185725352)
+  completed successfully, including the zero-traffic candidate and public-health verification
+  steps. This does not independently verify the operator-run authenticated smoke or promotion.
+
+### Issue #26 evidence limits
+
+- The operator deferred the initial `pg_dump`/`pg_restore` reconciliation. A read-only procedure is
+  documented in the Issue #26 runbook, but transfer completeness remains unverified.
+- The runtime PostgreSQL role restriction and GCP secret-access boundary are operator-reported,
+  without independent role/IAM audit artifacts.
+- The candidate run/revision IDs and successful job result are recorded; final traffic allocation
+  and timings have not been independently captured.
 
 ## Completed milestone index
 
@@ -79,7 +96,8 @@ repository evidence unless a linked artifact says otherwise:
 - **Week 5 - frontend cutover:** Issue [#24](issues/issue-24/README.md) moved English review to the
   authenticated API; Issue [#25](issues/issue-25/README.md) completed shared bilingual management
   reads and writes plus runtime configuration cutover.
-- **Week 6 - deployment:** Issue [#26](issues/issue-26/README.md) is active.
+- **Week 6 - deployment:** Issue [#26](issues/issue-26/README.md) is closed. The operator-reported
+  production outcome and remaining evidence limits are recorded there.
 
 Use the linked issue indexes for acceptance criteria, implementation detail, verification commands,
 and historical limitations. Use [`evidence.md`](evidence.md) only when preparing or updating
@@ -114,13 +132,14 @@ interview evidence.
 
 ## Next action
 
-Reconcile the restored production data using safe counts, relationships, and owner mappings without
-recording private content. Record the result in the Issue #26 artifacts and update this memory to the
-next single acceptance boundary.
+Define the first acceptance boundary for Issue #27: privacy-safe request tracing and an actionable
+failure signal. The initial restored-data reconciliation remains deferred, not verified; Issue #27's
+independent backup/restore proof is a separate boundary.
 
 ## Context pointers
 
-- Active issue: [`issues/issue-26/README.md`](issues/issue-26/README.md)
+- Active issue: [Issue #27](https://github.com/JosephT5566/english-learning/issues/27)
+- Completed deployment issue: [`issues/issue-26/README.md`](issues/issue-26/README.md)
 - Active roadmap section: [Week 6](full-stack-backend-plan.md#week-6--deployment-and-operational-ownership)
 - Current operational sequence: [`issues/issue-26/runbook.md`](issues/issue-26/runbook.md)
 - Historical learning logs: [`logs/`](logs/), searched only when needed

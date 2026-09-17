@@ -544,7 +544,7 @@ RLS，它應是額外的 defense-in-depth，而不是取代 backend authorizatio
 
 | 用途                    | Role                  | Endpoint           | 權限                                                         |
 | ----------------------- | --------------------- | ------------------ | ------------------------------------------------------------ |
-| Cloud Run API runtime   | `app_user`            | pooled (`-pooler`) | 既有與未來 app tables 的 DML、sequence 使用權；不可改 schema |
+| Cloud Run API runtime   | `app_runtime_limited` | pooled (`-pooler`) | 既有與未來 app tables 的 DML、sequence 使用權；不可改 schema |
 | Cloud Run migration job | 目前為 `neondb_owner` | direct             | Alembic 建立／修改 schema 與其所擁有的 objects               |
 
 `neondb_owner` 是 Neon project 的管理／owner role，目前既有 tables 由它擁有，因此仍需要用於
@@ -552,32 +552,33 @@ migration 或管理；但它**不應提供給 Cloud Run web service**。長期�
 但要同時規劃既有 objects 的 ownership transfer，不能只換 connection string 就假設它有權修改
 舊 tables。
 
-`app_user` 是 least-privilege runtime role。建立後先確認它沒有意外繼承 Neon 的高權限 role：
+目前 runtime role 是 `app_runtime_limited`；舊的 `app_user` 因意外繼承高權限已由操作者透過
+Neon UI 移除。操作者回報新 role 的 `can_create_schema` 和 `can_create_in_public` 都為
+`false`，runtime secret 已更新且 smoke test 通過。這些仍屬操作回報，非獨立權限稽核。
+建立新的 runtime role 後，先確認它沒有意外繼承 Neon 的高權限 role：
 
 ```sql
-SELECT pg_has_role('app_user', 'neon_superuser', 'member');
+SELECT pg_has_role('app_runtime_limited', 'neon_superuser', 'member');
 ```
 
-若結果為 `true`，應在 owner/admin session 中移除該 membership，並再次確認：
-
-```sql
-REVOKE neon_superuser FROM app_user;
-```
+若結果為 `true`，不要把該 role 用於 runtime；先查明 grantor 與可撤銷權限，再改用無高權限
+membership 的 role。舊 `app_user` 曾因 grantor 權限限制而無法直接執行 `REVOKE`，最後改為重建
+runtime role。
 
 接著讓 runtime 可以連線與操作 application data，但不能建立 schema objects：
 
 ```sql
-GRANT CONNECT ON DATABASE neondb TO app_user;
-GRANT USAGE ON SCHEMA public TO app_user;
-REVOKE CREATE ON SCHEMA public FROM app_user;
+GRANT CONNECT ON DATABASE neondb TO app_runtime_limited;
+GRANT USAGE ON SCHEMA public TO app_runtime_limited;
+REVOKE CREATE ON SCHEMA public FROM app_runtime_limited;
 
 GRANT SELECT, INSERT, UPDATE, DELETE
   ON ALL TABLES IN SCHEMA public
-  TO app_user;
+  TO app_runtime_limited;
 
 GRANT USAGE, SELECT
   ON ALL SEQUENCES IN SCHEMA public
-  TO app_user;
+  TO app_runtime_limited;
 ```
 
 上面的 `GRANT ... ON ALL` 只處理**現在已存在**的 objects。未來由 `neondb_owner` migration 建出的
@@ -585,17 +586,17 @@ tables 與 sequences，需透過 default privileges 自動授權：
 
 ```sql
 ALTER DEFAULT PRIVILEGES FOR ROLE neondb_owner IN SCHEMA public
-  GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO app_user;
+  GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO app_runtime_limited;
 
 ALTER DEFAULT PRIVILEGES FOR ROLE neondb_owner IN SCHEMA public
-  GRANT USAGE, SELECT ON SEQUENCES TO app_user;
+  GRANT USAGE, SELECT ON SEQUENCES TO app_runtime_limited;
 ```
 
 因此 Secret Manager 應保存兩份不同的 URL：
 
 ```text
 # Cloud Run API service：runtime secret
-postgresql+psycopg://app_user:<password>@<pooled-host>/neondb?sslmode=require&channel_binding=require
+postgresql+psycopg://app_runtime_limited:<password>@<pooled-host>/neondb?sslmode=require&channel_binding=require
 
 # Cloud Run migration job：migration secret
 postgresql+psycopg://neondb_owner:<password>@<direct-host>/neondb?sslmode=require&channel_binding=require
