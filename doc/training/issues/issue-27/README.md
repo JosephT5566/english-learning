@@ -160,6 +160,28 @@ automatically and can be managed through Cloud Logging exclusions:
 https://cloud.google.com/run/docs/logging. The routing rules are documented at
 https://cloud.google.com/logging/docs/routing/overview.
 
+## Zero-traffic candidate verification plan
+
+The reviewable source is draft PR #43, branch `issue-27-observability`. After
+its latest CI run passes and the operator approves a candidate, use the
+existing protected `Publish API container` workflow on the exact branch/commit
+with confirmation `publish-api-image`, then `Deploy API candidate` on the
+same ref with confirmation `deploy-api-candidate`. No schema migration is
+needed for this code-only change. The deploy workflow checks that its tagged
+revision has zero production traffic and that its public health endpoints
+respond. Production traffic must not be promoted for this verification.
+
+Against the candidate tag URL, make one unauthenticated `GET /v1/cards`
+without query values. Record only its `401` status and `X-Request-ID`, then
+query Cloud Logging for that UUID using the lookup above. Verify one parsed
+`jsonPayload` completion event with route `/v1/cards`, outcome
+`authentication`, code `authentication_required`, and the matching UUID.
+Check that the container event has no raw URL, headers, token, SQL, card
+content, or exception detail. Check the platform request log separately; do
+not mistake Uvicorn access-log suppression for platform-log suppression.
+Record candidate revision, CI/workflow run IDs, observed result, and any
+failure before marking this boundary deployed and verified.
+
 ## Later boundaries
 
 - Request, database readiness/pool, authentication, review, and import signals.
