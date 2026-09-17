@@ -27,7 +27,7 @@ Production statements must distinguish repository-verified evidence from operato
 ## Active milestone
 
 **Week 6 - operational ownership, Issue
-[#27](https://github.com/JosephT5566/english-learning/issues/27), baseline inspection started.** Issue
+[#27](https://github.com/JosephT5566/english-learning/issues/27), local signals and synthetic restore verified.** Issue
 [#26](issues/issue-26/README.md) is closed after the staged deployment and rollback rehearsal.
 
 The provider-neutral container and Cloud Run/Neon release contract are complete locally. The
@@ -139,11 +139,16 @@ The operator deferred Issue #27's zero-traffic candidate verification. Local
 review outcome logging now occurs after transaction commit and distinguishes
 new batches from replays. Local dry-run and confirmed-import commands now emit
 bounded outcome events that preserve whether the database apply committed.
-Next, prepare Issue #27's independent backup and isolated-restore proof. The
-deployed request-ID lookup, proposed narrow platform-log exclusion
+An independent synthetic `pg_dump` archive was restored into a disposable
+network-isolated PostgreSQL 17 container. Schema, counts, relationships, and
+representative multilingual records matched; see
+[`issues/issue-27/backup-restore.md`](issues/issue-27/backup-restore.md).
+Next, configure a private GCS backup of Neon and restore that actual artifact
+into an isolated environment. The deployed request-ID lookup, proposed narrow
+platform-log exclusion
 (raw URLs currently retain for 30 days in `_Default`), and one alert remain
 open. The initial restored-data reconciliation remains deferred, not verified;
-Issue #27's independent backup/restore proof is a separate boundary.
+Issue #27's independent production backup/restore proof is still open.
 
 ## Context pointers
 

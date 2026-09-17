@@ -1,7 +1,8 @@
 # Issue #27 - Operational Ownership
 
-Status: in progress (local request tracing implemented and CI passed; the
-operator deferred candidate verification). Last updated: 2026-09-17.
+Status: in progress (local request/review/import signals and a synthetic
+isolated restore verified; production backup and candidate verification
+remain open). Last updated: 2026-09-18.
 
 ## First acceptance boundary
 
@@ -260,7 +261,8 @@ run or deployed import event was observed.
 
 - Request, database readiness/pool, authentication, review, and import signals.
 - Actionable alert set and retention rules.
-- Independent backup into protected storage, isolated restore, schema/count/
-  representative-data reconciliation, and a recovery runbook.
+- Independent production backup into protected storage and restore of that
+  artifact. The synthetic isolated restore, safe manifest, and operator plan
+  are in [`backup-restore.md`](backup-restore.md); they are local proof only.
 - One labeled incident exercise with timeline, detection, mitigation, recovery,
   and corrective action. Do not claim a real production incident.
