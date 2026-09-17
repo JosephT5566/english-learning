@@ -1,8 +1,26 @@
 # Issue #27 - Operational Ownership
 
 Status: in progress (local request/review/import signals and a synthetic
-isolated restore verified; production backup and candidate verification
-remain open). Last updated: 2026-09-18.
+isolated restore verified; independent production backup explicitly deferred;
+candidate verification remains open). Last updated: 2026-09-18.
+
+## Owner scope decision, 2026-09-18
+
+The owner chose to skip an independent Neon database backup to GCS and its
+scheduled pipeline for this side project to avoid additional storage and
+operational cost. No production dump, GCS bucket, backup credential, or
+recurring backup job was created. The original backup/restore acceptance
+criterion is therefore **deferred by choice, not completed**. The synthetic
+restore in [`backup-restore.md`](backup-restore.md) remains a local exercise,
+not evidence that production data can be recovered independently of Neon.
+
+The checked-in GitHub workflows contain no `schedule`/`cron` trigger. A
+read-only check of project `eng-learning-470909` found the Cloud Scheduler API
+disabled, and the Singapore Cloud Run Jobs list showed only
+`english-learning-api-migrate`. This supports the narrower statement that no
+scheduled backup pipeline was found in the repository or checked GCP setup;
+it does not audit every possible external scheduler. The migration workflow
+is manual. Revisit backups if data-loss tolerance, usage, or budget changes.
 
 ## First acceptance boundary
 
@@ -261,8 +279,8 @@ run or deployed import event was observed.
 
 - Request, database readiness/pool, authentication, review, and import signals.
 - Actionable alert set and retention rules.
-- Independent production backup into protected storage and restore of that
-  artifact. The synthetic isolated restore, safe manifest, and operator plan
-  are in [`backup-restore.md`](backup-restore.md); they are local proof only.
+- Independent production backup and restore are deferred by owner decision;
+  the synthetic isolated restore and future operator option are in
+  [`backup-restore.md`](backup-restore.md).
 - One labeled incident exercise with timeline, detection, mitigation, recovery,
   and corrective action. Do not claim a real production incident.

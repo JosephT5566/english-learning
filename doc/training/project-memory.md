@@ -143,12 +143,15 @@ An independent synthetic `pg_dump` archive was restored into a disposable
 network-isolated PostgreSQL 17 container. Schema, counts, relationships, and
 representative multilingual records matched; see
 [`issues/issue-27/backup-restore.md`](issues/issue-27/backup-restore.md).
-Next, configure a private GCS backup of Neon and restore that actual artifact
-into an isolated environment. The deployed request-ID lookup, proposed narrow
-platform-log exclusion
+The owner explicitly deferred an independent Neon-to-GCS backup and recurring
+backup schedule to avoid additional cost. Repository workflows have no cron
+trigger; the checked GCP project has Cloud Scheduler disabled and only the
+manual migration Cloud Run Job. This is a conscious exception to Issue #27's
+original production backup/restore criterion, not completion evidence.
+Next, define and test the first actionable failure alert and runbook response.
+The deployed request-ID lookup, proposed narrow platform-log exclusion
 (raw URLs currently retain for 30 days in `_Default`), and one alert remain
-open. The initial restored-data reconciliation remains deferred, not verified;
-Issue #27's independent production backup/restore proof is still open.
+open. The initial restored-data reconciliation remains deferred, not verified.
 
 ## Context pointers
 

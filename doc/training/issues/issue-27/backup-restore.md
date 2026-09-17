@@ -1,7 +1,8 @@
 # Issue #27 backup and isolated restore
 
-Status: synthetic local restore verified on 2026-09-18. Independent production
-backup to GCS and restore of that backup remain unverified.
+Status: synthetic local restore verified on 2026-09-18. The owner deferred an
+independent production backup to GCS and its scheduled pipeline to avoid extra
+storage and operational cost. No real backup or production restore is claimed.
 
 ## Recovery boundary
 
@@ -53,7 +54,15 @@ The temporary archive, manifest files, databases, and container are removed
 after verification. These are synthetic records only; this does not prove a
 Neon or GCS backup.
 
-## Production backup proposal awaiting execution
+## Deferred production backup proposal
+
+This section is a future option, not an active setup checklist. No GCS bucket,
+backup role, backup secret, scheduled job, or Neon dump was created for Issue
+#27. The user chose to proceed without an independent database copy for the
+current side-project scope. That leaves recovery dependent on the provider's
+available mechanisms and their limits; the local synthetic rehearsal does not
+reduce that production data-loss risk. Revisit this proposal if the value of
+stored learning data, recovery requirements, or budget changes.
 
 1. Create a dedicated Singapore GCS bucket with uniform bucket-level access,
    public access prevention, and narrow writer/restore-reader IAM. GCS encrypts
@@ -114,5 +123,7 @@ Neon or GCS backup.
    migration workflows separate from this exercise.
 
 The real GCS/Neon run, recurring backup schedule, retention decision, and
-restore evidence remain Issue #27 acceptance work. The initial Issue #26
-local-to-Neon transfer reconciliation is a separate, still deferred check.
+restore evidence are intentionally deferred. The original Issue #27
+production backup/restore criterion is an explicit exception, not a completed
+checkbox. The initial Issue #26 local-to-Neon transfer reconciliation is a
+separate, still deferred check.

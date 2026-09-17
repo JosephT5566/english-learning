@@ -1,6 +1,6 @@
 # Decisions And Known Issues
 
-Last updated: 2026-09-14
+Last updated: 2026-09-18
 
 ## Durable Decisions
 
@@ -129,6 +129,13 @@ Last updated: 2026-09-14
 
 ## Change Log
 
+- 2026-09-18: For the current side-project scope, defer an independent Neon
+  database backup to GCS and the recurring backup pipeline to avoid extra
+  storage and operational cost. The synthetic PostgreSQL restore rehearsal is
+  retained as local learning evidence, not production recovery proof. Issue
+  #27's original production backup/restore acceptance criterion remains unmet
+  by explicit owner choice; revisit if data-loss tolerance, project usage, or
+  budget changes.
 - 2026-09-17: For Issue #27's first observability boundary, emit one bounded JSON
   completion event per routed API request using the server-generated request ID,
   matched route template, status, duration, outcome class, and stable error code.
