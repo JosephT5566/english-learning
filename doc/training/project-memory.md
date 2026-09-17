@@ -151,8 +151,12 @@ original production backup/restore criterion, not completion evidence.
 The first failure-alert filter, owner, provisional one-event condition, and
 response steps are in [`issues/issue-27/failure-alert.md`](issues/issue-27/failure-alert.md).
 Cloud Logging accepted the filter but found no deployed application event; no
-policy or notification channel was created. Next, run one labeled local
-failure exercise and record detection, response, recovery, and correction.
+policy or notification channel was created. A labeled local readiness failure
+exercise recorded manual detection, request-ID correlation, simulated
+mitigation, recovery, and corrective actions in
+[`issues/issue-27/incident-exercise.md`](issues/issue-27/incident-exercise.md).
+Next, prepare the deferred zero-traffic candidate verification so the
+operator can check the deployed event and privacy before activating the alert.
 The deployed request-ID lookup, proposed narrow platform-log exclusion (raw
 URLs currently retain for 30 days in `_Default`), and live alert verification
 remain open. The initial restored-data reconciliation remains deferred.

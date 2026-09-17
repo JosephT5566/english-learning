@@ -1,9 +1,9 @@
 # Issue #27 - Operational Ownership
 
 Status: in progress (local request/review/import signals, a synthetic isolated
-restore, and a checked first-alert query; independent production backup
-explicitly deferred; candidate verification remains open). Last updated:
-2026-09-18.
+restore, a checked first-alert query, and a local incident exercise;
+independent production backup explicitly deferred; candidate verification
+remains open). Last updated: 2026-09-18.
 
 ## Owner scope decision, 2026-09-18
 
@@ -283,8 +283,10 @@ run or deployed import event was observed.
 - The first proposed failure condition and runbook are in
   [`failure-alert.md`](failure-alert.md); its activation waits for candidate
   application-event verification.
+- The labeled local readiness outage drill and its limits are in
+  [`incident-exercise.md`](incident-exercise.md).
 - Independent production backup and restore are deferred by owner decision;
   the synthetic isolated restore and future operator option are in
   [`backup-restore.md`](backup-restore.md).
-- One labeled incident exercise with timeline, detection, mitigation, recovery,
-  and corrective action. Do not claim a real production incident.
+- The local incident exercise is complete; deployed alert detection and a
+  real dependency failure remain unverified.
