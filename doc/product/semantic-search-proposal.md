@@ -1,5 +1,10 @@
 # Semantic Search Prototype Proposal
 
+> Historical proposal, superseded on 2026-09-17 by
+> [the FastAPI/Neon retrieval MVP](rag-semantic-search-mvp.md). The Sheets,
+> Cloudflare Worker, R2 JSON, and allowlist architecture below is not the
+> implementation plan for the current product.
+
 ## 1. 文件資訊
 
 - 狀態：Deferred proposal

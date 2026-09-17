@@ -113,7 +113,10 @@ interview evidence.
 - Preserve Sheets only through controlled migration and rollback; do not dual-write.
 - Use Cloud Run `asia-southeast1` and Neon AWS Singapore under the documented low-traffic budget.
 - Treat AI input and output as untrusted; AI may create an editable draft but never a confirmed card.
-- Defer semantic search, queues, caches, and additional infrastructure until a measured need exists.
+- Defer queues, caches, and additional infrastructure until a measured need exists.
+- Plan the semantic vocabulary retrieval MVP after Issue #27 through
+  [#38-#41](../product/rag-semantic-search-mvp.md); gate the later tutor #42 on measured retrieval
+  quality. This is planned scope, not implemented evidence.
 
 ## Open decisions
 

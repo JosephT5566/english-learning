@@ -507,8 +507,10 @@ Do not cut authorization tests, migration reconciliation, idempotency, deploymen
 
 The following are explicitly outside the initial training plan:
 
-- semantic or vector search
-- RAG or chat features
+- semantic or vector search (now planned as a separate post-#27 retrieval MVP,
+  [#38-#41](../product/rag-semantic-search-mvp.md))
+- RAG or chat features (the optional grounded tutor is #42, gated on retrieval
+  evaluation)
 - autonomous AI writes or agent-selected database operations
 - a Go rewrite
 - microservices
@@ -517,7 +519,12 @@ The following are explicitly outside the initial training plan:
 - complex social or collaborative features
 - native mobile clients
 
-After Week 8, evaluate semantic search using real product needs and a labeled relevance set. Evaluate a small Go service only if target roles consistently require Go and the Python design is already understood.
+The semantic retrieval tickets may begin after Issue #27, as a separate feature
+track. They do not replace or complete the existing Week 7-8 AI-authoring and
+hardening tickets. Evaluate retrieval using real product needs and a labeled
+relevance set before proceeding to the tutor. Evaluate a small Go service only
+if target roles consistently require Go and the Python design is already
+understood.
 
 ## Working cadence
 
