@@ -62,7 +62,8 @@ production request-ID lookup.
 
 The deployed check proves one auth-failure event is ingested and traceable.
 It does not exercise a deployed `database` or `unexpected` failure, a review
-or import outcome, an alert policy, notification delivery, or a private-data
-write. The first [failure alert](failure-alert.md) still needs an operator
-notification channel and a labeled alert-delivery test. The candidate has
-not been promoted to production traffic.
+or import outcome, or a private-data write. A separate
+[temporary 401 notification test](notification-test.md) later reached the
+operator's email, but the first [failure alert](failure-alert.md) still needs
+its own policy and failure-condition test. The candidate has not been promoted
+to production traffic.

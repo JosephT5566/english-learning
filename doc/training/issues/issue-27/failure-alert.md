@@ -1,10 +1,12 @@
 # Issue #27 first failure alert
 
 Status: defined and query syntax checked on 2026-09-18. A zero-traffic
-candidate emitted one safe authentication event, documented in
-[`candidate-verification.md`](candidate-verification.md). No alert policy is
-configured, and no channel has been selected or tested for this alert. The
-failure condition and notification delivery remain unverified.
+candidate emitted a safe authentication event, documented in
+[`candidate-verification.md`](candidate-verification.md). An email channel
+delivered a separate temporary 401 alert by operator report; see
+[`notification-test.md`](notification-test.md). The operator deleted that test
+policy. No 5xx failure policy is configured, and its condition and delivery
+remain unverified.
 
 ## Why this signal
 
@@ -25,7 +27,7 @@ from count thresholds that require [log-based metrics](https://cloud.google.com/
 | Name                               | English Learning API database or unexpected failure                                                             |
 | Owner                              | Project operator (Joseph)                                                                                       |
 | Condition                          | One matching safe application completion event                                                                  |
-| Notification                       | Operator-controlled channel, to be selected and verified before enabling                                        |
+| Notification                       | Operator email channel tested with a temporary 401 policy; attach it to this policy when enabling               |
 | Minimum time between notifications | 30 minutes, provisional assumption to avoid repeated notices during one outage; revisit after observing traffic |
 | Runbook                            | This file, “Response to a match” below                                                                          |
 

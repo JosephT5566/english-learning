@@ -228,7 +228,7 @@ activation ran.
 | Authentication failures | One candidate 401 emitted the expected `authentication` event | Check production counts and alert noise |
 | Review outcomes | Local `review_submission_completed` event distinguishes committed batches from exact replays after transaction completion; integration tests cover failed commit and rollback without a false success event | Verify deployed event and query; tune operational use from observed traffic |
 | Import outcomes | Local CLI event records bounded operation, outcome, phase, commit state, completed report count, and replay state; tests cover failure after commit | Capture and inspect a real operator run when imports are next needed; CLI events are not Cloud Run HTTP metrics |
-| Alerting | First stdout JSON failure filter accepted by Cloud Logging; safe candidate event ingestion verified; owner, provisional one-event condition, notification spacing, and response runbook defined in [`failure-alert.md`](failure-alert.md) | Choose/test channel, enable and test policy; no live alert yet |
+| Alerting | First failure filter and runbook defined; a separate temporary candidate 401 policy delivered an email by operator report, then was deleted ([`notification-test.md`](notification-test.md)) | Configure and test the actual 5xx failure policy; no live failure alert yet |
 | Retention/privacy | Candidate application event had only allowlisted fields; separate platform entry still had `requestUrl`; routing preflight found only `_Required` and `_Default` sinks and no user-defined log metric or alert | Revisit narrow platform-log exclusion after production event verification; check external consumers |
 
 The operator deferred the candidate workflow on 2026-09-17. It was resumed
@@ -296,6 +296,8 @@ run or deployed import event was observed.
   selection and delivery testing.
 - The labeled local readiness outage drill and its limits are in
   [`incident-exercise.md`](incident-exercise.md).
+- The temporary email notification path test is in
+  [`notification-test.md`](notification-test.md); the test policy was deleted.
 - Independent production backup and restore are deferred by owner decision;
   the synthetic isolated restore and future operator option are in
   [`backup-restore.md`](backup-restore.md).

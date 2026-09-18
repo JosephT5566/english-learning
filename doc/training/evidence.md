@@ -662,5 +662,7 @@ Use precise language such as “project,” “local load test,” or “deploye
 - Measured result: One candidate request was correlated. No traffic rate, latency distribution,
   availability, alert delivery, or production incident result is inferred.
 - Limitations: No authenticated candidate smoke or promotion for this commit, deployed
-  database/unexpected failure event, notification channel, or live alert test. The proposed
+  database/unexpected failure event, or live failure alert test. A separate temporary 401 policy
+  matched a new candidate event; the operator reported receiving its email and finding the alert,
+  then deleted the test policy. See `doc/training/issues/issue-27/notification-test.md`. The proposed
   platform-log exclusion remains unapplied.
