@@ -98,10 +98,12 @@ jsonPayload.request_id="REPORTED_REQUEST_UUID"
    alert condition.
 3. Observe real baseline traffic and choose an operator notification channel.
    The email channel was tested with a temporary 401 candidate policy, and
-   this 5xx policy is now enabled. Test its own condition with a clearly
-   labeled synthetic failure event or controlled candidate failure; record
-   the test time, received notice, and resulting query. Avoid disrupting Neon
-   or production traffic merely to trigger an alert.
+   this 5xx policy is now enabled. The operator completed candidate smoke
+   manually and requested no further candidate tests. Verify this policy's
+   own condition later with a clearly labeled synthetic matching event or a
+   naturally occurring failure; record the test time, received notice, and
+   resulting query. Avoid disrupting Neon or production traffic merely to
+   trigger an alert.
 4. Review alert volume after the first week of observed use. Adjust the match
    scope or notification interval from evidence, not an invented SLO. If no
    event appears, investigate ingestion or lack of traffic before treating
@@ -109,7 +111,7 @@ jsonPayload.request_id="REPORTED_REQUEST_UUID"
 
 Steps 1 and 2 passed on the zero-traffic candidate. Step 3 is complete only
 for the separate 401 email-path test and policy creation; this policy's 5xx
-condition and delivery still need a safe test. Step 4 awaits observed use.
+condition and delivery still need verification. Step 4 awaits observed use.
 
 Read-only checks before candidate deployment on 2026-09-18:
 `gcloud monitoring policies list` returned no policies; `gcloud logging read`

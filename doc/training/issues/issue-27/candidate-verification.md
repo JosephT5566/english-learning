@@ -64,6 +64,13 @@ The deployed check proves one auth-failure event is ingested and traceable.
 It does not exercise a deployed `database` or `unexpected` failure, a review
 or import outcome, or a private-data write. A separate
 [temporary 401 notification test](notification-test.md) later reached the
-operator's email, but the first [failure alert](failure-alert.md) still needs
-its own policy and failure-condition test. The candidate has not been promoted
-to production traffic.
+operator's email. The first [failure alert](failure-alert.md) is enabled but
+still needs a matching 5xx event and delivery verification.
+
+On 2026-09-18, the operator reported completing the candidate smoke test
+manually. The result, exact calls, response IDs, and output were not shared, so this
+is operator-reported release evidence rather than independently inspected
+smoke evidence. The operator plans to merge PR #43 and then manually switch
+traffic; no further candidate tests are requested. A read-only check after
+this report still showed the candidate at zero production traffic and the
+previous revision at 100%.

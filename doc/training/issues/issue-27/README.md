@@ -216,19 +216,25 @@ revision at 100%. One unauthenticated candidate request returned 401 with an
 ID matching exactly one bounded stdout event. The separate platform request
 log still included a raw URL field. See the scoped
 [`candidate-verification.md`](candidate-verification.md) for run IDs, revision,
-safe event fields, routing preflight, and limits. No traffic promotion or alert
-activation ran.
+safe event fields, routing preflight, and limits. At that checkpoint, no
+traffic promotion or alert activation had run.
+
+The operator later reported completing the candidate smoke test manually;
+its result and detailed requests were not provided for independent review. The
+operator will merge PR #43 and manually switch Cloud Run traffic afterward.
+No further candidate testing is planned. A read-only check still showed the
+existing revision at 100% and the candidate at zero traffic.
 
 ## Logging and signal status
 
 | Signal | Current evidence | Remaining work |
 | --- | --- | --- |
-| Request ID, rate, latency, status, error class | Bounded JSON event passed local/CI tests; one zero-traffic candidate auth failure was correlated by request ID in parsed stdout | Verify representative deployed failure classes and production traffic after an approved promotion |
+| Request ID, rate, latency, status, error class | Bounded JSON event passed local/CI tests; one zero-traffic candidate auth failure was correlated by request ID in parsed stdout; operator reports manual candidate smoke completed without shared result details | Verify one production request ID after operator promotion |
 | Database readiness | Failed probe has `database` outcome locally | Check deployed signal; design pool-usage signal if justified |
 | Authentication failures | One candidate 401 emitted the expected `authentication` event | Check production counts and alert noise |
 | Review outcomes | Local `review_submission_completed` event distinguishes committed batches from exact replays after transaction completion; integration tests cover failed commit and rollback without a false success event | Verify deployed event and query; tune operational use from observed traffic |
 | Import outcomes | Local CLI event records bounded operation, outcome, phase, commit state, completed report count, and replay state; tests cover failure after commit | Capture and inspect a real operator run when imports are next needed; CLI events are not Cloud Run HTTP metrics |
-| Alerting | First 5xx failure policy enabled with exact filter, operator email channel, 30-minute provisional interval, and runbook; separate 401 notification path reached email by operator report ([`failure-alert.md`](failure-alert.md), [`notification-test.md`](notification-test.md)) | Trigger and verify the actual 5xx condition safely; production revision lacks the new event |
+| Alerting | First 5xx failure policy enabled with exact filter, operator email channel, 30-minute provisional interval, and runbook; separate 401 notification path reached email by operator report ([`failure-alert.md`](failure-alert.md), [`notification-test.md`](notification-test.md)) | Verify actual 5xx condition safely after promotion or from a natural event; production revision lacks the new event |
 | Retention/privacy | Candidate application event had only allowlisted fields; separate platform entry still had `requestUrl`; routing preflight found only `_Required` and `_Default` sinks and no user-defined log metric or alert | Revisit narrow platform-log exclusion after production event verification; check external consumers |
 
 The operator deferred the candidate workflow on 2026-09-17. It was resumed
