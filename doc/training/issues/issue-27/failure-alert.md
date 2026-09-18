@@ -42,6 +42,11 @@ verifies configuration, not actual failure detection or delivery. The
 candidate remains at zero production traffic; the current production revision
 does not emit this application event.
 
+Before the operator's planned merge, the policy runbook URL was changed from
+the branch to immutable commit `35cfb46` so deleting the branch will not break
+the alert link. A read-back check confirmed the URL, filter, channel count,
+notification interval, and enabled state after the update.
+
 Logs Explorer and log-match alert filter:
 
 ```text
