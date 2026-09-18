@@ -19,6 +19,7 @@ CONFIG_ENVIRONMENT_VARIABLES = (
     "DATABASE_URL",
     "DATABASE_CONNECT_TIMEOUT_SECONDS",
     "GOOGLE_OAUTH_CLIENT_ID",
+    "GOOGLE_ALLOWED_EMAILS",
     "CORS_ALLOWED_ORIGINS",
 )
 
@@ -79,6 +80,7 @@ def test_production_accepts_explicit_database_url(
     monkeypatch.setenv("APP_ENV", "production")
     monkeypatch.setenv("DATABASE_URL", database_url)
     monkeypatch.setenv("GOOGLE_OAUTH_CLIENT_ID", "production-client-id")
+    monkeypatch.setenv("GOOGLE_ALLOWED_EMAILS", "user@example.test")
     monkeypatch.setenv("CORS_ALLOWED_ORIGINS", '["https://app.example.com"]')
 
     settings = load_settings()
@@ -97,6 +99,7 @@ def test_production_accepts_required_tls_channel_binding(
     monkeypatch.setenv("APP_ENV", "production")
     monkeypatch.setenv("DATABASE_URL", database_url)
     monkeypatch.setenv("GOOGLE_OAUTH_CLIENT_ID", "production-client-id")
+    monkeypatch.setenv("GOOGLE_ALLOWED_EMAILS", "user@example.test")
     monkeypatch.setenv("CORS_ALLOWED_ORIGINS", '["https://app.example.com"]')
 
     settings = load_settings()
@@ -170,6 +173,7 @@ def test_production_requires_explicit_cors_origins(
         "postgresql+psycopg://api_user:password@db.example:5432/app?sslmode=verify-full",
     )
     monkeypatch.setenv("GOOGLE_OAUTH_CLIENT_ID", "production-client-id")
+    monkeypatch.setenv("GOOGLE_ALLOWED_EMAILS", "user@example.test")
 
     with pytest.raises(ConfigurationError, match="CORS_ALLOWED_ORIGINS"):
         load_settings()
@@ -181,6 +185,35 @@ def test_google_oauth_client_id_must_not_be_blank(
     monkeypatch.setenv("GOOGLE_OAUTH_CLIENT_ID", "   ")
 
     with pytest.raises(ConfigurationError, match="GOOGLE_OAUTH_CLIENT_ID"):
+        load_settings()
+
+
+def test_production_requires_google_email_allowlist(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setenv(
+        "DATABASE_URL",
+        "postgresql+psycopg://api_user:password@db.example:5432/app?sslmode=verify-full",
+    )
+    monkeypatch.setenv("GOOGLE_OAUTH_CLIENT_ID", "production-client-id")
+
+    with pytest.raises(ConfigurationError, match="GOOGLE_ALLOWED_EMAILS"):
+        load_settings()
+
+
+def test_google_email_allowlist_normalizes_and_rejects_duplicates(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(
+        "GOOGLE_ALLOWED_EMAILS", " User@Example.test , second@example.test "
+    )
+    assert (
+        load_settings().google_allowed_emails == "user@example.test,second@example.test"
+    )
+
+    monkeypatch.setenv("GOOGLE_ALLOWED_EMAILS", "USER@example.test,user@example.test")
+    with pytest.raises(ConfigurationError, match="GOOGLE_ALLOWED_EMAILS"):
         load_settings()
 
 

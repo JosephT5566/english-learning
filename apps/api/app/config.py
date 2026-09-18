@@ -67,9 +67,24 @@ class Settings(BaseSettings):
     google_oauth_client_id: Annotated[
         str, StringConstraints(strip_whitespace=True, min_length=1)
     ] = DEFAULT_GOOGLE_OAUTH_CLIENT_ID
+    google_allowed_emails: str = ""
     cors_allowed_origins: Annotated[tuple[str, ...], Field(min_length=1)] = (
         DEFAULT_CORS_ALLOWED_ORIGINS
     )
+
+    @field_validator("google_allowed_emails")
+    @classmethod
+    def normalize_allowed_emails(cls, value: str) -> str:
+        emails = [email.strip().casefold() for email in value.split(",")]
+        if value and (
+            any(
+                not email or "@" not in email or any(char.isspace() for char in email)
+                for email in emails
+            )
+            or len(emails) != len(set(emails))
+        ):
+            raise ValueError("must contain unique comma-separated email addresses")
+        return ",".join(emails) if value else ""
 
     @field_validator("cors_allowed_origins")
     @classmethod
@@ -183,6 +198,14 @@ def load_settings() -> Settings:
     ):
         raise ConfigurationError(
             "Invalid configuration for GOOGLE_OAUTH_CLIENT_ID; production requires an explicit value."
+        )
+
+    if (
+        settings.app_env is AppEnvironment.PRODUCTION
+        and not settings.google_allowed_emails
+    ):
+        raise ConfigurationError(
+            "Invalid configuration for GOOGLE_ALLOWED_EMAILS; production requires an explicit allowlist."
         )
 
     if (

@@ -55,8 +55,10 @@ file beside `pyproject.toml`; use `.env.example` as the field reference.
 | `DATABASE_URL` | Local disposable PostgreSQL URL | Must use the `postgresql+psycopg` driver; production also requires verified TLS or required TLS channel binding |
 | `DATABASE_CONNECT_TIMEOUT_SECONDS` | `2` | Integer from 1 through 10 |
 | `GOOGLE_OAUTH_CLIENT_ID` | Local placeholder | Google web OAuth client ID used as the accepted token audience |
+| `GOOGLE_ALLOWED_EMAILS` | Empty locally | Comma-separated verified Google email allowlist; required in production |
 
-Production must explicitly override `DATABASE_URL` and `GOOGLE_OAUTH_CLIENT_ID`; their local defaults
+Production must explicitly override `DATABASE_URL`, `GOOGLE_OAUTH_CLIENT_ID`, and
+`GOOGLE_ALLOWED_EMAILS`; their local defaults
 are rejected.
 Database URLs are treated as secrets and must not be printed or logged.
 The web process emits one JSON `http_request_completed` line per routed request
@@ -189,8 +191,8 @@ development only.
 ## Authenticated product APIs
 
 All `/v1` endpoints require a Google ID token in `Authorization: Bearer <token>`. The backend verifies
-the token and derives ownership from the stable Google subject; request bodies cannot select an
-owner.
+the token, rejects accounts outside the configured email allowlist before user creation, and derives
+ownership from the stable Google subject; request bodies cannot select an owner.
 
 ```text
 GET /v1/me

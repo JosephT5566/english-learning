@@ -101,6 +101,8 @@ and sanitized snapshot remain as evidence, but the wrapper requires deliberate e
 - Google sign-in is client-side and stores the Google ID token plus expiration in `localStorage`.
 - API requests require a valid ID token from `getTokenIfValid()` and send it only in the bearer
   header.
+- Production API access also requires the verified Google email to be on the backend-configured
+  allowlist; the frontend list remains a user-experience precheck only.
 - Browser API access is restricted to exact backend-configured origins; bearer and idempotency
   headers are allowed while credentialed cookies remain disabled.
 - `SwipeCards` emits decisions and observed state versions; review stages, ease, and dates are now

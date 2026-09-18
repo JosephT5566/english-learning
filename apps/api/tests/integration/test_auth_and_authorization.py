@@ -91,6 +91,33 @@ def test_google_subject_maps_to_stable_internal_user_and_updates_email(
     assert stored == "renamed@example.test"
 
 
+def test_backend_allowlist_rejects_disallowed_account_before_user_creation(
+    migrated_database_engine: Engine,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(
+        "DATABASE_URL",
+        migrated_database_engine.url.render_as_string(hide_password=False),
+    )
+    monkeypatch.setenv("GOOGLE_ALLOWED_EMAILS", "fixture.user@example.test")
+    with TestClient(create_app(), raise_server_exceptions=False) as client:
+        client.app.state.token_verifier = SwitchingTokenVerifier()
+        response = client.get("/v1/me", headers=bearer("attacker-token"))
+        with migrated_database_engine.connect() as connection:
+            count_after_denial = connection.execute(
+                text("SELECT count(*) FROM users")
+            ).scalar_one()
+        allowed = client.get("/v1/me", headers=bearer("fixture-token"))
+
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "account_not_allowed"
+    assert count_after_denial == 0
+    assert allowed.status_code == 200
+    with migrated_database_engine.connect() as connection:
+        count = connection.execute(text("SELECT count(*) FROM users")).scalar_one()
+    assert count == 1
+
+
 def test_other_user_cannot_read_deck_card_or_due_review_by_changing_ids(
     api_client: TestClient,
 ) -> None:

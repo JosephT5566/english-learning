@@ -65,8 +65,8 @@ Last updated: 2026-09-15
 - `apps/api/app/request_context.py`: per-request UUID generation and bounded JSON completion
   events for HTTP requests and committed/replayed review submissions.
 - `apps/api/app/health.py`: database-independent liveness and database-aware readiness contracts.
-- `apps/api/app/auth.py`: Google ID-token verification, verified-claim allowlisting, stable subject
-  to internal-user mapping, and the reusable authenticated-user dependency.
+- `apps/api/app/auth.py`: Google ID-token verification, backend verified-email allowlisting, stable
+  subject to internal-user mapping, and the reusable authenticated-user dependency.
 - `apps/api/app/reads.py`: authenticated owner-scoped deck/card/due-review routes, response models,
   filtering, stable tuple ordering, and safe database-failure translation.
 - `apps/api/app/writes.py`: server-owned deck/card create, optimistic edit, and archive operations.
@@ -104,6 +104,8 @@ Last updated: 2026-09-15
   upgrades through the Secret Manager-backed Cloud Run migration job and verifies every Alembic head.
 - `.github/workflows/deploy-api-candidate.yml`: protected manual WIF workflow that deploys the same
   commit-tagged image as a verified zero-traffic Cloud Run candidate.
+- `.github/workflows/smoke-api-candidate.yml`: protected manual WIF workflow that resolves the tagged
+  zero-traffic candidate and runs authenticated smoke checks with a supplied short-lived Google ID token.
 - `deploy/cloud-run/release.sh`: clean-commit Cloud Build, single-task migration, and tagged
   zero-traffic Cloud Run candidate release boundary.
 - `deploy/cloud-run/smoke.sh`: public health, authenticated owned-read, and explicitly opted-in

@@ -17,6 +17,7 @@ readonly required_variables=(
 	MIGRATION_DATABASE_SECRET
 	MIGRATION_DATABASE_SECRET_VERSION
 	GOOGLE_OAUTH_CLIENT_ID
+	GOOGLE_ALLOWED_EMAILS
 	CORS_ALLOWED_ORIGINS
 )
 
@@ -39,7 +40,7 @@ if [[ ! "${release_id}" =~ ^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$ ]]; then
 fi
 
 readonly image="${ARTIFACT_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/${ARTIFACT_REPOSITORY}/${API_IMAGE_NAME}:${release_id}"
-readonly environment_variables="^@^APP_ENV=production@LOG_LEVEL=INFO@DATABASE_CONNECT_TIMEOUT_SECONDS=5@GOOGLE_OAUTH_CLIENT_ID=${GOOGLE_OAUTH_CLIENT_ID}@CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS}"
+readonly environment_variables="^@^APP_ENV=production@LOG_LEVEL=INFO@DATABASE_CONNECT_TIMEOUT_SECONDS=5@GOOGLE_OAUTH_CLIENT_ID=${GOOGLE_OAUTH_CLIENT_ID}@GOOGLE_ALLOWED_EMAILS=${GOOGLE_ALLOWED_EMAILS}@CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS}"
 
 echo "Building immutable release image ${image}."
 gcloud builds submit apps/api \

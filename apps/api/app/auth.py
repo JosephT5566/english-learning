@@ -117,6 +117,13 @@ def current_user(
     """Verify identity, upsert by Google subject, and return internal ownership."""
 
     identity = request.app.state.token_verifier.verify(token)
+    allowed_emails = request.app.state.settings.google_allowed_emails
+    if allowed_emails and identity.email.casefold() not in allowed_emails.split(","):
+        raise ApiError(
+            status_code=403,
+            code="account_not_allowed",
+            message="This account is not allowed to use the application.",
+        )
     existing = (
         session.execute(
             text(
