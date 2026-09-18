@@ -205,3 +205,9 @@ Last updated: 2026-09-18
   restore, automatic downgrade, application deployment, and traffic promotion were rejected from
   this workflow. Artifact Registry `asia-east1` is configured independently from Cloud Run
   `asia-southeast1`.
+- 2026-09-18: Made the backend's verified Google email allowlist authoritative before internal user
+  creation. Production requires an explicit list, currently supplied from the existing GitHub
+  `PUBLIC_EMAIL_WHITE_LIST` variable during API deployment. Added a protected, manually dispatched
+  candidate smoke workflow that accepts a fresh Google ID token, masks it in runner logs, and can
+  optionally submit one real review with exact replay. This does not create a persistent CI identity
+  or change the browser's Google sign-in flow.

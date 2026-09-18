@@ -297,6 +297,13 @@ This is only the public candidate gate. Obtain a fresh Google ID token and run t
 smoke script below before promotion. The workflow never promotes or rolls back traffic, reruns
 Alembic, rebuilds the image, or reads a database secret.
 
+Alternatively, run the protected **Smoke API candidate** workflow with a fresh allowlisted Google
+ID token. It resolves the current zero-traffic `candidate` tag and runs the same script. Its optional
+review-write input changes one real due card and verifies exact replay. `workflow_dispatch` inputs
+are not GitHub secrets; the workflow masks the token in runner logs, but the dispatch input itself
+is still a short-lived credential and must not be reused or placed in committed files. Use the
+existing `production` environment approval and inspect only the safe run summary.
+
 ## Candidate verification
 
 Obtain the tagged candidate URL from the Cloud Run service and run public checks:

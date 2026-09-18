@@ -58,6 +58,8 @@ The app reads these public SvelteKit env vars:
   normalized).
 - `PUBLIC_GOOGLE_AUTH_CLIENT_ID`: Google Identity Services OAuth client ID.
 - `PUBLIC_EMAIL_WHITE_LIST`: comma-separated allowed Google account emails.
+- The production API also receives this list as `GOOGLE_ALLOWED_EMAILS` and rejects verified Google
+  accounts outside it before creating an internal user. The browser-side check is only a UX precheck.
 
 Because these are `PUBLIC_` vars, they are bundled into browser code. Do not store secrets in them.
 Copy `.env.example` to an ignored `.env` for local frontend development and replace its placeholders.
