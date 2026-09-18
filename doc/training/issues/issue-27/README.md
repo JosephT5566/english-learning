@@ -1,9 +1,9 @@
 # Issue #27 - Operational Ownership
 
 Status: in progress (local request/review/import signals, a synthetic isolated
-restore, a checked first-alert query, and a local incident exercise;
-independent production backup explicitly deferred; candidate verification
-remains open). Last updated: 2026-09-18.
+restore, a checked first-alert query, a local incident exercise, and deployed
+candidate request correlation; independent production backup explicitly
+deferred; live alert verification remains open). Last updated: 2026-09-18.
 
 ## Owner scope decision, 2026-09-18
 
@@ -208,21 +208,32 @@ not mistake Uvicorn access-log suppression for platform-log suppression.
 Record candidate revision, CI/workflow run IDs, observed result, and any
 failure before marking this boundary deployed and verified.
 
+### Executed candidate check, 2026-09-18
+
+The protected publish and candidate workflows succeeded for commit `3704a2a`.
+Cloud Run showed the new candidate at zero production traffic and the previous
+revision at 100%. One unauthenticated candidate request returned 401 with an
+ID matching exactly one bounded stdout event. The separate platform request
+log still included a raw URL field. See the scoped
+[`candidate-verification.md`](candidate-verification.md) for run IDs, revision,
+safe event fields, routing preflight, and limits. No traffic promotion or alert
+activation ran.
+
 ## Logging and signal status
 
 | Signal | Current evidence | Remaining work |
 | --- | --- | --- |
-| Request ID, rate, latency, status, error class | Bounded JSON event and local/CI tests pass | Verify parsing and lookup on a zero-traffic candidate |
+| Request ID, rate, latency, status, error class | Bounded JSON event passed local/CI tests; one zero-traffic candidate auth failure was correlated by request ID in parsed stdout | Verify representative deployed failure classes and production traffic after an approved promotion |
 | Database readiness | Failed probe has `database` outcome locally | Check deployed signal; design pool-usage signal if justified |
-| Authentication failures | Stable auth class locally | Check deployed counts and alert noise |
+| Authentication failures | One candidate 401 emitted the expected `authentication` event | Check production counts and alert noise |
 | Review outcomes | Local `review_submission_completed` event distinguishes committed batches from exact replays after transaction completion; integration tests cover failed commit and rollback without a false success event | Verify deployed event and query; tune operational use from observed traffic |
 | Import outcomes | Local CLI event records bounded operation, outcome, phase, commit state, completed report count, and replay state; tests cover failure after commit | Capture and inspect a real operator run when imports are next needed; CLI events are not Cloud Run HTTP metrics |
-| Alerting | First stdout JSON failure filter accepted by Cloud Logging; owner, provisional one-event condition, notification spacing, and response runbook defined in [`failure-alert.md`](failure-alert.md) | Deploy and verify safe event, choose/test channel, enable and test policy; no live alert yet |
-| Retention/privacy | Application event excludes tested private values; platform URL/retention audit completed | Verify deployed events and decide narrow platform-log exclusion |
+| Alerting | First stdout JSON failure filter accepted by Cloud Logging; safe candidate event ingestion verified; owner, provisional one-event condition, notification spacing, and response runbook defined in [`failure-alert.md`](failure-alert.md) | Choose/test channel, enable and test policy; no live alert yet |
+| Retention/privacy | Candidate application event had only allowlisted fields; separate platform entry still had `requestUrl`; routing preflight found only `_Required` and `_Default` sinks and no user-defined log metric or alert | Revisit narrow platform-log exclusion after production event verification; check external consumers |
 
-The operator deferred the candidate workflow on 2026-09-17. No image was
-published and no new revision or alert was created from this branch. Local
-signal design can continue; deployed acceptance remains open.
+The operator deferred the candidate workflow on 2026-09-17. It was resumed
+on 2026-09-18 for the exact checked commit; the alert and traffic promotion
+remain open.
 
 ### Review transaction signal, 2026-09-17
 
@@ -281,8 +292,8 @@ run or deployed import event was observed.
 - Request, database readiness/pool, authentication, review, and import signals.
 - Actionable alert set and retention rules.
 - The first proposed failure condition and runbook are in
-  [`failure-alert.md`](failure-alert.md); its activation waits for candidate
-  application-event verification.
+  [`failure-alert.md`](failure-alert.md); its activation waits for channel
+  selection and delivery testing.
 - The labeled local readiness outage drill and its limits are in
   [`incident-exercise.md`](incident-exercise.md).
 - Independent production backup and restore are deferred by owner decision;

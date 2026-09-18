@@ -645,3 +645,22 @@ Use precise language such as “project,” “local load test,” or “deploye
   Neon using staged candidate verification, an authenticated transactional smoke test with
   idempotent replay, and schema-compatible traffic rollback. Describe this as project experience,
   not professional production-service ownership.
+
+### Issue #27 candidate request correlation
+
+- Date: 2026-09-18
+- Status: Verified on a zero-traffic Cloud Run candidate; production and alert delivery remain open.
+- Problem: Trace a reported request from its response ID to a privacy-safe backend event.
+- Implementation references: `apps/api/app/request_context.py`,
+  `doc/training/issues/issue-27/candidate-verification.md`, and
+  `doc/training/issues/issue-27/failure-alert.md`.
+- Verification: CI passed for commit `3704a2a`; protected image publish and candidate deploy runs
+  succeeded. Cloud Run kept the existing revision at 100% traffic. One candidate `GET /v1/cards`
+  returned 401 with an ID matching exactly one parsed stdout completion event. The payload keys
+  matched the allowlist, with route template, stable auth code, status, and duration. A separate
+  platform request log still had a raw URL field.
+- Measured result: One candidate request was correlated. No traffic rate, latency distribution,
+  availability, alert delivery, or production incident result is inferred.
+- Limitations: No authenticated candidate smoke or promotion for this commit, deployed
+  database/unexpected failure event, notification channel, or live alert test. The proposed
+  platform-log exclusion remains unapplied.

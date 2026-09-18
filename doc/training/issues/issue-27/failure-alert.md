@@ -1,8 +1,10 @@
 # Issue #27 first failure alert
 
-Status: defined and query syntax checked on 2026-09-18. No alert policy is
+Status: defined and query syntax checked on 2026-09-18. A zero-traffic
+candidate emitted one safe authentication event, documented in
+[`candidate-verification.md`](candidate-verification.md). No alert policy is
 configured, and no channel has been selected or tested for this alert. The
-application event is not yet deployed, so this is not live detection evidence.
+failure condition and notification delivery remain unverified.
 
 ## Why this signal
 
@@ -92,10 +94,11 @@ jsonPayload.request_id="REPORTED_REQUEST_UUID"
    event appears, investigate ingestion or lack of traffic before treating
    silence as health.
 
-Read-only checks on 2026-09-18: `gcloud monitoring policies list` returned no
-policies; `gcloud logging read` accepted the filter and returned no matching
-application event in the previous seven days. A separate stdout-stream query
-matched the existing Cloud Run log stream. These checks establish filter
-syntax and stream identity only; they do not establish candidate parsing,
-notification delivery, or live alert behavior. No user-defined log metric or
-policy was created in this step.
+Read-only checks before candidate deployment on 2026-09-18:
+`gcloud monitoring policies list` returned no policies; `gcloud logging read`
+accepted the filter and returned no matching application event in the
+previous seven days. A separate stdout-stream query matched the existing
+Cloud Run log stream. Candidate parsing and request-ID correlation were then
+verified in [`candidate-verification.md`](candidate-verification.md). These
+checks do not establish failure-condition detection, notification delivery,
+or live alert behavior. No user-defined log metric or policy was created.

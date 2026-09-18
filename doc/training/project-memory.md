@@ -135,31 +135,25 @@ interview evidence.
 
 ## Next action
 
-The operator deferred Issue #27's zero-traffic candidate verification. Local
-review outcome logging now occurs after transaction commit and distinguishes
-new batches from replays. Local dry-run and confirmed-import commands now emit
-bounded outcome events that preserve whether the database apply committed.
-An independent synthetic `pg_dump` archive was restored into a disposable
-network-isolated PostgreSQL 17 container. Schema, counts, relationships, and
-representative multilingual records matched; see
-[`issues/issue-27/backup-restore.md`](issues/issue-27/backup-restore.md).
-The owner explicitly deferred an independent Neon-to-GCS backup and recurring
-backup schedule to avoid additional cost. Repository workflows have no cron
-trigger; the checked GCP project has Cloud Scheduler disabled and only the
-manual migration Cloud Run Job. This is a conscious exception to Issue #27's
-original production backup/restore criterion, not completion evidence.
-The first failure-alert filter, owner, provisional one-event condition, and
-response steps are in [`issues/issue-27/failure-alert.md`](issues/issue-27/failure-alert.md).
-Cloud Logging accepted the filter but found no deployed application event; no
-policy or notification channel was created. A labeled local readiness failure
-exercise recorded manual detection, request-ID correlation, simulated
-mitigation, recovery, and corrective actions in
+Issue #27's request, review, and import signals passed local verification. A
+synthetic isolated restore passed, while the owner deferred an independent
+Neon-to-GCS backup and schedule for cost reasons; see
+[`issues/issue-27/backup-restore.md`](issues/issue-27/backup-restore.md). A
+labeled local readiness failure drill is in
 [`issues/issue-27/incident-exercise.md`](issues/issue-27/incident-exercise.md).
-Next, prepare the deferred zero-traffic candidate verification so the
-operator can check the deployed event and privacy before activating the alert.
-The deployed request-ID lookup, proposed narrow platform-log exclusion (raw
-URLs currently retain for 30 days in `_Default`), and live alert verification
-remain open. The initial restored-data reconciliation remains deferred.
+Protected workflows deployed commit `3704a2a` as a zero-traffic candidate.
+One 401 response matched exactly one allowlisted stdout event by request ID;
+the platform request log still had a raw URL field. See
+[`issues/issue-27/candidate-verification.md`](issues/issue-27/candidate-verification.md).
+Routing preflight found only `_Required` and `_Default` sinks, no user-defined
+log metrics, and no Monitoring policies. The first proposed failure alert and
+runbook are in [`issues/issue-27/failure-alert.md`](issues/issue-27/failure-alert.md),
+but no policy or notification channel was configured.
+
+Next, complete authenticated candidate smoke before any traffic promotion,
+then verify one production request ID and revisit the narrow platform-log
+exclusion. The alert still needs a channel and delivery test. The initial
+restored-data reconciliation remains deferred.
 
 ## Context pointers
 
