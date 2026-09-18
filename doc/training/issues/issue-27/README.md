@@ -295,6 +295,9 @@ run or deployed import event was observed.
 
 ## Later boundaries
 
+- A chaptered Traditional Chinese explanation of the logging design, field
+  choices, code changes, verification limits, and lessons is in
+  [`learning-notes.zh-TW.md`](learning-notes.zh-TW.md).
 - Request, database readiness/pool, authentication, review, and import signals.
 - Actionable alert set and retention rules.
 - The first proposed failure condition and runbook are in
