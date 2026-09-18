@@ -1,6 +1,6 @@
 # Issue #27 學習筆記：從請求日誌到可執行的告警
 
-這份筆記解釋 #27 的設計與實作。它是學習文件，不代表整張 ticket 的所有驗收條件都已完成。截至 2026-09-18，新版 API 位於零流量 Cloud Run candidate；使用者回報已手動完成 candidate smoke test，預計 merge 後自行切換流量。正式 5xx 告警已啟用，但尚未觀察到符合條件的事件或驗證該告警的郵件送達。正式資料庫獨立備份則依專案成本考量延後。
+這份筆記解釋 #27 的設計與實作。它是學習文件，不代表整張 ticket 的所有驗收條件都已完成。截至 2026-09-18，PR #43 已合併；操作人回報完成 candidate 與切換流量後的 smoke test，唯讀 Cloud Run 查詢確認新版 revision 承接 100% 流量。正式 5xx 告警已啟用，但尚未觀察到符合條件的事件或驗證該告警的郵件送達。正式資料庫獨立備份則依專案成本考量延後。
 
 ## Chapter 1. 這張 ticket 要解決什麼
 
@@ -111,21 +111,21 @@ jsonPayload.outcome=("database" OR "unexpected")
 
 ## Chapter 7. 我們實際驗證了什麼
 
-| 邊界             | 已有證據                                                                                                                                               | 仍不能宣稱                                                         |
-| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------ |
-| 本機 request log | [測試](../../../../apps/api/tests/unit/test_request_context.py)涵蓋 ID 相等、分類、路由模板、假 token/URL/exception 不洩漏，以及日誌輸出失敗不改變回應 | 所有框架與平台日誌都已去識別                                       |
-| review 與 import | PostgreSQL integration test 驗證 review commit/replay/rollback；import 單元測試驗證 commit 後報表失敗的事件語意                                        | CLI 事件是 Cloud Run HTTP metric，或實際操作人 import 已被遠端觀察 |
-| candidate        | CI、image publish 與零流量部署成功；一筆 401 的回應 ID 對到唯一的 Cloud Logging JSON 事件                                                              | 已切換正式流量，或所有私有路徑都已遠端驗證                         |
-| email 路徑       | 操作人回報收到暫時 401 告警郵件，並能查到 incident；暫時政策已刪除                                                                                     | 正式 5xx 政策已寄出郵件                                            |
-| 第一個 5xx 告警  | 政策已啟用；讀回確認 filter、Email Channel、間隔與 runbook；查詢時近一小時沒有匹配事件                                                                 | 實際故障一定會按預期觸發、準時通知                                 |
-| 事故演練         | [本機模擬](incident-exercise.md)顯示 readiness 503、liveness 200、request ID 關聯與恢復                                                                | 真實 Neon 故障、Cloud Run 中斷或正式事故恢復                       |
-| 備份還原         | [合成資料](backup-restore.md)從 `pg_dump` 還原到隔離 PostgreSQL 17，schema、數量及代表性紀錄相符                                                       | 正式 Neon 資料已有獨立 GCS 備份或定期排程                          |
+| 邊界             | 已有證據                                                                                                                                                                  | 仍不能宣稱                                                         |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| 本機 request log | [測試](../../../../apps/api/tests/unit/test_request_context.py)涵蓋 ID 相等、分類、路由模板、假 token/URL/exception 不洩漏，以及日誌輸出失敗不改變回應                    | 所有框架與平台日誌都已去識別                                       |
+| review 與 import | PostgreSQL integration test 驗證 review commit/replay/rollback；import 單元測試驗證 commit 後報表失敗的事件語意                                                           | CLI 事件是 Cloud Run HTTP metric，或實際操作人 import 已被遠端觀察 |
+| 發布與流量       | 第一個 candidate 的 401 回應 ID 對到唯一 JSON 事件；操作人回報新 candidate 與流量切換後的 smoke test；唯讀查詢確認新版 revision 承接 100% 流量並產生 parsed request event | 操作人 smoke 的精確請求、回應 ID 與私有路徑結果已獨立檢查          |
+| email 路徑       | 操作人回報收到暫時 401 告警郵件，並能查到 incident；暫時政策已刪除                                                                                                        | 正式 5xx 政策已寄出郵件                                            |
+| 第一個 5xx 告警  | 政策已啟用；讀回確認 filter、Email Channel、間隔與 runbook；查詢時近一小時沒有匹配事件                                                                                    | 實際故障一定會按預期觸發、準時通知                                 |
+| 事故演練         | [本機模擬](incident-exercise.md)顯示 readiness 503、liveness 200、request ID 關聯與恢復                                                                                   | 真實 Neon 故障、Cloud Run 中斷或正式事故恢復                       |
+| 備份還原         | [合成資料](backup-restore.md)從 `pg_dump` 還原到隔離 PostgreSQL 17，schema、數量及代表性紀錄相符                                                                          | 正式 Neon 資料已有獨立 GCS 備份或定期排程                          |
 
-操作人另回報已手動完成 candidate smoke test，但未提供結果細節與 request 證據；筆記不據此推論具體 endpoint、成功率或正式流量狀態。操作人將在 merge 後自行切換流量，不再安排 candidate 測試。
+操作人回報完成 candidate 與切換後的 smoke test，但未提供結果細節與 request 證據；筆記不據此推論具體 endpoint 或成功率。流量切換由 Cloud Run 唯讀查詢獨立確認。詳見 [發布驗證記錄](candidate-verification.md)。
 
 ## Chapter 8. 現在的限制與下一步
 
-- 現行正式 revision 尚未輸出這版安全 JSON 事件；告警雖已啟用，正式流量仍要等操作人 merge 後手動切換。切換後可用一筆正常或驗證失敗的請求 ID 查詢 production stdout，確認來源 revision 與欄位。
+- 正式 revision 已輸出這版 JSON 事件；仍可用一筆操作人回報的 production 回應 ID 查詢 stdout，完成回應與日誌的直接對照。
 - 正式 5xx 條件還需要一筆明確標記的安全測試事件，或等待自然發生的匹配事件來驗證通知；不要為了測試而讓 Neon 或正式 API 故障。
 - Cloud Run platform request log 仍有 raw URL；先確認正式新版 application event 可查，再評估只排除該服務 platform request log 的狹窄規則。既有 `_Default` 保留資料不會因新排除規則自動消失。
 - Request event 可供查詢狀態與單次耗時，但本 ticket 尚未建立完整 dashboard、可靠的流量基線或 DB pool 使用率告警。review/import 事件目前也尚未經正式操作流量觀察。
@@ -138,4 +138,4 @@ jsonPayload.outcome=("database" OR "unexpected")
 3. **測試要說明自己證明的邊界。** 401 郵件證明通知路徑可用；它不會證明 5xx filter 正確觸發。本機 readiness 演練也不是正式事故。
 4. **隱私需要跨層檢查。** 我們控制 application log 的欄位，但 Cloud Run platform log 仍包含 URL。不能因為其中一層安全就認為整條日誌管線安全。
 5. **低流量服務也需要可執行的第一個告警。** 先用暫定的單筆 5xx 事件與操作人 runbook，日後根據真實事件量調整；不要編造 SLO 或預先建一整套複雜平台。
-6. **營運文件要寫出未完成的部分。** 正式流量切換、5xx 郵件驗證、platform log 保留決策和獨立正式備份都還有明確的下一步或例外，不能因為政策已建立就把 #27 標為全部完成。
+6. **營運文件要寫出未完成的部分。** 流量已切換，但 5xx 郵件驗證、platform log 保留決策和獨立正式備份仍有明確的下一步或例外，不能因為政策已建立就把 #27 標為全部完成。

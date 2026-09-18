@@ -74,3 +74,22 @@ smoke evidence. The operator plans to merge PR #43 and then manually switch
 traffic; no further candidate tests are requested. A read-only check after
 this report still showed the candidate at zero production traffic and the
 previous revision at 100%.
+
+## Post-merge promotion, 2026-09-18
+
+The operator reports manually publishing and deploying a new candidate, smoke
+testing the candidate, switching traffic to it, and smoke testing again through
+the service URL. Exact calls, response IDs, and output were not shared, so the
+two smoke outcomes remain operator-reported evidence.
+
+Local `main` contains merge commit `dc06acc` for PR #43. A read-only Cloud Run
+service description in `asia-southeast1` showed revision
+`english-learning-api-dc06acc6807d` as the latest ready revision with 100% of
+traffic. A read-only Cloud Logging query scoped to that revision, stdout, and
+`jsonPayload.event="http_request_completed"` found parsed completion events,
+including `/health/ready` 200 and `/v1/me` and `/v1/decks` 200 at approximately
+2026-09-18 06:18 UTC. Only route templates, status codes, outcomes, and event
+timestamps were inspected; no private response or URL values were read or
+committed. This verifies promotion and production log ingestion, but not a
+response-to-log request-ID match for an operator smoke request, private-route
+behavior, or the 5xx policy's actual delivery.

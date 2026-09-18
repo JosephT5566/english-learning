@@ -1,9 +1,10 @@
 # Issue #27 - Operational Ownership
 
 Status: in progress (local request/review/import signals, a synthetic isolated
-restore, a local incident exercise, deployed candidate request correlation,
-and an enabled first failure alert; independent production backup explicitly
-deferred; failure alert delivery remains unverified). Last updated: 2026-09-18.
+restore, a local incident exercise, production structured request events after
+operator promotion, and an enabled first failure alert; independent production
+backup explicitly deferred; failure alert delivery remains unverified). Last
+updated: 2026-09-18.
 
 ## Owner scope decision, 2026-09-18
 
@@ -221,25 +222,28 @@ traffic promotion or alert activation had run.
 
 The operator later reported completing the candidate smoke test manually;
 its result and detailed requests were not provided for independent review. The
-operator will merge PR #43 and manually switch Cloud Run traffic afterward.
-No further candidate testing is planned. A read-only check still showed the
-existing revision at 100% and the candidate at zero traffic.
+subsequent merge, candidate deployment, and traffic promotion are recorded in
+[`candidate-verification.md`](candidate-verification.md). The operator reports
+smoke testing both before and after promotion. A read-only Cloud Run check
+confirmed the new revision at 100% traffic, and production stdout contained
+parsed request events; exact smoke request details were not shared.
 
 ## Logging and signal status
 
 | Signal | Current evidence | Remaining work |
 | --- | --- | --- |
-| Request ID, rate, latency, status, error class | Bounded JSON event passed local/CI tests; one zero-traffic candidate auth failure was correlated by request ID in parsed stdout; operator reports manual candidate smoke completed without shared result details | Verify one production request ID after operator promotion |
+| Request ID, rate, latency, status, error class | Bounded JSON event passed local/CI tests; one zero-traffic candidate auth failure was correlated by request ID; after promotion, production stdout contained parsed request events and the operator reports smoke tests on both URLs | Correlate one operator-reported production response ID to its event |
 | Database readiness | Failed probe has `database` outcome locally | Check deployed signal; design pool-usage signal if justified |
 | Authentication failures | One candidate 401 emitted the expected `authentication` event | Check production counts and alert noise |
 | Review outcomes | Local `review_submission_completed` event distinguishes committed batches from exact replays after transaction completion; integration tests cover failed commit and rollback without a false success event | Verify deployed event and query; tune operational use from observed traffic |
 | Import outcomes | Local CLI event records bounded operation, outcome, phase, commit state, completed report count, and replay state; tests cover failure after commit | Capture and inspect a real operator run when imports are next needed; CLI events are not Cloud Run HTTP metrics |
-| Alerting | First 5xx failure policy enabled with exact filter, operator email channel, 30-minute provisional interval, and runbook; separate 401 notification path reached email by operator report ([`failure-alert.md`](failure-alert.md), [`notification-test.md`](notification-test.md)) | Verify actual 5xx condition safely after promotion or from a natural event; production revision lacks the new event |
+| Alerting | First 5xx failure policy enabled with exact filter, operator email channel, 30-minute provisional interval, and runbook; separate 401 notification path reached email by operator report ([`failure-alert.md`](failure-alert.md), [`notification-test.md`](notification-test.md)); production revision now emits the bounded event | Verify actual 5xx condition safely or from a natural event |
 | Retention/privacy | Candidate application event had only allowlisted fields; separate platform entry still had `requestUrl`; routing preflight found only `_Required` and `_Default` sinks and no user-defined log metric or alert | Revisit narrow platform-log exclusion after production event verification; check external consumers |
 
-The operator deferred the candidate workflow on 2026-09-17. It was resumed
-on 2026-09-18 for the exact checked commit; the alert and traffic promotion
-remain open.
+The operator deferred the first candidate workflow on 2026-09-17. It was
+resumed on 2026-09-18 for the exact checked commit; the later merged revision
+was promoted by the operator. The alert's matching-condition delivery remains
+open.
 
 ### Review transaction signal, 2026-09-17
 

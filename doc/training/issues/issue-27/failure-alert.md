@@ -39,8 +39,13 @@ seven-day default). The policy documentation links to this runbook and
 includes immediate safe triage steps. A Cloud Logging query found zero
 matching `database`/`unexpected` 5xx events in the previous hour. This
 verifies configuration, not actual failure detection or delivery. The
-candidate remains at zero production traffic; the current production revision
-does not emit this application event.
+candidate was at zero production traffic at that checkpoint, and the then
+current production revision did not emit this application event. The operator
+later promoted a merged revision; a read-only query found parsed production
+request events, as recorded in
+[`candidate-verification.md`](candidate-verification.md).
+A read-only query on the promoted revision found no matching 5xx event at
+the post-promotion checkpoint; this does not test notification delivery.
 
 Before the operator's planned merge, the policy runbook URL was changed from
 the branch to immutable commit `35cfb46` so deleting the branch will not break

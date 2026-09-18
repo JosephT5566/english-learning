@@ -145,11 +145,13 @@ Protected workflows deployed commit `3704a2a` as a zero-traffic candidate.
 One 401 response matched exactly one allowlisted stdout event by request ID;
 the platform request log still had a raw URL field. See
 [`issues/issue-27/candidate-verification.md`](issues/issue-27/candidate-verification.md).
-The operator reports completing manual candidate smoke; the result and
-detailed request evidence were not shared. PR #43 remains draft and unmerged.
-A read-only traffic check still showed the previous revision at 100%. The
-operator will merge and manually switch traffic, with no more candidate tests
-planned.
+PR #43 was merged as `dc06acc`. The operator reports publishing and deploying
+the new candidate, smoke testing it, moving traffic to it, and smoke testing
+again through the service URL. Exact smoke calls, response IDs, and outputs
+were not shared. A read-only Cloud Run check showed revision
+`english-learning-api-dc06acc6807d` at 100% traffic; production stdout had
+parsed request events for readiness and API reads. See
+[`issues/issue-27/candidate-verification.md`](issues/issue-27/candidate-verification.md).
 Routing preflight found only `_Required` and `_Default` sinks, no user-defined
 log metrics, and no Monitoring policies at that time. The operator created an
 email channel, reported receiving a temporary candidate 401 alert, and deleted
@@ -159,11 +161,10 @@ The first 5xx failure policy is now enabled with the exact bounded filter,
 email channel, 30-minute provisional interval, and runbook; see
 [`issues/issue-27/failure-alert.md`](issues/issue-27/failure-alert.md).
 
-Next, after the operator's merge and manual traffic switch, verify one
-production request ID and revisit the narrow platform-log exclusion. The
-actual 5xx alert condition still needs a safe trigger or natural matching
-event and delivery verification. The initial restored-data reconciliation
-remains deferred.
+Next, correlate one production response ID with its application event and
+revisit the narrow platform-log exclusion. The actual 5xx alert condition
+still needs a safe trigger or natural matching event and delivery verification.
+The initial restored-data reconciliation remains deferred.
 
 ## Context pointers
 
