@@ -24,7 +24,7 @@ from app.reads import (
 )
 
 router = APIRouter(prefix="/v1")
-SessionDependency = Annotated[Session, Depends(database_session)]
+SessionDependency = Annotated[Session, Depends(database_session, scope="function")]
 Title = Annotated[
     str, StringConstraints(strip_whitespace=True, min_length=1, max_length=100)
 ]

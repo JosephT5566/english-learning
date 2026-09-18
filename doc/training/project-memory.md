@@ -27,7 +27,7 @@ Production statements must distinguish repository-verified evidence from operato
 ## Active milestone
 
 **Week 6 - operational ownership, Issue
-[#27](https://github.com/JosephT5566/english-learning/issues/27), not yet started.** Issue
+[#27](https://github.com/JosephT5566/english-learning/issues/27), local signals and synthetic restore verified.** Issue
 [#26](issues/issue-26/README.md) is closed after the staged deployment and rollback rehearsal.
 
 The provider-neutral container and Cloud Run/Neon release contract are complete locally. The
@@ -135,13 +135,40 @@ interview evidence.
 
 ## Next action
 
-Define the first acceptance boundary for Issue #27: privacy-safe request tracing and an actionable
-failure signal. The initial restored-data reconciliation remains deferred, not verified; Issue #27's
-independent backup/restore proof is a separate boundary.
+Issue #27's request, review, and import signals passed local verification. A
+synthetic isolated restore passed, while the owner deferred an independent
+Neon-to-GCS backup and schedule for cost reasons; see
+[`issues/issue-27/backup-restore.md`](issues/issue-27/backup-restore.md). A
+labeled local readiness failure drill is in
+[`issues/issue-27/incident-exercise.md`](issues/issue-27/incident-exercise.md).
+Protected workflows deployed commit `3704a2a` as a zero-traffic candidate.
+One 401 response matched exactly one allowlisted stdout event by request ID;
+the platform request log still had a raw URL field. See
+[`issues/issue-27/candidate-verification.md`](issues/issue-27/candidate-verification.md).
+The operator reports completing manual candidate smoke; the result and
+detailed request evidence were not shared. PR #43 remains draft and unmerged.
+A read-only traffic check still showed the previous revision at 100%. The
+operator will merge and manually switch traffic, with no more candidate tests
+planned.
+Routing preflight found only `_Required` and `_Default` sinks, no user-defined
+log metrics, and no Monitoring policies at that time. The operator created an
+email channel, reported receiving a temporary candidate 401 alert, and deleted
+the test policy; see
+[`issues/issue-27/notification-test.md`](issues/issue-27/notification-test.md).
+The first 5xx failure policy is now enabled with the exact bounded filter,
+email channel, 30-minute provisional interval, and runbook; see
+[`issues/issue-27/failure-alert.md`](issues/issue-27/failure-alert.md).
+
+Next, after the operator's merge and manual traffic switch, verify one
+production request ID and revisit the narrow platform-log exclusion. The
+actual 5xx alert condition still needs a safe trigger or natural matching
+event and delivery verification. The initial restored-data reconciliation
+remains deferred.
 
 ## Context pointers
 
 - Active issue: [Issue #27](https://github.com/JosephT5566/english-learning/issues/27)
+- Issue #27 baseline: [`issues/issue-27/README.md`](issues/issue-27/README.md)
 - Completed deployment issue: [`issues/issue-26/README.md`](issues/issue-26/README.md)
 - Active roadmap section: [Week 6](full-stack-backend-plan.md#week-6--deployment-and-operational-ownership)
 - Current operational sequence: [`issues/issue-26/runbook.md`](issues/issue-26/runbook.md)

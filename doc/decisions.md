@@ -1,6 +1,6 @@
 # Decisions And Known Issues
 
-Last updated: 2026-09-14
+Last updated: 2026-09-18
 
 ## Durable Decisions
 
@@ -20,7 +20,8 @@ Last updated: 2026-09-14
   only `ok` or `unavailable`, and can recover without restarting the API.
 - Keep the SQLAlchemy session factory application-scoped but make each unit of work own one
   short-lived session and transaction. The boundary commits only on success, rolls back on caller or
-  commit failure, and always closes the session.
+  commit failure, and always closes the session. FastAPI yield dependencies use function scope so
+  request commits and their errors finish before the HTTP response is sent.
 - Keep Alembic inside the independently runnable API package and load its database connection through
   the same validated, secret-safe settings and engine factories as the application. Start migration
   history with an empty reversible baseline before domain tables are introduced.
@@ -128,6 +129,20 @@ Last updated: 2026-09-14
 
 ## Change Log
 
+- 2026-09-18: For the current side-project scope, defer an independent Neon
+  database backup to GCS and the recurring backup pipeline to avoid extra
+  storage and operational cost. The synthetic PostgreSQL restore rehearsal is
+  retained as local learning evidence, not production recovery proof. Issue
+  #27's original production backup/restore acceptance criterion remains unmet
+  by explicit owner choice; revisit if data-loss tolerance, project usage, or
+  budget changes.
+- 2026-09-17: For Issue #27's first observability boundary, emit one bounded JSON
+  completion event per routed API request using the server-generated request ID,
+  matched route template, status, duration, outcome class, and stable error code.
+  Disable Uvicorn access logging of raw URLs and convert unexpected endpoint
+  exceptions to the existing safe error envelope inside request middleware.
+  Deployed Cloud Run log parsing, platform-log privacy, alerting, and retention
+  still require verification; local tests alone do not establish those claims.
 - 2026-08-02: Created repo memory docs and root agent instructions.
 - 2026-09-01: Added the initial FastAPI liveness, readiness, typed configuration, and SQLAlchemy
   engine lifecycle boundaries; the frontend remains on Google Apps Script while backend migration

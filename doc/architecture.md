@@ -62,8 +62,8 @@ Last updated: 2026-09-15
 - `apps/api/app/database.py`: lazy SQLAlchemy engine construction, application-scoped session factory,
   explicit transaction ownership, readiness queries, and pool disposal.
 - `apps/api/app/errors.py`: stable safe API error models and application/framework exception handlers.
-- `apps/api/app/request_context.py`: per-request UUID generation for response headers, error
-  correlation, and future structured logs.
+- `apps/api/app/request_context.py`: per-request UUID generation and bounded JSON completion
+  events for HTTP requests and committed/replayed review submissions.
 - `apps/api/app/health.py`: database-independent liveness and database-aware readiness contracts.
 - `apps/api/app/auth.py`: Google ID-token verification, verified-claim allowlisting, stable subject
   to internal-user mapping, and the reusable authenticated-user dependency.
@@ -74,6 +74,8 @@ Last updated: 2026-09-15
   idempotent replay, and deterministic row-lock concurrency control.
 - `apps/api/app/imports.py`: bounded CSV reading, validation, canonicalization, hashing, dry-run
   audit persistence, and private in-memory confirmed-import candidates.
+- `apps/api/app/import_events.py`: bounded local import-command outcome events without source
+  content, identities, hashes, or file paths.
 - `apps/api/app/confirmed_imports.py`: approved-snapshot verification, atomic confirmed import,
   exact replay, post-commit reconciliation, safe reports, and the local operator CLI.
 - `apps/api/openapi.json`: committed deterministic API schema used for frontend type generation and
@@ -289,6 +291,15 @@ Machine-readable `code` values are the client contract; messages are human-reada
 `request_id` also appears in `X-Request-ID`. Validation details contain only safe field paths,
 field-level codes, and fallback messages. The readiness endpoint retains its purpose-specific health
 contract rather than masquerading dependency unavailability as an application exception.
+
+The API also emits one JSON `http_request_completed` event for each request
+that reaches its request middleware. It joins the browser-visible server
+`request_id` to a matched route template, status, duration, bounded outcome,
+and optional stable error code. It excludes request values and user identity.
+The web process disables Uvicorn access logging of raw URLs. CORS preflights
+are answered by outer middleware and are not included in this event stream.
+Cloud Run platform request logs remain a separate privacy and retention audit
+boundary; deployed JSON ingestion and lookup are pending Issue #27 verification.
 
 ## Data Contracts
 

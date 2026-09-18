@@ -106,7 +106,7 @@ class DueCard(CardDetail):
     review_state: ReviewState
 
 
-SessionDependency = Annotated[Session, Depends(database_session)]
+SessionDependency = Annotated[Session, Depends(database_session, scope="function")]
 
 
 def _reject_unknown_filters(request: Request, allowed: set[str]) -> None:

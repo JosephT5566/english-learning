@@ -56,6 +56,7 @@ def get_readiness(request: Request, response: Response) -> ReadinessResponse:
         )
 
     response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+    request.state.error_code = "database_unavailable"
     return ReadinessResponse(
         status="not_ready",
         checks=ReadinessChecks(database="unavailable"),

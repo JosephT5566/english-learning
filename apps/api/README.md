@@ -59,6 +59,13 @@ file beside `pyproject.toml`; use `.env.example` as the field reference.
 Production must explicitly override `DATABASE_URL` and `GOOGLE_OAUTH_CLIENT_ID`; their local defaults
 are rejected.
 Database URLs are treated as secrets and must not be printed or logged.
+The web process emits one JSON `http_request_completed` line per routed request
+with its server-generated `X-Request-ID`, matched route template, method,
+status, duration, bounded outcome, and optional stable error code. The process
+disables Uvicorn access logging so it does not echo raw request URLs. The event
+does not contain headers, query values, bodies, SQL, exception text, or user
+identifiers. Cloud Run platform request logs are a separate source whose fields
+and retention must be checked during deployment verification.
 Production accepts `sslmode=verify-ca` or `sslmode=verify-full`. For Neon clients that use
 `sslmode=require`, `channel_binding=require` is also mandatory. The Cloud Run runtime injects a
 pooled least-privilege URL, while the separate migration job injects a direct schema-owning URL under

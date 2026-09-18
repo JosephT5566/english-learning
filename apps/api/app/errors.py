@@ -68,6 +68,7 @@ def error_response(
     """Build an error envelope from allowlisted public values."""
 
     request_id = _request_id(request)
+    request.state.error_code = code
     response_headers = dict(headers) if headers is not None else {}
     response_headers["X-Request-ID"] = str(request_id)
     body = ErrorResponse(

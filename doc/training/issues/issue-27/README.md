@@ -1,0 +1,314 @@
+# Issue #27 - Operational Ownership
+
+Status: in progress (local request/review/import signals, a synthetic isolated
+restore, a local incident exercise, deployed candidate request correlation,
+and an enabled first failure alert; independent production backup explicitly
+deferred; failure alert delivery remains unverified). Last updated: 2026-09-18.
+
+## Owner scope decision, 2026-09-18
+
+The owner chose to skip an independent Neon database backup to GCS and its
+scheduled pipeline for this side project to avoid additional storage and
+operational cost. No production dump, GCS bucket, backup credential, or
+recurring backup job was created. The original backup/restore acceptance
+criterion is therefore **deferred by choice, not completed**. The synthetic
+restore in [`backup-restore.md`](backup-restore.md) remains a local exercise,
+not evidence that production data can be recovered independently of Neon.
+
+The checked-in GitHub workflows contain no `schedule`/`cron` trigger. A
+read-only check of project `eng-learning-470909` found the Cloud Scheduler API
+disabled, and the Singapore Cloud Run Jobs list showed only
+`english-learning-api-migrate`. This supports the narrower statement that no
+scheduled backup pipeline was found in the repository or checked GCP setup;
+it does not audit every possible external scheduler. The migration workflow
+is manual. Revisit backups if data-loss tolerance, usage, or budget changes.
+
+## First acceptance boundary
+
+Trace one failed request from the ID shown to the user to a backend operation
+and failure class without logging tokens, raw card content, database URLs,
+rejected input, or unnecessary personal data. Define and verify one actionable
+failure signal before adding broader dashboards or backup work.
+
+## Repository baseline before Issue #27 changes
+
+- `apps/api/app/request_context.py` creates a new server UUID for each request
+  and puts it in `X-Request-ID`. It does not log a request event.
+- `apps/api/app/errors.py` repeats that UUID in the safe error envelope. Expected,
+  validation, framework, and unexpected errors use stable public codes; the
+  unexpected-error response omits exception text.
+- `src/lib/api/client.ts` carries the error request ID into `ApiClientError`.
+  Review and management error views display it.
+- `apps/api/app/database.py` maps SQLAlchemy failures to retryable
+  `database_unavailable` without exposing connection details to the client.
+- `apps/api/app/serve.py` starts Uvicorn without an application-specific logging
+  configuration. `LOG_LEVEL` is validated in settings but is not wired to
+  structured request events in application code.
+- No application metrics, saved alert queries, or Issue #27 restore proof were
+  found in the checked-in API and deployment configuration.
+- Issue #26's runbook documents an optional initial transfer reconciliation;
+  it was not executed and is distinct from #27's independent backup/restore
+  proof.
+
+These initial findings were from repository inspection, before the local
+changes and read-only Cloud Logging audit recorded below.
+
+## Verification path for this boundary
+
+1. Decide the minimal structured event fields and a failure class vocabulary.
+2. Exercise a successful request, validation failure, auth failure, database
+   failure, and unexpected exception with synthetic secret-looking input.
+3. Assert that each response ID matches a safe server event and that no token,
+   query value, card text, database URL, or exception detail appears in logs.
+4. Inspect actual Cloud Run log ingestion and save a request-ID lookup query.
+5. Define one alert from an observed failure class with owner, initial
+   threshold rationale, and runbook action. Mark unmeasured thresholds as
+   assumptions.
+
+## First design and local implementation
+
+Emit one JSON completion event for each API request with an allowlisted shape:
+`event`, `request_id`, HTTP method, matched route template (or `unmatched`),
+status code, duration in milliseconds, and a bounded outcome class. For an
+application error, include its stable error code. Suggested initial classes are
+`success`, `authentication`, `validation`, `conflict`, `database`, and
+`unexpected`; review and import outcomes can add explicit operation events as
+later boundaries require. A database failure event may identify a fixed
+operation/phase such as `review_submit` or `transaction_commit`, but must not
+contain SQL text or bound values.
+
+The server creates the correlation UUID; incoming IDs are not trusted as the
+canonical ID. Do not log request/response bodies, raw URL or query string,
+authorization or idempotency headers, Google subject/email, card/deck IDs,
+private learning text, database URLs, raw exception messages, or stack traces
+in these events. Use fixed field names and enumerated values so Cloud Logging
+queries and later metrics have bounded cardinality. Keep framework/access logs
+under review: a safe application event does not prove other log sources are
+redacted.
+
+The first actionable signal should be a saved Cloud Logging query for
+`database` and `unexpected` request outcomes, paired with a runbook action and
+an explicitly provisional alert threshold after observing baseline traffic.
+Do not invent a production SLO or page on ordinary validation/conflict traffic.
+
+`apps/api/app/request_context.py` now emits the bounded JSON completion event.
+`apps/api/app/errors.py` sets the stable error code for that event, readiness
+marks a failed database probe, and `apps/api/app/serve.py` disables Uvicorn
+access logging. An unexpected endpoint exception is converted inside the
+request middleware to the existing safe `internal_error` envelope so its raw
+exception text is not printed by the server error path. The CORS middleware
+answers preflights before this request middleware, so they are not included in
+these events. Cloud Run's own request logs are separate; their metadata-only
+audit is recorded below.
+
+The proposed Logs Explorer lookup is:
+
+```text
+resource.type="cloud_run_revision"
+resource.labels.service_name="SERVICE_NAME"
+jsonPayload.event="http_request_completed"
+jsonPayload.request_id="REPORTED_REQUEST_UUID"
+```
+
+For a first failure signal, replace the last line with:
+
+```text
+jsonPayload.outcome=("database" OR "unexpected")
+```
+
+This is a query draft, not a configured alert. Its service name, parsed JSON
+fields, ingestion delay, and actual baseline must be checked on a deployed
+candidate before defining a threshold. The operator response is: inspect the
+route, status, error code, and time window; check `/health/ready` and Cloud Run
+revision status; follow the existing Issue #26 rollback/runbook if a deployed
+revision is unhealthy. Do not retry ambiguous review writes with a new
+idempotency key.
+
+Google documents single-line JSON stdout as Cloud Run `jsonPayload` and the
+Cloud Logging filter language at:
+
+- https://cloud.google.com/run/docs/logging
+- https://cloud.google.com/logging/docs/view/logging-query-language
+
+### Local verification, 2026-09-17
+
+- Focused request/error/serve/health tests: 21 passed (one existing upstream
+  Starlette deprecation warning).
+- Complete backend unit suite: 109 passed (same warning).
+- PostgreSQL integration suite: 147 passed against the running local
+  `postgres:17-alpine` service (same warning). The first attempt was blocked by
+  the filesystem/network sandbox; the permitted local-database run passed.
+- The first PR CI run passed. A later CI run exposed a container smoke-script
+  false negative: `docker logs | grep --quiet` under `pipefail` could close the
+  pipe before `docker logs` finished once JSON events increased output. The
+  script now captures logs before checking the shutdown marker. Bash syntax,
+  local image build, and the container runtime smoke passed after the fix.
+  [CI run 35211160518](https://github.com/JosephT5566/english-learning/actions/runs/35211160518)
+  passed on the latest committed fix.
+- Ruff lint and format checks for touched Python files passed.
+- Tests verified response/log request-ID equality, route-template rather than
+  raw-path logging, bounded auth/database/validation/conflict/unexpected
+  classes, failed-readiness classification, and exclusion of synthetic query,
+  token, and exception secrets.
+- No deployed candidate application-event lookup, configured alert, or
+  incident/restore proof has run yet.
+
+### Read-only Cloud Logging baseline, 2026-09-17
+
+The existing deployed revision does not contain the new application event.
+A metadata-only read of the latest 100 Cloud Run platform request logs for
+`english-learning-api` in the previous seven days found `httpRequest.requestUrl`
+in all 100; 21 included a query string. Sample status counts were 85 `200`,
+5 `401`, 6 `404`, and 4 `503`. This bounded recent sample is not an error-rate
+baseline. No URLs, query values, or private payloads were displayed or saved
+in the repository. The project `_Default` bucket has 30-day retention and the
+`_Required` bucket has 400-day retention; the `_Default` sink currently has
+no user-defined exclusions. Cloud Run's platform request logs therefore
+remain a distinct data-minimization concern despite disabling Uvicorn access
+logs. The new application event has not been inspected in Cloud Logging.
+
+After the candidate's safe application events are verified, evaluate a narrow
+`_Default` sink exclusion for only this service's platform request log:
+
+```text
+resource.type="cloud_run_revision"
+resource.labels.service_name="english-learning-api"
+log_id("run.googleapis.com/requests")
+```
+
+This is a proposed production logging change, not an applied exclusion. It
+would remove future platform request-log entries from that sink, including
+their raw URLs, while retaining container events and other services' logs.
+Confirm the actual sink behavior, other destinations, and monitoring coverage
+before applying it. Existing stored entries require a separate retention or
+deletion decision. Cloud Run documents that request logs are generated
+automatically and can be managed through Cloud Logging exclusions:
+https://cloud.google.com/run/docs/logging. The routing rules are documented at
+https://cloud.google.com/logging/docs/routing/overview.
+
+## Zero-traffic candidate verification plan
+
+The reviewable source is draft PR #43, branch `issue-27-observability`. After
+its latest CI run passes and the operator approves a candidate, use the
+existing protected `Publish API container` workflow on the exact branch/commit
+with confirmation `publish-api-image`, then `Deploy API candidate` on the
+same ref with confirmation `deploy-api-candidate`. No schema migration is
+needed for this code-only change. The deploy workflow checks that its tagged
+revision has zero production traffic and that its public health endpoints
+respond. Production traffic must not be promoted for this verification.
+
+Against the candidate tag URL, make one unauthenticated `GET /v1/cards`
+without query values. Record only its `401` status and `X-Request-ID`, then
+query Cloud Logging for that UUID using the lookup above. Verify one parsed
+`jsonPayload` completion event with route `/v1/cards`, outcome
+`authentication`, code `authentication_required`, and the matching UUID.
+Check that the container event has no raw URL, headers, token, SQL, card
+content, or exception detail. Check the platform request log separately; do
+not mistake Uvicorn access-log suppression for platform-log suppression.
+Record candidate revision, CI/workflow run IDs, observed result, and any
+failure before marking this boundary deployed and verified.
+
+### Executed candidate check, 2026-09-18
+
+The protected publish and candidate workflows succeeded for commit `3704a2a`.
+Cloud Run showed the new candidate at zero production traffic and the previous
+revision at 100%. One unauthenticated candidate request returned 401 with an
+ID matching exactly one bounded stdout event. The separate platform request
+log still included a raw URL field. See the scoped
+[`candidate-verification.md`](candidate-verification.md) for run IDs, revision,
+safe event fields, routing preflight, and limits. At that checkpoint, no
+traffic promotion or alert activation had run.
+
+The operator later reported completing the candidate smoke test manually;
+its result and detailed requests were not provided for independent review. The
+operator will merge PR #43 and manually switch Cloud Run traffic afterward.
+No further candidate testing is planned. A read-only check still showed the
+existing revision at 100% and the candidate at zero traffic.
+
+## Logging and signal status
+
+| Signal | Current evidence | Remaining work |
+| --- | --- | --- |
+| Request ID, rate, latency, status, error class | Bounded JSON event passed local/CI tests; one zero-traffic candidate auth failure was correlated by request ID in parsed stdout; operator reports manual candidate smoke completed without shared result details | Verify one production request ID after operator promotion |
+| Database readiness | Failed probe has `database` outcome locally | Check deployed signal; design pool-usage signal if justified |
+| Authentication failures | One candidate 401 emitted the expected `authentication` event | Check production counts and alert noise |
+| Review outcomes | Local `review_submission_completed` event distinguishes committed batches from exact replays after transaction completion; integration tests cover failed commit and rollback without a false success event | Verify deployed event and query; tune operational use from observed traffic |
+| Import outcomes | Local CLI event records bounded operation, outcome, phase, commit state, completed report count, and replay state; tests cover failure after commit | Capture and inspect a real operator run when imports are next needed; CLI events are not Cloud Run HTTP metrics |
+| Alerting | First 5xx failure policy enabled with exact filter, operator email channel, 30-minute provisional interval, and runbook; separate 401 notification path reached email by operator report ([`failure-alert.md`](failure-alert.md), [`notification-test.md`](notification-test.md)) | Verify actual 5xx condition safely after promotion or from a natural event; production revision lacks the new event |
+| Retention/privacy | Candidate application event had only allowlisted fields; separate platform entry still had `requestUrl`; routing preflight found only `_Required` and `_Default` sinks and no user-defined log metric or alert | Revisit narrow platform-log exclusion after production event verification; check external consumers |
+
+The operator deferred the candidate workflow on 2026-09-17. It was resumed
+on 2026-09-18 for the exact checked commit; the alert and traffic promotion
+remain open.
+
+### Review transaction signal, 2026-09-17
+
+The review endpoint marks a proposed `committed` or `replayed` outcome in
+request state. The shared transaction dependency emits the bounded
+`review_submission_completed` JSON event only after `session.commit()` succeeds.
+It contains the server request ID, outcome, and item count; it omits card IDs,
+content, owner identity, and idempotency keys. Failed writes use the existing
+HTTP completion event and emit no review success event. Query drafts:
+
+```text
+resource.type="cloud_run_revision"
+resource.labels.service_name="SERVICE_NAME"
+jsonPayload.event="review_submission_completed"
+jsonPayload.request_id="REPORTED_REQUEST_UUID"
+```
+
+An injected commit failure exposed that FastAPI's default request-scoped yield
+cleanup could send HTTP 200 before commit failed. All HTTP database-session
+dependencies now use function scope, so commit and its safe error response
+finish before response delivery. This also keeps authentication and the route
+on the same cached session. The focused PostgreSQL review suite passed 14
+tests, including fresh commit, exact replay, injected commit failure, and an
+injected failure between event and state writes. The complete PostgreSQL
+integration suite passed 149 tests, and the unit suite passed 109; scoped
+Ruff lint and format checks passed. These are local results, not deployed
+signal evidence.
+
+### Local import command signal, 2026-09-17
+
+The dry-run and confirmed-import CLIs now print one allowlisted
+`import_command_completed` JSON line on command completion. It contains
+`operation`, `outcome`, `phase`, `database_committed`, `reports_written`, and
+`replayed`. It excludes owner/source identifiers, hashes, card content, CSV
+paths, report paths, and exception text. Values have bounded vocabularies.
+The commands remain local migration tools, so this event does not appear in
+Cloud Run request logs unless a future job explicitly runs them there.
+
+For the dry run, `database_committed=true` is set only after the audit
+transaction exits. For confirmed import, it is set only after the apply
+transaction returns; reconciliation and report writing happen afterward. Thus
+an error in those later phases preserves the committed fact and calls for
+same-snapshot replay/reconciliation, not a new import. `reports_written` counts
+completed report writes; a partial file from a failed write is not counted.
+Existing CLI safe error output remains available on stderr. Import events are
+operational hints; the persisted audit and reconciliation reports remain the
+source of truth. Local tests exercise a pre-commit failure, post-commit report
+failure, post-commit reconciliation failure, exact replay success, and
+allowlist redaction.
+The complete backend checks passed locally: 112 unit tests, 149 PostgreSQL
+integration tests, Ruff lint/format, and `git diff --check`. No operator CLI
+run or deployed import event was observed.
+
+## Later boundaries
+
+- A chaptered Traditional Chinese explanation of the logging design, field
+  choices, code changes, verification limits, and lessons is in
+  [`learning-notes.zh-TW.md`](learning-notes.zh-TW.md).
+- Request, database readiness/pool, authentication, review, and import signals.
+- Actionable alert set and retention rules.
+- The first proposed failure condition and runbook are in
+  [`failure-alert.md`](failure-alert.md); the policy is enabled, but its own
+  failure-condition delivery remains unverified.
+- The labeled local readiness outage drill and its limits are in
+  [`incident-exercise.md`](incident-exercise.md).
+- The temporary email notification path test is in
+  [`notification-test.md`](notification-test.md); the test policy was deleted.
+- Independent production backup and restore are deferred by owner decision;
+  the synthetic isolated restore and future operator option are in
+  [`backup-restore.md`](backup-restore.md).
+- The local incident exercise is complete; deployed alert detection and a
+  real dependency failure remain unverified.

@@ -67,8 +67,9 @@ if [[ "${exit_code}" != "0" ]]; then
 	exit 1
 fi
 
-if ! docker logs "${container_name}" 2>&1 | grep --quiet 'Application shutdown complete'; then
-	docker logs "${container_name}" >&2
+container_logs="$(docker logs "${container_name}" 2>&1)"
+if [[ "${container_logs}" != *'Application shutdown complete'* ]]; then
+	printf '%s\n' "${container_logs}" >&2
 	echo "Container did not record a completed application shutdown." >&2
 	exit 1
 fi

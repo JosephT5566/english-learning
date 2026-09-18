@@ -28,6 +28,7 @@ from app.database import (
     database_transaction,
     dispose_database_engine,
 )
+from app.import_events import emit_import_event
 
 VALIDATOR_VERSION = "csv-dry-run-v1"
 EXPECTED_FIELDS = (
@@ -805,6 +806,11 @@ def main() -> int:
     """Run the local dry-run CLI with a short-lived database transaction."""
 
     args = _parse_cli_args()
+    outcome = "unexpected_error"
+    phase = "validation"
+    database_committed = False
+    reports_written = 0
+    replayed = False
     try:
         report = validate_csv_snapshot(
             args.csv,
@@ -812,6 +818,7 @@ def main() -> int:
             target_language=args.target_language,
             snapshot_captured_at=args.snapshot_captured_at,
         )
+        phase = "database"
         settings = load_settings()
         engine = create_database_engine(settings)
         session_factory = create_database_session_factory(engine)
@@ -823,8 +830,10 @@ def main() -> int:
                     owner_id=args.owner_id,
                     deck_id=args.deck_id,
                 )
+            database_committed = True
         finally:
             dispose_database_engine(engine)
+        phase = "report"
         args.report.write_text(
             json.dumps(
                 report_as_dict(report, run_id, replayed),
@@ -835,18 +844,40 @@ def main() -> int:
             + "\n",
             encoding="utf-8",
         )
+        reports_written = 1
+        outcome = report.status
+        phase = "done"
     except ImportBoundaryError as error:
+        outcome = "validation_error"
         print(str(error), file=sys.stderr)
         return 2
     except SQLAlchemyError:
+        outcome = "database_error"
         print("database_unavailable", file=sys.stderr)
         return 2
     except ConfigurationError as error:
+        outcome = "configuration_error"
         print(str(error), file=sys.stderr)
         return 2
     except OSError:
-        print("report_write_failed", file=sys.stderr)
+        outcome = "io_error"
+        print(
+            "report_write_failed" if phase == "report" else "import_io_failed",
+            file=sys.stderr,
+        )
         return 2
+    except Exception:  # noqa: BLE001 - CLI must bound unexpected private failures.
+        print("import_failed", file=sys.stderr)
+        return 2
+    finally:
+        emit_import_event(
+            operation="dry_run",
+            outcome=outcome,
+            phase=phase,
+            database_committed=database_committed,
+            reports_written=reports_written,
+            replayed=replayed,
+        )
     return 0
 
 

@@ -24,6 +24,7 @@ from app.database import (
     database_transaction,
     dispose_database_engine,
 )
+from app.import_events import emit_import_event
 from app.imports import (
     SUPPORTED_LANGUAGES,
     CanonicalImportRow,
@@ -1130,6 +1131,11 @@ def main() -> int:
     """Run the local confirmed-import CLI and emit only bounded safe failures."""
 
     args = _parse_cli_args()
+    outcome = "unexpected_error"
+    phase = "validation"
+    database_committed = False
+    reports_written = 0
+    replayed = False
     try:
         snapshot = read_validated_csv_snapshot(
             args.csv,
@@ -1137,10 +1143,11 @@ def main() -> int:
             target_language=args.target_language,
             snapshot_captured_at=args.snapshot_captured_at,
         )
+        phase = "database"
         settings = load_settings()
         engine = create_database_engine(settings)
         try:
-            apply_result, reconciliation = execute_confirmed_import(
+            apply_result = apply_confirmed_import(
                 create_database_session_factory(engine),
                 snapshot=snapshot,
                 approved_dry_run_id=args.approved_dry_run_id,
@@ -1151,37 +1158,67 @@ def main() -> int:
                 snapshot_captured_at=args.snapshot_captured_at,
                 validator_version=args.validator_version,
             )
+            database_committed = True
+            replayed = apply_result.replayed
+            phase = "reconciliation"
+            reconciliation = reconcile_confirmed_import(
+                create_database_session_factory(engine),
+                apply_result=apply_result,
+                snapshot=snapshot,
+            )
         finally:
             dispose_database_engine(engine)
+        phase = "report"
         _write_report(
             args.report,
             confirmed_import_report_as_dict(apply_result, reconciliation),
         )
+        reports_written = 1
         _write_report(
             args.reconciliation_report,
             reconciliation_report_as_dict(reconciliation),
         )
+        reports_written = 2
+        outcome = (
+            "passed" if reconciliation.status == "passed" else "reconciliation_failed"
+        )
+        phase = "done"
         return 0 if reconciliation.status == "passed" else 3
     except ConfirmedImportError as error:
+        outcome = "import_error"
         print(_safe_error(error), file=sys.stderr)
         return 2
     except ImportBoundaryError as error:
+        outcome = "validation_error"
         print(json.dumps({"error": {"code": str(error)}}), file=sys.stderr)
         return 2
     except ConfigurationError:
+        outcome = "configuration_error"
         print(json.dumps({"error": {"code": "configuration_invalid"}}), file=sys.stderr)
         return 2
     except SQLAlchemyError:
+        outcome = "database_error"
         print(json.dumps({"error": {"code": "database_unavailable"}}), file=sys.stderr)
         return 2
     except OSError:
-        print(json.dumps({"error": {"code": "report_write_failed"}}), file=sys.stderr)
+        outcome = "io_error"
+        code = "report_write_failed" if phase == "report" else "import_io_failed"
+        print(json.dumps({"error": {"code": code}}), file=sys.stderr)
         return 2
     except Exception:  # noqa: BLE001 - CLI must bound every unexpected failure.
         print(
             json.dumps({"error": {"code": "confirmed_import_failed"}}), file=sys.stderr
         )
         return 2
+    finally:
+        emit_import_event(
+            operation="confirmed",
+            outcome=outcome,
+            phase=phase,
+            database_committed=database_committed,
+            reports_written=reports_written,
+            replayed=replayed,
+        )
 
 
 if __name__ == "__main__":
