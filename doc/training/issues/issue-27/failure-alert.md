@@ -1,12 +1,11 @@
 # Issue #27 first failure alert
 
-Status: defined and query syntax checked on 2026-09-18. A zero-traffic
-candidate emitted a safe authentication event, documented in
-[`candidate-verification.md`](candidate-verification.md). An email channel
-delivered a separate temporary 401 alert by operator report; see
-[`notification-test.md`](notification-test.md). The operator deleted that test
-policy. No 5xx failure policy is configured, and its condition and delivery
-remain unverified.
+Status: enabled on 2026-09-18 as policy
+`projects/eng-learning-470909/alertPolicies/13851003450661507750`.
+The exact filter, email channel, 30-minute interval, and runbook link were
+read back from Cloud Monitoring. A separate temporary 401 alert delivered an
+email by operator report; see [`notification-test.md`](notification-test.md).
+No matching 5xx event or delivery from this failure policy has been observed.
 
 ## Why this signal
 
@@ -20,16 +19,28 @@ measured error-rate threshold. A log-match alert avoids inventing a traffic
 denominator. Google distinguishes per-entry [log-based alerts](https://cloud.google.com/logging/docs/alerting/log-based-alerts)
 from count thresholds that require [log-based metrics](https://cloud.google.com/logging/docs/alerting/monitoring-logs).
 
-## Proposed policy
+## Enabled policy
 
 | Field                              | Initial value and rationale                                                                                     |
 | ---------------------------------- | --------------------------------------------------------------------------------------------------------------- |
 | Name                               | English Learning API database or unexpected failure                                                             |
 | Owner                              | Project operator (Joseph)                                                                                       |
 | Condition                          | One matching safe application completion event                                                                  |
-| Notification                       | Operator email channel tested with a temporary 401 policy; attach it to this policy when enabling               |
+| Notification                       | Operator email channel tested with a temporary 401 policy and attached to this enabled policy                   |
 | Minimum time between notifications | 30 minutes, provisional assumption to avoid repeated notices during one outage; revisit after observing traffic |
 | Runbook                            | This file, “Response to a match” below                                                                          |
+
+## Enabled policy verification, 2026-09-18
+
+Cloud Monitoring reported the policy enabled with exactly one `LogMatch`
+condition equal to the filter below and one operator email channel. The
+notification rate limit is `1800s`; incident autoclose uses `604800s` (the
+seven-day default). The policy documentation links to this runbook and
+includes immediate safe triage steps. A Cloud Logging query found zero
+matching `database`/`unexpected` 5xx events in the previous hour. This
+verifies configuration, not actual failure detection or delivery. The
+candidate remains at zero production traffic; the current production revision
+does not emit this application event.
 
 Logs Explorer and log-match alert filter:
 
@@ -75,7 +86,7 @@ jsonPayload.request_id="REPORTED_REQUEST_UUID"
    response failed. Verify recovery with readiness and a controlled owned
    read, then record timeline, mitigation, recovery, and corrective action.
 
-## Enablement and test gate
+## Release and test gate
 
 1. Verify the exact branch commit and CI, then deploy the approved zero-traffic
    candidate under the existing release procedure. The operator deferred this
@@ -86,15 +97,19 @@ jsonPayload.request_id="REPORTED_REQUEST_UUID"
    candidate request validates ingestion but does **not** test the failure
    alert condition.
 3. Observe real baseline traffic and choose an operator notification channel.
-   Confirm the channel reaches the owner without exposing private payloads.
-   Enable the policy only after the safe event is deployed and its filter has
-   been checked against actual candidate logs. Test notification delivery with
-   a clearly labeled synthetic failure event or controlled candidate failure;
-   record the policy ID, test time, received notice, and resulting query.
+   The email channel was tested with a temporary 401 candidate policy, and
+   this 5xx policy is now enabled. Test its own condition with a clearly
+   labeled synthetic failure event or controlled candidate failure; record
+   the test time, received notice, and resulting query. Avoid disrupting Neon
+   or production traffic merely to trigger an alert.
 4. Review alert volume after the first week of observed use. Adjust the match
    scope or notification interval from evidence, not an invented SLO. If no
    event appears, investigate ingestion or lack of traffic before treating
    silence as health.
+
+Steps 1 and 2 passed on the zero-traffic candidate. Step 3 is complete only
+for the separate 401 email-path test and policy creation; this policy's 5xx
+condition and delivery still need a safe test. Step 4 awaits observed use.
 
 Read-only checks before candidate deployment on 2026-09-18:
 `gcloud monitoring policies list` returned no policies; `gcloud logging read`

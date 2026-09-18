@@ -146,17 +146,18 @@ One 401 response matched exactly one allowlisted stdout event by request ID;
 the platform request log still had a raw URL field. See
 [`issues/issue-27/candidate-verification.md`](issues/issue-27/candidate-verification.md).
 Routing preflight found only `_Required` and `_Default` sinks, no user-defined
-log metrics, and no Monitoring policies. The first proposed failure alert and
-runbook are in [`issues/issue-27/failure-alert.md`](issues/issue-27/failure-alert.md),
-but no failure policy was configured. The operator created an email channel,
-reported receiving a temporary candidate 401 alert, and deleted the test
-policy; see [`issues/issue-27/notification-test.md`](issues/issue-27/notification-test.md).
+log metrics, and no Monitoring policies at that time. The operator created an
+email channel, reported receiving a temporary candidate 401 alert, and deleted
+the test policy; see
+[`issues/issue-27/notification-test.md`](issues/issue-27/notification-test.md).
+The first 5xx failure policy is now enabled with the exact bounded filter,
+email channel, 30-minute provisional interval, and runbook; see
+[`issues/issue-27/failure-alert.md`](issues/issue-27/failure-alert.md).
 
 Next, complete authenticated candidate smoke before any traffic promotion,
 then verify one production request ID and revisit the narrow platform-log
-exclusion. The actual 5xx alert condition still needs a policy and delivery
-test. The initial
-restored-data reconciliation remains deferred.
+exclusion. The actual 5xx alert condition still needs a safe trigger and
+delivery test. The initial restored-data reconciliation remains deferred.
 
 ## Context pointers
 

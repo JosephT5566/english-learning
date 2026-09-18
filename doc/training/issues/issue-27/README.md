@@ -1,9 +1,9 @@
 # Issue #27 - Operational Ownership
 
 Status: in progress (local request/review/import signals, a synthetic isolated
-restore, a checked first-alert query, a local incident exercise, and deployed
-candidate request correlation; independent production backup explicitly
-deferred; live alert verification remains open). Last updated: 2026-09-18.
+restore, a local incident exercise, deployed candidate request correlation,
+and an enabled first failure alert; independent production backup explicitly
+deferred; failure alert delivery remains unverified). Last updated: 2026-09-18.
 
 ## Owner scope decision, 2026-09-18
 
@@ -228,7 +228,7 @@ activation ran.
 | Authentication failures | One candidate 401 emitted the expected `authentication` event | Check production counts and alert noise |
 | Review outcomes | Local `review_submission_completed` event distinguishes committed batches from exact replays after transaction completion; integration tests cover failed commit and rollback without a false success event | Verify deployed event and query; tune operational use from observed traffic |
 | Import outcomes | Local CLI event records bounded operation, outcome, phase, commit state, completed report count, and replay state; tests cover failure after commit | Capture and inspect a real operator run when imports are next needed; CLI events are not Cloud Run HTTP metrics |
-| Alerting | First failure filter and runbook defined; a separate temporary candidate 401 policy delivered an email by operator report, then was deleted ([`notification-test.md`](notification-test.md)) | Configure and test the actual 5xx failure policy; no live failure alert yet |
+| Alerting | First 5xx failure policy enabled with exact filter, operator email channel, 30-minute provisional interval, and runbook; separate 401 notification path reached email by operator report ([`failure-alert.md`](failure-alert.md), [`notification-test.md`](notification-test.md)) | Trigger and verify the actual 5xx condition safely; production revision lacks the new event |
 | Retention/privacy | Candidate application event had only allowlisted fields; separate platform entry still had `requestUrl`; routing preflight found only `_Required` and `_Default` sinks and no user-defined log metric or alert | Revisit narrow platform-log exclusion after production event verification; check external consumers |
 
 The operator deferred the candidate workflow on 2026-09-17. It was resumed
@@ -292,8 +292,8 @@ run or deployed import event was observed.
 - Request, database readiness/pool, authentication, review, and import signals.
 - Actionable alert set and retention rules.
 - The first proposed failure condition and runbook are in
-  [`failure-alert.md`](failure-alert.md); its activation waits for channel
-  selection and delivery testing.
+  [`failure-alert.md`](failure-alert.md); the policy is enabled, but its own
+  failure-condition delivery remains unverified.
 - The labeled local readiness outage drill and its limits are in
   [`incident-exercise.md`](incident-exercise.md).
 - The temporary email notification path test is in
