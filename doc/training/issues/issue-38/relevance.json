@@ -1,0 +1,24 @@
+{
+  "version": "synthetic-en-v1",
+  "cards": [
+    {"id": "c1", "term": "exhausted", "meaning": "very tired after effort", "example_sentence": "I felt exhausted after the long shift."},
+    {"id": "c2", "term": "burnout", "meaning": "long-term mental and physical exhaustion from work", "example_sentence": "She took leave to recover from burnout."},
+    {"id": "c3", "term": "drowsy", "meaning": "sleepy and struggling to stay awake", "example_sentence": "The warm room made him drowsy."},
+    {"id": "c4", "term": "resilient", "meaning": "able to recover after difficulty", "example_sentence": "The team stayed resilient after setbacks."},
+    {"id": "c5", "term": "frugal", "meaning": "careful about spending money", "example_sentence": "They chose a frugal holiday."},
+    {"id": "c6", "term": "thrifty", "meaning": "using money and resources carefully", "example_sentence": "Her thrifty habits helped her save."},
+    {"id": "c7", "term": "hesitant", "meaning": "slow to act because of uncertainty", "example_sentence": "He was hesitant to accept the offer."},
+    {"id": "c8", "term": "reluctant", "meaning": "unwilling or not eager to do something", "example_sentence": "She was reluctant to speak first."},
+    {"id": "c9", "term": "meticulous", "meaning": "extremely careful about small details", "example_sentence": "The editor made a meticulous review."},
+    {"id": "c10", "term": "obsolete", "meaning": "no longer useful because something newer exists", "example_sentence": "The old device became obsolete."}
+  ],
+  "queries": [
+    {"text": "words describing exhaustion at work", "relevance": {"c2": 2, "c1": 2, "c3": 1}},
+    {"text": "someone is sleepy and cannot stay alert", "relevance": {"c3": 2, "c1": 1}},
+    {"text": "careful with money", "relevance": {"c5": 2, "c6": 2}},
+    {"text": "not eager to agree", "relevance": {"c8": 2, "c7": 1}},
+    {"text": "pays close attention to every detail", "relevance": {"c9": 2}},
+    {"text": "keeps going after setbacks", "relevance": {"c4": 2}},
+    {"text": "outdated technology", "relevance": {"c10": 2}}
+  ]
+}
