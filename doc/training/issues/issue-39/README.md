@@ -48,8 +48,9 @@ then reported that the `upgrade head` / `downgrade -1` / `upgrade head` cycle su
 the final upgrade, read-only SQL returned `vector(512)`, 0 embedding rows, 597 cards, 0 populated
 semantic hashes, and 597 review states. The operator reported `true` for each separate
 `app_runtime_limited` privilege check: SELECT, INSERT, and UPDATE on `card_embeddings`, plus
-UPDATE on `learning_cards.semantic_content_hash`. The final Alembic revision output was not
-separately supplied. No real provider call or private-card backfill was reported in this step.
+UPDATE on `learning_cards.semantic_content_hash`. The operator also reported that
+`alembic current --check-heads` returned `20260920_0006` after the final upgrade. No real
+provider call or private-card backfill was reported in this step.
 
 ## Operator-controlled deployment gates
 
