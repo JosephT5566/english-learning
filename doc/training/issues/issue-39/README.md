@@ -69,9 +69,89 @@ SELECT current_user,
        has_schema_privilege(current_user, 'public', 'CREATE') AS can_create_public;
 SELECT extname, extversion FROM pg_extension WHERE extname = 'vector';
 SELECT has_table_privilege('app_runtime_limited', 'public.card_embeddings',
-                           'SELECT,INSERT,UPDATE') AS runtime_embedding_dml;
+                           'SELECT') AS runtime_embedding_select,
+       has_table_privilege('app_runtime_limited', 'public.card_embeddings',
+                           'INSERT') AS runtime_embedding_insert,
+       has_table_privilege('app_runtime_limited', 'public.card_embeddings',
+                           'UPDATE') AS runtime_embedding_update;
 SELECT has_column_privilege('app_runtime_limited', 'public.learning_cards',
                             'semantic_content_hash', 'UPDATE') AS runtime_hash_update;
+```
+
+### Isolated Neon branch migration rehearsal
+
+Run these commands locally from `apps/api/` with the **direct** (non-pooler) connection string
+for `issue-39-embedding-migration`, using the migration role. Do not use the production URL.
+Enter the URL through a silent prompt so it is not saved as a shell command:
+
+```zsh
+cd apps/api
+read -rs "ISSUE39_DATABASE_URL?Paste direct issue-39 migration URL: "
+echo
+export DATABASE_URL="$ISSUE39_DATABASE_URL"
+export APP_ENV=local
+```
+
+Use a `postgresql+psycopg://` URL with `sslmode=require&channel_binding=require`. Before any
+write, compare the endpoint host with the branch's direct host in Neon Console and check the
+current role/revision without printing the URL:
+
+```zsh
+uv run python - <<'PY'
+import os
+from sqlalchemy import create_engine, text
+from sqlalchemy.engine import make_url
+
+url = make_url(os.environ["DATABASE_URL"])
+assert url.drivername == "postgresql+psycopg"
+assert "-pooler" not in (url.host or "")
+assert url.query.get("sslmode") == "require"
+assert url.query.get("channel_binding") == "require"
+print("host:", url.host)
+with create_engine(url).connect() as connection:
+    print("identity/revision:", connection.execute(text(
+        "SELECT current_user, current_database(), version_num FROM alembic_version"
+    )).one())
+    print("card/review counts:", connection.execute(text(
+        "SELECT (SELECT count(*) FROM learning_cards), "
+        "(SELECT count(*) FROM review_states)"
+    )).one())
+PY
+```
+
+Stop if the host does not match the isolated branch, the role is not the intended migration
+role, or the revision is not `20260910_0005`. Record the two counts. The following commands
+change schema **only on the database selected by `DATABASE_URL`**:
+
+```zsh
+uv run alembic upgrade head
+uv run alembic current --check-heads
+uv run alembic downgrade -1
+uv run alembic current
+uv run alembic upgrade head
+uv run alembic current --check-heads
+```
+
+After the final upgrade, use Neon SQL Editor on the isolated branch to run the read-only SQL
+above, plus this schema/data check:
+
+```sql
+SELECT format_type(a.atttypid, a.atttypmod) AS embedding_type
+FROM pg_attribute a
+JOIN pg_class c ON c.oid = a.attrelid
+WHERE c.relname = 'card_embeddings' AND a.attname = 'embedding';
+SELECT count(*) AS embedding_rows FROM card_embeddings;
+SELECT count(*) AS cards, count(*) FILTER (WHERE semantic_content_hash IS NOT NULL)
+       AS cards_with_hash FROM learning_cards;
+SELECT count(*) AS review_states FROM review_states;
+```
+
+The vector type should be `vector(512)`, the embedding table should initially be empty,
+and card/review counts should match the pre-migration values. Existing cards may retain null
+semantic hashes until explicit backfill. Finally, remove the URL from the shell:
+
+```zsh
+unset DATABASE_URL ISSUE39_DATABASE_URL APP_ENV
 ```
 
 ## Five-minute explanation
