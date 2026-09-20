@@ -40,6 +40,17 @@ The new PostgreSQL tests cover failed provider calls, repair, stale results, con
 calls, owner/archive rejection, cursor resume, and the Alembic upgrade/downgrade cycle. Unit tests
 cover canonical normalization, vector validation, and synthetic Vertex request/error contracts.
 
+### Operator-reported isolated Neon branch rehearsal
+
+On `issue-39-embedding-migration`, the operator reported a direct `neondb_owner` connection
+with revision `20260910_0005` and 597 cards / 597 review states before migration. The operator
+then reported that the `upgrade head` / `downgrade -1` / `upgrade head` cycle succeeded. After
+the final upgrade, read-only SQL returned `vector(512)`, 0 embedding rows, 597 cards, 0 populated
+semantic hashes, and 597 review states. The operator reported `true` for each separate
+`app_runtime_limited` privilege check: SELECT, INSERT, and UPDATE on `card_embeddings`, plus
+UPDATE on `learning_cards.semantic_content_hash`. The final Alembic revision output was not
+separately supplied. No real provider call or private-card backfill was reported in this step.
+
 ## Operator-controlled deployment gates
 
 Codex has not run gcloud or Neon commands. Before a production migration or provider enablement,
