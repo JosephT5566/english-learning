@@ -58,6 +58,11 @@ embedding writes. No card IDs or connection details are retained in this record.
 The operator subsequently reran the read-only preflight using the same backfill configuration
 and reported `app_runtime_limited`, revision `20260920_0006`, and unchanged 597 card / 597 review
 state counts. This establishes the reported dry-run connection role, without retaining its URL.
+The operator reported that the deployed Cloud Run service uses
+`english-learning-api@eng-learning-470909.iam.gserviceaccount.com`. A read-only project IAM
+query returned no project-level bindings for that service account, including no
+`roles/aiplatform.user`. Inherited or resource-level grants were not checked; a synthetic
+prediction as that identity remains unverified. No IAM change was made by Codex.
 
 ## Operator-controlled deployment gates
 
