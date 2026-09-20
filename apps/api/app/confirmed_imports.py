@@ -34,6 +34,7 @@ from app.imports import (
     normalize_collection_identity,
     read_validated_csv_snapshot,
 )
+from app.semantic_text import content_hash as semantic_content_hash
 
 
 class ConfirmedImportError(RuntimeError):
@@ -347,14 +348,14 @@ def _create_card(
                 example_translation, example_source, synonyms, antonyms,
                 part_of_speech, part_of_speech_detail, note,
                 supplementary_note, learned_on, archived_at, version,
-                created_at, updated_at
+                created_at, updated_at, semantic_content_hash
             ) VALUES (
                 :deck_id, :owner_id, :term, :meaning, :reading, :pronunciation,
                 :romanization, :target_language_definition, :example_sentence,
                 :example_translation, :example_source, :synonyms, :antonyms,
                 :part_of_speech, :part_of_speech_detail, :note,
                 :supplementary_note, :learned_on, :archived_at, 1,
-                :created_at, :updated_at
+                :created_at, :updated_at, :semantic_content_hash
             )
             RETURNING id
             """
@@ -381,6 +382,9 @@ def _create_card(
             "archived_at": archived_at,
             "created_at": created_at,
             "updated_at": updated_at,
+            "semantic_content_hash": semantic_content_hash(
+                {**candidate, "language": candidate["target_language"]}
+            ),
         },
     ).scalar_one()
 

@@ -68,6 +68,13 @@ class Settings(BaseSettings):
         str, StringConstraints(strip_whitespace=True, min_length=1)
     ] = DEFAULT_GOOGLE_OAUTH_CLIENT_ID
     google_allowed_emails: str = ""
+    vertex_project_id: (
+        Annotated[str, StringConstraints(pattern=r"^[a-z][a-z0-9-]{4,61}[a-z0-9]$")]
+        | None
+    ) = None
+    vertex_location: Annotated[
+        str, StringConstraints(pattern=r"^[a-z]+-[a-z]+[0-9]$")
+    ] = "us-central1"
     cors_allowed_origins: Annotated[tuple[str, ...], Field(min_length=1)] = (
         DEFAULT_CORS_ALLOWED_ORIGINS
     )

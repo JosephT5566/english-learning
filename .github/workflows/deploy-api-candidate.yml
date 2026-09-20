@@ -37,6 +37,8 @@ jobs:
       GOOGLE_OAUTH_CLIENT_ID: ${{ vars.PUBLIC_GOOGLE_AUTH_CLIENT_ID }}
       GOOGLE_ALLOWED_EMAILS: ${{ vars.PUBLIC_EMAIL_WHITE_LIST }}
       CORS_ALLOWED_ORIGINS: ${{ vars.CORS_ALLOWED_ORIGINS }}
+      VERTEX_PROJECT_ID: ${{ vars.VERTEX_PROJECT_ID }}
+      VERTEX_LOCATION: ${{ vars.VERTEX_LOCATION }}
       CONFIRMATION: ${{ inputs.confirmation }}
 
     steps:
@@ -166,6 +168,9 @@ jobs:
         run: |
           set -euo pipefail
           environment_variables="^|^APP_ENV=production|LOG_LEVEL=INFO|DATABASE_CONNECT_TIMEOUT_SECONDS=5|GOOGLE_OAUTH_CLIENT_ID=${GOOGLE_OAUTH_CLIENT_ID}|GOOGLE_ALLOWED_EMAILS=${GOOGLE_ALLOWED_EMAILS}|CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS}"
+          if [[ -n "${VERTEX_PROJECT_ID}" ]]; then
+            environment_variables+="|VERTEX_PROJECT_ID=${VERTEX_PROJECT_ID}|VERTEX_LOCATION=${VERTEX_LOCATION:-us-central1}"
+          fi
 
           gcloud run deploy "${API_SERVICE}" \
             --project "${GCP_PROJECT_ID}" \

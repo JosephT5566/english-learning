@@ -211,3 +211,10 @@ Last updated: 2026-09-18
   candidate smoke workflow that accepts a fresh Google ID token, masks it in runner logs, and can
   optionally submit one real review with exact replay. This does not create a persistent CI identity
   or change the browser's Google sign-in flow.
+- 2026-09-20: Implemented Issue #39's embedding storage as rebuildable derived data in a separate
+  pgvector table keyed by owned card and model version. Confirmed card writes commit their canonical
+  hash before a bounded Vertex document call; provider failure cannot reverse the card transaction.
+  A claim token and hash check reject old results, while an explicit owner-bounded backfill repairs
+  missing and failed rows. Archive remains query-time exclusion. No queue, scheduler, cache, or ANN
+  index was added. Production role, provider identity, and private-data gates still require operator
+  verification before deployment.

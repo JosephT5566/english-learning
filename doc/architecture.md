@@ -1,6 +1,6 @@
 # Architecture Memory
 
-Last updated: 2026-09-15
+Last updated: 2026-09-20
 
 ## Stack
 
@@ -78,6 +78,10 @@ Last updated: 2026-09-15
   content, identities, hashes, or file paths.
 - `apps/api/app/confirmed_imports.py`: approved-snapshot verification, atomic confirmed import,
   exact replay, post-commit reconciliation, safe reports, and the local operator CLI.
+- `apps/api/app/semantic_text.py`: versioned NFC canonical card text and SHA-256 semantic hash.
+- `apps/api/app/embeddings.py`: bounded Vertex document embedding, vector validation, and
+  owner/hash/model-guarded derived-data transactions after confirmed card commits.
+- `apps/api/app/embedding_backfill.py`: explicit owner-bounded, keyset-paged retry and backfill CLI.
 - `apps/api/openapi.json`: committed deterministic API schema used for frontend type generation and
   contract-drift checks.
 - `apps/api/scripts/export_openapi.py`: deterministic OpenAPI export from the FastAPI application.
@@ -90,6 +94,8 @@ Last updated: 2026-09-15
 - `apps/api/migrations/`: Alembic environment and reversible migration history; the empty baseline
   is followed by the first production domain revision for users, decks, confirmed cards, tags,
   current review state, and review history.
+  Revision `20260920_0006` enables pgvector, adds the nullable card semantic hash for existing
+  rows, and stores versioned 512-dimensional derived vectors separately from confirmed cards.
 - `apps/api/tests/unit/`: API configuration, lifecycle, probe, and HTTP contract tests.
 - `apps/api/tests/integration/`: opt-in real PostgreSQL readiness, migration lifecycle, transaction,
   domain-constraint, fixture, and representative query-plan tests.

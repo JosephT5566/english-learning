@@ -1,6 +1,6 @@
 # Development Memory
 
-Last updated: 2026-09-15
+Last updated: 2026-09-20
 
 ## Commands
 
@@ -33,12 +33,21 @@ canonical verified command reference.
 - Revert the latest development migration: `uv run alembic downgrade -1`
 - Lint: `uv run ruff check .`
 - Check formatting: `uv run ruff format --check .`
+- Inspect eligible embedding work without a provider call:
+  `uv run python -m app.embedding_backfill --owner-id OWNER_ID --limit 100 --dry-run`
+- After setting `VERTEX_PROJECT_ID` and (if needed) `VERTEX_LOCATION`, run one bounded owner
+  page: `uv run python -m app.embedding_backfill --owner-id OWNER_ID --limit 100`.
+  Pass the returned `next_cursor` to `--cursor` to continue. When it becomes null, restart
+  without a cursor after retry delays; `--retry-exhausted` explicitly revisits exhausted rows.
+  One invocation processes at most 500 cards or 30 minutes. Only safe outcome counts and a
+  resume cursor are printed. Never run against private cards until the deployment provider
+  identity and data-handling gate in Issue #38 is approved.
 - Build the locked non-root API image from the repository root:
   `docker build --tag english-learning-api:local apps/api`
 - Verify its user, liveness, and graceful shutdown from the repository root:
   `bash apps/api/scripts/verify_container.sh english-learning-api:local`
 
-Start the verified local PostgreSQL 17 service from the repository root with
+Start the local PostgreSQL 17 plus pgvector 0.8.6 service from the repository root with
 `docker compose up -d --wait postgres`. Inspect it with `docker compose ps` and stop it with
 `docker compose stop postgres`.
 
