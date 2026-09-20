@@ -92,17 +92,22 @@ export DATABASE_URL="$ISSUE39_DATABASE_URL"
 export APP_ENV=local
 ```
 
+Alternatively, set `DATABASE_URL` and `APP_ENV=local` in the Git-ignored `apps/api/.env`
+and run the commands from `apps/api/`. Shell environment variables take precedence over
+`.env`, so unset any previously exported `DATABASE_URL`/`APP_ENV` before using the file.
+Keep this file local and remove the branch URL after the rehearsal.
+
 Use a `postgresql+psycopg://` URL with `sslmode=require&channel_binding=require`. Before any
 write, compare the endpoint host with the branch's direct host in Neon Console and check the
 current role/revision without printing the URL:
 
 ```zsh
 uv run python - <<'PY'
-import os
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import make_url
+from app.config import load_settings
 
-url = make_url(os.environ["DATABASE_URL"])
+url = make_url(load_settings().database_url.get_secret_value())
 assert url.drivername == "postgresql+psycopg"
 assert "-pooler" not in (url.host or "")
 assert url.query.get("sslmode") == "require"
