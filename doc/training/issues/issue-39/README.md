@@ -55,6 +55,9 @@ The operator then reported an owner-bounded dry run over the isolated branch:
 100 eligible cards on the first page and 497 on the resumed page, with a null final cursor
 and no time-limit hit. This covers the reported 597-card corpus without provider calls or
 embedding writes. No card IDs or connection details are retained in this record.
+The operator subsequently reran the read-only preflight using the same backfill configuration
+and reported `app_runtime_limited`, revision `20260920_0006`, and unchanged 597 card / 597 review
+state counts. This establishes the reported dry-run connection role, without retaining its URL.
 
 ## Operator-controlled deployment gates
 
