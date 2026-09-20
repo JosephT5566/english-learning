@@ -4,6 +4,8 @@ Status: design and synthetic provider evaluation recorded; final-schema and depl
 This designs retrieval only. Issues #39 and #40 implement storage and search; #41 measures
 relevance and latency. The older Sheets/Cloudflare/R2 proposal is superseded.
 
+For a chaptered Traditional Chinese explanation, see [learning notes](learning-notes.zh-TW.md).
+
 ## Invariants and trust boundaries
 
 - Only server-verified Google identity supplies `owner_id`. Never accept an owner ID, vector,
