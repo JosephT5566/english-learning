@@ -1,6 +1,6 @@
 # English Learning Project Memory
 
-Last updated: 2026-09-17
+Last updated: 2026-09-19
 
 ## Purpose
 
@@ -134,6 +134,30 @@ interview evidence.
   only sanitized aggregates and fixtures.
 
 ## Next action
+
+Issue #38 retrieval design and synthetic relevance labels are recorded in
+[`issues/issue-38/README.md`](issues/issue-38/README.md). The design selects a separate
+derived embedding table and exact owner-filtered vector ranking. A local offline scorer and
+three passing unit tests establish a reproducible lexical baseline, not embedding quality.
+Vertex AI `gemini-embedding-001` at 512 dimensions is selected for the #39 design after
+the operator-reported synthetic evaluation; OpenAI remains an untested lower-price
+alternative. The
+operator reports PostgreSQL 18.6, 597 active cards, 2 decks, and pgvector 0.8.6 enabled
+by `neondb_owner`, the documented migration database role, on an isolated Neon branch. The operator also supplied a synthetic
+597-row exact vector plan: 90 owned/filter-matching rows, top-N sort, 0.434 ms single-run
+execution. The operator-reported branch privilege check showed runtime role
+`app_runtime_limited` lacks database/schema CREATE and `neondb_owner` has both. The live
+migration secret's current role and final three-table plan remain unverified. The operator
+reported successful Vertex AI `gemini-embedding-001` synthetic document and query
+requests: both 512 finite nonzero dimensions without truncation (10 and 5 tokens).
+The operator ran the 17-request synthetic fixture and reported macro nDCG@5 and strong
+Recall@5 of 1.0 across seven queries, 314 input tokens, and Cloud Shell-to-Vertex
+per-request p50/p95 of 1200.7/1296.3 ms. These are narrow synthetic results, not
+production relevance or Cloud Run latency. Next action: finalize #38's release prerequisites
+and hand the versioned storage lifecycle to Issue #39; the final three-table plan and
+runtime identity grant remain unverified.
+
+Issue #27 still has the operational evidence gaps below; #38 does not close them.
 
 Issue #27's request, review, and import signals passed local verification. A
 synthetic isolated restore passed, while the owner deferred an independent
