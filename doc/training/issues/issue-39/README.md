@@ -51,6 +51,10 @@ semantic hashes, and 597 review states. The operator reported `true` for each se
 UPDATE on `learning_cards.semantic_content_hash`. The operator also reported that
 `alembic current --check-heads` returned `20260920_0006` after the final upgrade. No real
 provider call or private-card backfill was reported in this step.
+The operator then reported an owner-bounded dry run over the isolated branch:
+100 eligible cards on the first page and 497 on the resumed page, with a null final cursor
+and no time-limit hit. This covers the reported 597-card corpus without provider calls or
+embedding writes. No card IDs or connection details are retained in this record.
 
 ## Operator-controlled deployment gates
 
