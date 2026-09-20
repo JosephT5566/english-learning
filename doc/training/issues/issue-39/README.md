@@ -63,6 +63,10 @@ The operator reported that the deployed Cloud Run service uses
 query returned no project-level bindings for that service account, including no
 `roles/aiplatform.user`. Inherited or resource-level grants were not checked; a synthetic
 prediction as that identity remains unverified. No IAM change was made by Codex.
+The operator then granted `roles/aiplatform.user` to that service account in Google Cloud
+Console and reported a read-only project IAM query showing the role bound to the expected
+service-account principal. This verifies the reported policy binding, not an actual Vertex
+request from the Cloud Run identity. Codex did not change IAM.
 
 ## Operator-controlled deployment gates
 
