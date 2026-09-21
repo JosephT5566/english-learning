@@ -1,7 +1,7 @@
 # Issue #39 - retryable confirmed-card embeddings
 
-Status: repository implementation and local verification passed on 2026-09-20; no production migration,
-provider permission change, or private-card embedding has been performed by Codex.
+Status: repository implementation, local verification, and isolated Neon branch rehearsal passed;
+production migration and Cloud Run-path verification remain pending. Updated 2026-09-21.
 
 ## Boundary
 
@@ -67,6 +67,33 @@ The operator then granted `roles/aiplatform.user` to that service account in Goo
 Console and reported a read-only project IAM query showing the role bound to the expected
 service-account principal. This verifies the reported policy binding, not an actual Vertex
 request from the Cloud Run identity. Codex did not change IAM.
+On 2026-09-21, the operator authorized Codex to run one synthetic request using local gcloud
+impersonation of that service account. Outside the local sandbox, token acquisition succeeded and
+the Vertex AI `gemini-embedding-001` `RETRIEVAL_DOCUMENT` request in `us-central1` succeeded.
+The response had 512 finite, nonzero values, `truncated=false`, 14 tokens, and 1,147 ms observed
+request latency. Only these safe summary values were retained; no token or vector was logged.
+This verifies the impersonated identity and provider contract from the local machine, not the
+Cloud Run workload identity path or private-card backfill. No Neon operation was performed.
+The operator then configured local Application Default Credentials (ADC) by impersonating the
+same service account and ran the owner-bounded backfill against the isolated Neon branch with a
+limit of one. The sanitized result was `ready: 1`, with a non-null resume cursor and no time-limit
+hit. This verifies one private-card provider call and embedding write through the application
+backfill path. It does not yet verify a complete 597-card run or the Cloud Run identity path.
+Using the returned cursor, the operator ran a second isolated-branch batch with a limit of 25. All
+25 reported `ready`, the command returned a new non-null cursor, and the time limit was not hit.
+Together with the first batch, 26 cards have been reported ready through this path; aggregate
+database counts remain to be checked before increasing the batch size.
+The operator then resumed from that cursor with a limit of 100. All 100 reported `ready`, a new
+non-null cursor was returned, and the time limit was not hit. Across the three reported batches,
+126 cards are ready and no provider failure class has been observed.
+After several additional cursor-resumed batches, the operator reported a final batch with 71
+`ready`, a null cursor, and no time-limit hit. The null cursor shows that this forward scan reached
+the end of the eligible keyspace. The operator then reported aggregate SQL results of 597 `ready`
+embeddings, 597 populated card hashes, 597 cards, 597 review states, no other embedding states,
+and zero embedding/card hash mismatches. A cursor-free replay returned empty counts, a null cursor,
+and no time-limit hit, confirming that unchanged current content caused no additional provider
+work. This completes the isolated-branch migration, backfill, resume, and replay rehearsal. It does
+not establish production deployment, Cloud Run workload-path behavior, or private-card relevance.
 
 ## Operator-controlled deployment gates
 
