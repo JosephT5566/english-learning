@@ -188,6 +188,7 @@ Cursor 只描述掃描位置，不表示 cursor 前面的每張卡都成功。�
 | PostgreSQL integration tests | migration cycle、失敗重試、stale write、concurrency、owner/archive boundary | Neon permissions 與真實 Vertex IAM |
 | 合成 Vertex request | impersonated identity 可呼叫指定模型並取得有效 512 維結果 | 私人卡 backfill 與 Cloud Run path |
 | 隔離 Neon backfill | ADC、provider、runtime DB 權限、cursor resume、597 張完整寫入與 replay | production deployment、Cloud Run metadata identity、搜尋品質 |
+| Production Cloud Run Job | runtime service identity、Secret Manager、Vertex、production Neon、完整 backfill 與 replay 串接成功 | 已切換 production traffic 或搜尋結果品質 |
 
 CI 也必須使用含 pgvector extension 的 PostgreSQL image。一般 `postgres:17-alpine` 沒有 `vector.control`，所以 migration 會在 `CREATE EXTENSION vector` 失敗。CI 與 local Compose 現在一致使用 `pgvector/pgvector:0.8.6-pg17-bookworm`。這提醒我們：資料庫 major version 相同，不代表 extension 環境相同。
 
@@ -207,6 +208,88 @@ Migration 不應自動開始 backfill。這讓 schema 問題、candidate 問題�
 
 Backfill 完成後應驗證 state counts、hash coverage、hash mismatch、card/review counts，以及空 replay。最後移除個人帳號的 Token Creator 權限；service account 的 `roles/aiplatform.user` 則是 Cloud Run runtime 功能需要的權限，是否保留由正式功能是否啟用決定。
 
+## Chapter 9. Production Cloud Run Job 實際操作與修正
+
+Production 沒有把隔離 Neon branch 的 embeddings 搬回正式 branch。Branch 建立之後，正式資料仍可能新增或修改；直接搬資料需要處理衝突，也可能覆蓋較新的 card 或 review state。Embedding 本來就是可重建的資料，因此我們在 production migration 完成後，直接以 production cards 重新計算。
+
+### 9.1 為什麼另建 backfill job
+
+我們使用與 API candidate 相同的 immutable container image，但建立獨立的 Cloud Run Job。它沒有重用 migration job：
+
+| Cloud Run resource | 身分與資料庫權限 | Command | 用途 |
+| --- | --- | --- | --- |
+| API Service | API runtime service account、runtime DB role | `python -m app.serve` | 處理 HTTP traffic 與單張 post-commit embedding |
+| Migration Job | migration service account、schema owner | `alembic upgrade head` | 只改 schema |
+| Backfill Job | API runtime service account、runtime DB role | `python -m app.embedding_backfill ...` | 補建既有或遺漏的 embeddings |
+
+這樣 backfill 不需要 `neondb_owner`，也不會讓 migration identity 多拿 Vertex AI 權限。Job 使用 API runtime service account，所以 Cloud Run 透過 metadata identity 取得 Vertex token；不需要本機 ADC、不需要個人 Token Creator，也不需要 service-account key。
+
+Job 使用一個 task、parallelism 1、Cloud Run retries 0。應用程式本身已管理 retryable、retry delay 和 exhausted；如果平台再自動重跑整個 execution，會混淆 attempt 與 cursor 的操作語意。Job timeout 設為 35 分鐘，略長於應用程式自己的 30 分鐘上限，讓程式有機會輸出安全 counts 與 resume cursor。
+
+### 9.2 Image、secret 與環境變數
+
+Job 使用與 candidate 相同的 digest-pinned image，而不是 `latest`。`DATABASE_URL` 由 Secret Manager 的固定 runtime secret version 注入；GitHub runner、Job 設定畫面和文件都不保存實際 URL。
+
+一般環境變數包含：
+
+```text
+APP_ENV=production
+LOG_LEVEL=INFO
+DATABASE_CONNECT_TIMEOUT_SECONDS=5
+VERTEX_PROJECT_ID=eng-learning-470909
+VERTEX_LOCATION=us-central1
+GOOGLE_OAUTH_CLIENT_ID=<與 API candidate 相同>
+GOOGLE_ALLOWED_EMAILS=<與 API candidate 相同>
+CORS_ALLOWED_ORIGINS=<與 API candidate 相同>
+```
+
+`VERTEX_PROJECT_ID` 和 `VERTEX_LOCATION` 是部署時注入的 runtime configuration，不會被打包進 container image。只在 GitHub environment 新增 variables 也不會修改已存在的 Cloud Run revision；必須部署新 revision 才會生效。
+
+### 9.3 第一次 dry run 為什麼失敗
+
+第一次 Job execution 的 Cloud Run audit event 只顯示：
+
+```text
+code: 10
+reason: NonZeroExitCode
+container exit code: 1
+```
+
+這是平台層的 execution 摘要，不是 PostgreSQL 或 Vertex 的根因。Container 已成功下載和啟動，真正的應用程式結果要看 `run.googleapis.com/stdout`／`stderr`。
+
+當時 Job 設了 `APP_ENV=production`，卻只帶 database 與 Vertex 設定。Backfill CLI 共用完整的 `load_settings()`；production validation 也要求 `GOOGLE_OAUTH_CLIENT_ID` 與 `GOOGLE_ALLOWED_EMAILS`。即使 CLI 本身不處理登入，缺少這些欄位仍會在連資料庫前得到 `ConfigurationError`，最後只輸出安全的：
+
+```json
+{"status":"failed","error_code":"backfill_unavailable"}
+```
+
+這次是 dry run，設定載入又先失敗，因此沒有 provider call，也沒有資料寫入。我們把 API candidate 的 OAuth client ID、allowlist 與 CORS 設定加入 Job，並把 Cloud Run retries 從 3 修正為 0、timeout 從 10 分鐘調整為 35 分鐘。之後 dry run 成功。
+
+這也暴露一個可以日後改善的設計：backfill CLI 目前依賴完整 web application settings。若其他 operator CLI 增加，可考慮拆出只驗證 database/provider 所需欄位的 command-specific settings；本 ticket 保留單一設定入口，並在 Job 中提供完整 production configuration。
+
+### 9.4 從 dry run 到正式寫入
+
+Production dry run 分兩頁完成：
+
+```text
+第一頁：eligible 100，回傳 next_cursor
+第二頁：eligible 497，next_cursor = null
+```
+
+確認 597 張與預期 cardinality 相符後，才移除 `--dry-run`，從小批量開始並逐批傳入上一個 cursor。最後一個 execution 回報：
+
+```json
+{
+  "counts": {"ready": 196},
+  "next_cursor": null,
+  "time_limit_reached": false
+}
+```
+
+最後一批的 196 不能單獨證明總共有 597 張成功；因此我們另外執行 aggregate SQL。結果為 597 個 ready embeddings、597 個 card hashes、597 張 cards、597 個 review states、0 個 hash mismatch，以及 0 個 missing current embedding。
+
+最後再用沒有 cursor、沒有 `--dry-run` 的命令從頭 replay。它回傳空 counts 與 null cursor，證明目前模型與內容 hash 都已 current，不會再次呼叫 provider。新版 zero-traffic candidate 也確認具有 Vertex project/location 設定並通過 environment smoke test。這些證據完成 production migration/backfill 邊界，但不表示 production traffic 已切換，也不證明語意搜尋結果品質。
+
 ## What we learned
 
 1. **主要資料與衍生資料需要不同的成功邊界。** 卡片 commit 是產品寫入成功；embedding 可以晚一點完成，也可以安全重建。
@@ -218,3 +301,7 @@ Backfill 完成後應驗證 state counts、hash coverage、hash mismatch、card/
 7. **從一張開始能降低操作風險。** 合成請求、dry run、1、25、100 的漸進方式，讓 IAM、資料內容、provider contract 與 database write 各自有明確驗證點。
 8. **CI 必須重現 extension contract。** PostgreSQL 版本正確仍不夠；使用 pgvector 的 migration，測試資料庫 image 也必須實際提供 pgvector。
 9. **驗證結果要標明環境。** 隔離 Neon branch 的 597 張成功不等於 production 已部署，也不等於 Cloud Run workload path 或未來語意搜尋品質已驗證。
+10. **平台錯誤碼通常只是外層摘要。** Cloud Run 的 `code: 10` 和 `NonZeroExitCode` 只告訴我們 process 失敗；根因要回到該 execution 的 container stdout/stderr，並只保留安全錯誤分類。
+11. **CLI 共用設定會帶來隱性前置條件。** `APP_ENV=production` 讓 backfill 也必須提供 web auth 設定。建立 Job 時要對照程式實際載入的完整設定，不只列出命令表面上使用的欄位。
+12. **平台 retry 與應用 retry 要有單一 owner。** Cloud Run retries 設為 0，由 embedding state machine 管理 retryable/exhausted，才能讓 attempt、cursor 與恢復流程保持可解釋。
+13. **衍生資料應在目標環境重建。** Production embeddings 由 production cards 計算，不從 rehearsal branch 複製，避免覆蓋 branch 建立後的新資料或把測試狀態帶回正式環境。
