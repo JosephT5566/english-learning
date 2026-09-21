@@ -3,6 +3,8 @@
 Status: repository implementation, local verification, and isolated Neon branch rehearsal passed;
 production migration and Cloud Run-path verification remain pending. Updated 2026-09-21.
 
+Traditional Chinese walkthrough: [learning-notes.zh-TW.md](learning-notes.zh-TW.md).
+
 ## Boundary
 
 - Canonical text v1 is defined in `apps/api/app/semantic_text.py`. The exact text is NFC-normalized,
