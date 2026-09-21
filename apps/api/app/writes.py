@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import logging
 from datetime import date
 from typing import Annotated, Literal
 from uuid import UUID
@@ -13,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from app.auth import CurrentUserDependency
 from app.database import database_session
+from app.embeddings import process_card, vertex_document_embedding
 from app.errors import ApiError
 from app.reads import (
     CARD_DETAIL_COLUMNS,
@@ -22,8 +24,10 @@ from app.reads import (
     _not_found,
     _reject_unknown_filters,
 )
+from app.semantic_text import EDITABLE_SEMANTIC_FIELDS, content_hash
 
 router = APIRouter(prefix="/v1")
+logger = logging.getLogger(__name__)
 SessionDependency = Annotated[Session, Depends(database_session, scope="function")]
 Title = Annotated[
     str, StringConstraints(strip_whitespace=True, min_length=1, max_length=100)
@@ -176,6 +180,38 @@ def _card_detail(session: Session, card_id: UUID, owner_id: int) -> CardDetail:
     if row is None:
         raise _not_found("card")
     return CardDetail.model_validate(row)
+
+
+def _semantic_hash(session: Session, card_id: UUID, owner_id: int) -> str:
+    from app.embeddings import CARD_SELECT
+
+    row = (
+        session.execute(text(CARD_SELECT), {"card_id": card_id, "owner_id": owner_id})
+        .mappings()
+        .one()
+    )
+    return content_hash(dict(row))
+
+
+def _try_embed_after_commit(request: Request, card_id: UUID, owner_id: int) -> None:
+    settings = request.app.state.settings
+    if not settings.vertex_project_id:
+        return
+    try:
+        outcome = process_card(
+            request.app.state.database_session_factory,
+            card_id,
+            owner_id,
+            lambda content: vertex_document_embedding(
+                content,
+                project=settings.vertex_project_id,
+                location=settings.vertex_location,
+            ),
+        )
+        logger.info("card_embedding_outcome", extra={"outcome": outcome})
+    except Exception:  # noqa: BLE001 - confirmed write must survive derived-data errors
+        # The card has committed; the operator retry path owns recovery.
+        logger.warning("card_embedding_attempt_failed")
 
 
 def _version_conflict() -> ApiError:
@@ -391,7 +427,10 @@ def create_card(
     if existing is not None:
         if existing.creation_request_hash != request_hash:
             raise _idempotency_key_reused()
-        return _card_detail(session, existing.id, user.id)
+        detail = _card_detail(session, existing.id, user.id)
+        session.commit()
+        _try_embed_after_commit(request, existing.id, user.id)
+        return detail
     deck_archived = session.execute(
         text(
             "SELECT archived_at FROM learning_decks WHERE id = :id AND owner_id = :owner_id"
@@ -450,7 +489,10 @@ def create_card(
         )
         if replay.creation_request_hash != request_hash:
             raise _idempotency_key_reused()
-        return _card_detail(session, replay.id, user.id)
+        detail = _card_detail(session, replay.id, user.id)
+        session.commit()
+        _try_embed_after_commit(request, replay.id, user.id)
+        return detail
     session.execute(
         text(
             """
@@ -465,7 +507,20 @@ def create_card(
         ),
         {"card_id": card_id, "owner_id": user.id},
     )
-    return _card_detail(session, card_id, user.id)
+    session.execute(
+        text(
+            "UPDATE learning_cards SET semantic_content_hash = :hash WHERE id = :id AND owner_id = :owner_id"
+        ),
+        {
+            "hash": _semantic_hash(session, card_id, user.id),
+            "id": card_id,
+            "owner_id": user.id,
+        },
+    )
+    detail = _card_detail(session, card_id, user.id)
+    session.commit()
+    _try_embed_after_commit(request, card_id, user.id)
+    return detail
 
 
 @router.patch("/cards/{card_id}", response_model=CardDetail)
@@ -506,7 +561,25 @@ def update_card(
         if owned is None:
             raise _not_found("card")
         raise _version_conflict()
-    return _card_detail(session, card_id, user.id)
+    new_hash = _semantic_hash(session, card_id, user.id)
+    previous_hash = session.execute(
+        text(
+            "SELECT semantic_content_hash FROM learning_cards WHERE id = :id AND owner_id = :owner_id"
+        ),
+        {"id": card_id, "owner_id": user.id},
+    ).scalar_one()
+    if new_hash != previous_hash:
+        session.execute(
+            text(
+                "UPDATE learning_cards SET semantic_content_hash = :hash WHERE id = :id AND owner_id = :owner_id"
+            ),
+            {"hash": new_hash, "id": card_id, "owner_id": user.id},
+        )
+    detail = _card_detail(session, card_id, user.id)
+    session.commit()
+    if EDITABLE_SEMANTIC_FIELDS.intersection(changes):
+        _try_embed_after_commit(request, card_id, user.id)
+    return detail
 
 
 @router.delete("/cards/{card_id}", status_code=status.HTTP_204_NO_CONTENT)

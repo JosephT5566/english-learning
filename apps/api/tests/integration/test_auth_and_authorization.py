@@ -9,8 +9,11 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import Engine, text
 
+from app import writes
 from app.auth import VerifiedGoogleIdentity
+from app.embeddings import EmbeddingFailure
 from app.main import create_app
+from app.semantic_text import DIMENSIONS
 from tests.integration.test_multilingual_domain_fixture import load_multilingual_fixture
 
 pytestmark = [
@@ -312,6 +315,82 @@ def test_card_create_replays_card_and_single_initial_state(
             {"key": key},
         ).one()
     assert counts == (1, 1)
+
+
+def test_card_create_commits_before_provider_timeout_and_replays_once(
+    api_client: TestClient,
+    migrated_database_engine: Engine,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    api_client.app.state.settings = api_client.app.state.settings.model_copy(
+        update={"vertex_project_id": "synthetic-project"}
+    )
+    calls = []
+
+    def timeout(content: str, **_kwargs: object) -> list[float]:
+        calls.append(content)
+        raise EmbeddingFailure("provider_timeout")
+
+    monkeypatch.setattr(writes, "vertex_document_embedding", timeout)
+    key = str(uuid4())
+    payload = {"deck_id": FIXTURE_DECK_ID, "term": "derived", "meaning": "safe card"}
+    headers = create_headers("fixture-token", key)
+    first = api_client.post("/v1/cards", json=payload, headers=headers)
+    replay = api_client.post("/v1/cards", json=payload, headers=headers)
+    assert first.status_code == replay.status_code == 201
+    assert first.json()["id"] == replay.json()["id"]
+    assert len(calls) == 1
+    with migrated_database_engine.connect() as connection:
+        row = connection.execute(
+            text("""
+                SELECT count(*), count(s.card_id), max(e.state)
+                FROM learning_cards c
+                LEFT JOIN review_states s ON (s.card_id, s.owner_id) = (c.id, c.owner_id)
+                LEFT JOIN card_embeddings e ON (e.card_id, e.owner_id) = (c.id, c.owner_id)
+                WHERE c.creation_idempotency_key = :key
+            """),
+            {"key": key},
+        ).one()
+    assert row == (1, 1, "retryable")
+
+
+def test_only_semantic_card_edits_call_provider(
+    api_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    api_client.app.state.settings = api_client.app.state.settings.model_copy(
+        update={"vertex_project_id": "synthetic-project"}
+    )
+    calls = []
+
+    def embed(content: str, **_kwargs: object) -> list[float]:
+        calls.append(content)
+        return [1.0] * DIMENSIONS
+
+    monkeypatch.setattr(writes, "vertex_document_embedding", embed)
+    headers = bearer("fixture-token")
+    original = api_client.get(f"/v1/cards/{FIXTURE_CARD_ID}", headers=headers).json()
+    note = api_client.patch(
+        f"/v1/cards/{FIXTURE_CARD_ID}",
+        json={"version": original["version"], "note": "a note"},
+        headers=headers,
+    )
+    assert note.status_code == 200
+    assert calls == []
+    semantic = api_client.patch(
+        f"/v1/cards/{FIXTURE_CARD_ID}",
+        json={"version": note.json()["version"], "meaning": "changed meaning"},
+        headers=headers,
+    )
+    assert semantic.status_code == 200
+    assert len(calls) == 1
+    unchanged = api_client.patch(
+        f"/v1/cards/{FIXTURE_CARD_ID}",
+        json={"version": semantic.json()["version"], "meaning": "changed meaning"},
+        headers=headers,
+    )
+    assert unchanged.status_code == 200
+    assert len(calls) == 1
 
 
 def test_other_user_cannot_edit_or_archive_resources_by_changing_ids(
