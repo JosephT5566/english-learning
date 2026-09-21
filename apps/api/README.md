@@ -268,9 +268,10 @@ With local PostgreSQL available, run the opt-in integration tests with:
 RUN_POSTGRES_INTEGRATION_TESTS=1 uv run pytest tests/integration -q
 ```
 
-The root Compose definition and integration suite are verified against `postgres:17-alpine` through
-OrbStack. Integration tests are opt-in and fail if PostgreSQL is unavailable; they never substitute
-SQLite. The migration test creates a uniquely named temporary PostgreSQL database, verifies
+The root Compose definition and CI integration suite use
+`pgvector/pgvector:0.8.6-pg17-bookworm` for PostgreSQL 17 with pgvector 0.8.6. Local Compose is
+verified through OrbStack. Integration tests are opt-in and fail if PostgreSQL is unavailable;
+they never substitute SQLite. The migration test creates a uniquely named temporary PostgreSQL database, verifies
 `upgrade -> baseline downgrade -> upgrade`, and removes that database afterward. Domain constraint
 tests also run in isolated temporary databases. Production startup commands are still pending.
 
