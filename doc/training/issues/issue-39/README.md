@@ -1,7 +1,8 @@
 # Issue #39 - retryable confirmed-card embeddings
 
-Status: repository implementation, local verification, and isolated Neon branch rehearsal passed;
-production migration and Cloud Run-path verification remain pending. Updated 2026-09-21.
+Status: implementation merged; local, isolated-branch, production migration/backfill, and
+zero-traffic candidate verification passed. Production traffic promotion remains unreported.
+Updated 2026-09-21.
 
 Traditional Chinese walkthrough: [learning-notes.zh-TW.md](learning-notes.zh-TW.md).
 
@@ -97,10 +98,29 @@ and no time-limit hit, confirming that unchanged current content caused no addit
 work. This completes the isolated-branch migration, backfill, resume, and replay rehearsal. It does
 not establish production deployment, Cloud Run workload-path behavior, or private-card relevance.
 
-## Operator-controlled deployment gates
+### Operator-reported production verification
 
-Codex has not run gcloud or Neon commands. Before a production migration or provider enablement,
-the operator must verify on a disposable Neon branch:
+The operator reported that the protected production migration and zero-traffic candidate deployment
+completed. A dedicated Cloud Run backfill job used the immutable API image, the API runtime service
+account, the version-pinned runtime Neon secret, `VERTEX_PROJECT_ID`, and `us-central1`. Its first
+dry run failed safely because the job omitted production-required OAuth/allowlist settings; no
+provider call or data write occurred. After the job configuration was corrected, two dry-run pages
+reported all 597 eligible cards with a null final cursor.
+
+The operator then completed the owner-bounded production backfill in batches. The last execution
+reported 196 `ready`, a null cursor, no time-limit hit, and task attempt zero. Aggregate SQL then
+matched the expected 597 ready embeddings, 597 populated hashes, 597 cards, and 597 review states,
+with zero hash mismatches and zero missing current embeddings. A cursor-free replay returned empty
+counts and a null cursor. The operator also reported that the new zero-traffic candidate contains
+the Vertex project/location settings and passed its environment smoke test. These are sanitized
+operator reports; no database URL, token, card text, or vector is retained. Production traffic
+promotion and real-card retrieval quality are not established by this evidence.
+
+## Deployment gates and procedure
+
+The operator controlled all Neon and GCP configuration changes. Codex ran only the explicitly
+authorized local synthetic Vertex request described above. The release used these gates, retained
+here as the recovery and future model-upgrade procedure:
 
 1. The migration connection really uses the intended DDL role; it can create the `vector`
    extension and table. The runtime role lacks database/schema CREATE, but has SELECT/INSERT/UPDATE

@@ -135,14 +135,15 @@ interview evidence.
 
 ## Next action
 
-Issue #39's retryable embedding lifecycle is implemented and locally verified; see
+Issue #39's retryable embedding lifecycle is merged and verified; see
 [`issues/issue-39/README.md`](issues/issue-39/README.md). On an isolated Neon branch, the operator
 reported a successful migration cycle, runtime privilege checks, 597-card owner-bounded backfill,
 zero hash mismatches, unchanged card/review counts, and an empty replay with no provider work.
-Local service-account impersonation also passed the 512-dimension Vertex contract. These results
-do not establish production deployment, Cloud Run workload-path behavior, or real-card relevance.
-Next action: review and merge the Issue #39 change, then use the protected migration and candidate
-release path before any production backfill.
+The operator subsequently reported the production migration, a dedicated Cloud Run Job backfill
+of all 597 cards, matching aggregate/hash checks, an empty replay, and a zero-traffic candidate
+environment smoke test using the runtime service identity. No production traffic promotion or
+real-card retrieval quality is established. Next action: promote and verify the candidate through
+the existing release process, then begin Issue #40's owner-safe retrieval API boundary.
 
 Issue #27 still has the operational evidence gaps below; #38 does not close them.
 
