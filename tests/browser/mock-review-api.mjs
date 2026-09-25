@@ -168,6 +168,30 @@ const server = http.createServer((request, response) => {
 		error(response, 404, 'card_not_found', 'The requested resource was not found.');
 		return;
 	}
+	if (request.method === 'POST' && parsedUrl.pathname === '/v1/cards/semantic-search') {
+		readJson(request, (body) => {
+			json(response, 200, {
+				items: [
+					{
+						id: cardId,
+						deck_id: englishDeckId,
+						term: 'resilient',
+						meaning: '有復原力的',
+						reading: null,
+						pronunciation: '/rɪˈzɪliənt/',
+						romanization: null,
+						part_of_speech: 'adjective',
+						distance: body.query === 'recover after difficulty' ? 0.08 : 0.3,
+						score: body.query === 'recover after difficulty' ? 0.92 : 0.7,
+					},
+				],
+				index_status: 'partial',
+				eligible_count: 3,
+				indexed_count: 2,
+			});
+		});
+		return;
+	}
 	if (request.method === 'GET' && parsedUrl.pathname === '/v1/decks') {
 		if (requestMode === 'management-empty') {
 			json(response, 200, { items: [], next_cursor: null });
@@ -255,7 +279,11 @@ const server = http.createServer((request, response) => {
 				return;
 			}
 			const current = deck(parsedUrl.pathname.endsWith(japaneseDeckId) ? 'ja' : 'en');
-			json(response, 200, { ...current, ...payload, version: current.version + 1 });
+			json(response, 200, {
+				...current,
+				...payload,
+				version: current.version + 1,
+			});
 		});
 		return;
 	}

@@ -51,7 +51,7 @@ http
 		const relative =
 			urlPath === '/'
 				? 'index.html'
-				: urlPath === '/review' || urlPath === '/decks'
+				: urlPath === '/review' || urlPath === '/decks' || urlPath === '/search'
 					? `${urlPath.slice(1)}.html`
 					: urlPath.slice(1);
 		const filePath = path.resolve(root, relative);

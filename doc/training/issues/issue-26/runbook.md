@@ -299,10 +299,12 @@ Alembic, rebuilds the image, or reads a database secret.
 
 Alternatively, run the protected **Smoke API candidate** workflow with a fresh allowlisted Google
 ID token. It resolves the current zero-traffic `candidate` tag and runs the same script. Its optional
-review-write input changes one real due card and verifies exact replay. `workflow_dispatch` inputs
-are not GitHub secrets; the workflow masks the token in runner logs, but the dispatch input itself
-is still a short-lived credential and must not be reused or placed in committed files. Use the
-existing `production` environment approval and inspect only the safe run summary.
+semantic-search input sends one fixed, bounded English query through Vertex and validates the
+response contract, stable distance ordering, coverage counts, and absence of raw vectors. Its
+optional review-write input changes one real due card and verifies exact replay. `workflow_dispatch`
+inputs are not GitHub secrets; the workflow masks the token in runner logs, but the dispatch input
+itself is still a short-lived credential and must not be reused or placed in committed files. Use
+the existing `production` environment approval and inspect only the safe run summary.
 
 ## Candidate verification
 
@@ -320,8 +322,22 @@ GOOGLE_ID_TOKEN="$GOOGLE_ID_TOKEN" \
   deploy/cloud-run/smoke.sh https://candidate---SERVICE_HASH.REGION.run.app
 ```
 
-The authenticated check calls `/v1/me` and one owner-scoped deck list. To deliberately mutate one
-due English card and verify exact idempotent replay, opt in explicitly:
+The authenticated check calls `/v1/me` and one owner-scoped deck list.
+
+To make exactly one provider-backed semantic request without printing its query results, opt in
+explicitly:
+
+```bash
+GOOGLE_ID_TOKEN="$GOOGLE_ID_TOKEN" CONFIRM_SEMANTIC_SEARCH=yes \
+  deploy/cloud-run/smoke.sh https://candidate---SERVICE_HASH.REGION.run.app
+```
+
+The safe summary contains only status, request ID, result count, index status, coverage counts, and
+the single curl total-time observation. It does not establish p50/p95 or independently establish
+retrieval quality. Inspect one expected Top-K result locally if a bounded quality observation is
+required, but do not copy card content or IDs into logs or committed evidence.
+
+To deliberately mutate one due English card and verify exact idempotent replay, opt in explicitly:
 
 ```bash
 GOOGLE_ID_TOKEN="$GOOGLE_ID_TOKEN" CONFIRM_REVIEW_WRITE=yes \
@@ -329,7 +345,8 @@ GOOGLE_ID_TOKEN="$GOOGLE_ID_TOKEN" CONFIRM_REVIEW_WRITE=yes \
 ```
 
 Record only response status, request IDs, safe counts, the release image/revision, migration
-revision, and timestamps. Do not commit tokens, database URLs, user content, or raw responses.
+revision, single-request timing observations, and timestamps. Do not commit tokens, database URLs,
+user content, card IDs, raw vectors, or raw responses.
 
 Before promotion, verify:
 

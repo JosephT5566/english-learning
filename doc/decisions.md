@@ -129,6 +129,13 @@ Last updated: 2026-09-18
 
 ## Change Log
 
+- 2026-09-25: Added authenticated semantic vocabulary retrieval as an exact filtered pgvector scan
+  in the existing FastAPI/PostgreSQL service. The browser cannot supply ownership. SQL applies
+  owner, card/deck archive, language/deck, current model, ready vector, and current content-hash
+  predicates before cosine Top-K ordering. The API exposes both cosine distance (lower is better)
+  and `1 - distance` score (higher is better), plus explicit index coverage. HNSW, query caching,
+  natural-language SQL, and a separate vector store remain deferred pending measured need.
+
 - 2026-09-18: For the current side-project scope, defer an independent Neon
   database backup to GCS and the recurring backup pipeline to avoid extra
   storage and operational cost. The synthetic PostgreSQL restore rehearsal is

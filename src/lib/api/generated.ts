@@ -72,6 +72,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/cards/semantic-search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Semantic Search
+         * @description Rank only current embeddings belonging to the authenticated owner.
+         */
+        post: operations["semantic_search_v1_cards_semantic_search_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/cards/{card_id}": {
         parameters: {
             query?: never;
@@ -648,6 +668,66 @@ export interface components {
             /** Expected Version */
             expected_version: number;
         };
+        /** SemanticSearchItem */
+        SemanticSearchItem: {
+            /**
+             * Deck Id
+             * Format: uuid
+             */
+            deck_id: string;
+            /** Distance */
+            distance: number;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Meaning */
+            meaning: string;
+            /** Part Of Speech */
+            part_of_speech: string | null;
+            /** Pronunciation */
+            pronunciation: string | null;
+            /** Reading */
+            reading: string | null;
+            /** Romanization */
+            romanization: string | null;
+            /** Score */
+            score: number;
+            /** Term */
+            term: string;
+        };
+        /** SemanticSearchRequest */
+        SemanticSearchRequest: {
+            /** Deck Id */
+            deck_id?: string | null;
+            /**
+             * Limit
+             * @default 10
+             */
+            limit: number;
+            /** Query */
+            query: string;
+            /**
+             * Target Language
+             * @constant
+             */
+            target_language: "en";
+        };
+        /** SemanticSearchResponse */
+        SemanticSearchResponse: {
+            /** Eligible Count */
+            eligible_count: number;
+            /**
+             * Index Status
+             * @enum {string}
+             */
+            index_status: "complete" | "partial" | "empty";
+            /** Indexed Count */
+            indexed_count: number;
+            /** Items */
+            items: components["schemas"]["SemanticSearchItem"][];
+        };
         /** TagSummary */
         TagSummary: {
             /** Display Name */
@@ -796,6 +876,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CardDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    semantic_search_v1_cards_semantic_search_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SemanticSearchRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SemanticSearchResponse"];
                 };
             };
             /** @description Validation Error */

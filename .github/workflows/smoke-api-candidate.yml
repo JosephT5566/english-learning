@@ -12,6 +12,11 @@ on:
         required: true
         default: false
         type: boolean
+      confirm_semantic_search:
+        description: Run one provider-backed semantic query and record only safe aggregate observations
+        required: true
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -99,6 +104,8 @@ jobs:
           GOOGLE_ID_TOKEN: ${{ inputs.google_id_token }}
           CANDIDATE_URL: ${{ steps.candidate.outputs.url }}
           CONFIRM_REVIEW_WRITE: ${{ inputs.confirm_review_write && 'yes' || 'no' }}
+          CONFIRM_SEMANTIC_SEARCH: ${{ inputs.confirm_semantic_search && 'yes' || 'no' }}
+          SEMANTIC_SMOKE_REPORT_FILE: ${{ runner.temp }}/semantic-smoke-report.json
         run: |
           set -euo pipefail
           bash deploy/cloud-run/smoke.sh "${CANDIDATE_URL}"
@@ -109,6 +116,8 @@ jobs:
           REVISION: ${{ steps.candidate.outputs.revision }}
           CANDIDATE_URL: ${{ steps.candidate.outputs.url }}
           CONFIRM_REVIEW_WRITE: ${{ inputs.confirm_review_write && 'yes' || 'no' }}
+          CONFIRM_SEMANTIC_SEARCH: ${{ inputs.confirm_semantic_search && 'yes' || 'no' }}
+          SEMANTIC_SMOKE_REPORT_FILE: ${{ runner.temp }}/semantic-smoke-report.json
         run: |
           {
             echo "## Authenticated candidate smoke passed"
@@ -116,5 +125,19 @@ jobs:
             echo "- Revision: \`${REVISION}\`"
             echo "- Candidate URL: ${CANDIDATE_URL}"
             echo "- Owned read: passed"
+            echo "- Provider-backed semantic search: ${CONFIRM_SEMANTIC_SEARCH}"
             echo "- Controlled review write and replay: ${CONFIRM_REVIEW_WRITE}"
           } >> "${GITHUB_STEP_SUMMARY}"
+          if [[ "${CONFIRM_SEMANTIC_SEARCH}" == "yes" ]]; then
+            python3 -c '
+          import json, os
+          with open(os.environ["SEMANTIC_SMOKE_REPORT_FILE"], encoding="utf-8") as source:
+              report = json.load(source)
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as summary:
+              summary.write("- Semantic request ID: `{}`\n".format(report["request_id"]))
+              summary.write("- Semantic result count: {}\n".format(report["result_count"]))
+              summary.write("- Semantic index status: {}\n".format(report["index_status"]))
+              summary.write("- Semantic coverage: {}/{}\n".format(report["indexed_count"], report["eligible_count"]))
+              summary.write("- Semantic total seconds: {:.6f}\n".format(report["total_seconds"]))
+          '
+          fi

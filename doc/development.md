@@ -91,6 +91,11 @@ The API accepts these server-side variables:
 - `DATABASE_CONNECT_TIMEOUT_SECONDS`: integer from 1 through 10; defaults to `2`.
 - `GOOGLE_OAUTH_CLIENT_ID`: server-side audience used to verify Google ID tokens. It must match the
   frontend's Google web client ID.
+- `GOOGLE_ALLOWED_EMAILS`: comma-separated allowlist enforced after Google verifies the token email;
+  empty is allowed locally and production requires an explicit list.
+- `VERTEX_PROJECT_ID`: optional Google Cloud project ID. When absent, provider-backed embedding work
+  is disabled and semantic search reports that it is not configured.
+- `VERTEX_LOCATION`: Vertex AI region for embedding requests; defaults to `us-central1`.
 - `CORS_ALLOWED_ORIGINS`: JSON array of exact browser origins, for example
   `["http://localhost:5173","http://127.0.0.1:5173"]`. Wildcards, paths, credentials, duplicates,
   and an empty list are rejected; production must set an explicit value.

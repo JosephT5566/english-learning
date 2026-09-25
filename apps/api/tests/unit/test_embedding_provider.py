@@ -4,7 +4,11 @@ import google.auth
 import pytest
 import requests
 
-from app.embeddings import EmbeddingFailure, vertex_document_embedding
+from app.embeddings import (
+    EmbeddingFailure,
+    vertex_document_embedding,
+    vertex_query_embedding,
+)
 from app.semantic_text import DIMENSIONS
 
 
@@ -64,6 +68,30 @@ def test_document_request_uses_selected_model_task_and_dimension(
         "parameters": {"autoTruncate": False, "outputDimensionality": DIMENSIONS},
     }
     assert observed["timeout"] == 8
+
+
+def test_query_request_uses_retrieval_query_task(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(google.auth, "default", lambda **_: (FakeCredentials(), None))
+    observed = {}
+
+    def post(_url: str, **kwargs: object) -> FakeResponse:
+        observed.update(kwargs)
+        return FakeResponse([1.0] * DIMENSIONS)
+
+    monkeypatch.setattr(requests, "post", post)
+    assert (
+        len(
+            vertex_query_embedding(
+                "a lucky discovery",
+                project="synthetic-project",
+                location="us-central1",
+            )
+        )
+        == DIMENSIONS
+    )
+    assert observed["json"]["instances"][0]["task_type"] == "RETRIEVAL_QUERY"
 
 
 @pytest.mark.parametrize(

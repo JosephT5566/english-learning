@@ -56,11 +56,18 @@ file beside `pyproject.toml`; use `.env.example` as the field reference.
 | `DATABASE_CONNECT_TIMEOUT_SECONDS` | `2` | Integer from 1 through 10 |
 | `GOOGLE_OAUTH_CLIENT_ID` | Local placeholder | Google web OAuth client ID used as the accepted token audience |
 | `GOOGLE_ALLOWED_EMAILS` | Empty locally | Comma-separated verified Google email allowlist; required in production |
+| `VERTEX_PROJECT_ID` | Unset | Google Cloud project that enables provider-backed embeddings and semantic search when configured |
+| `VERTEX_LOCATION` | `us-central1` | Vertex AI region used for embedding requests |
+| `CORS_ALLOWED_ORIGINS` | Local Vite origins | JSON array of exact browser origins allowed to call the API |
 
 Production must explicitly override `DATABASE_URL`, `GOOGLE_OAUTH_CLIENT_ID`, and
 `GOOGLE_ALLOWED_EMAILS`; their local defaults
 are rejected.
 Database URLs are treated as secrets and must not be printed or logged.
+`VERTEX_PROJECT_ID` is intentionally optional: when it is absent, semantic search returns the safe
+`semantic_search_not_configured` response and card writes skip provider-backed embedding work.
+Local provider calls use Application Default Credentials; the effective identity must be allowed to
+invoke Vertex AI in the configured project.
 The web process emits one JSON `http_request_completed` line per routed request
 with its server-generated `X-Request-ID`, matched route template, method,
 status, duration, bounded outcome, and optional stable error code. The process

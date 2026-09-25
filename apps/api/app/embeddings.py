@@ -45,8 +45,8 @@ def validate_vector(values: Sequence[float]) -> list[float]:
     return [float(x) for x in values]
 
 
-def vertex_document_embedding(
-    content: str, *, project: str, location: str
+def _vertex_embedding(
+    content: str, *, task_type: str, project: str, location: str
 ) -> list[float]:
     """Use workload identity via ADC; never log request/response content."""
 
@@ -67,7 +67,7 @@ def vertex_document_embedding(
             url,
             headers={"Authorization": f"Bearer {credentials.token}"},
             json={
-                "instances": [{"content": content, "task_type": "RETRIEVAL_DOCUMENT"}],
+                "instances": [{"content": content, "task_type": task_type}],
                 "parameters": {
                     "autoTruncate": False,
                     "outputDimensionality": DIMENSIONS,
@@ -106,6 +106,26 @@ def vertex_document_embedding(
         raise EmbeddingFailure("invalid_response") from None
     except google.auth.exceptions.GoogleAuthError:
         raise EmbeddingFailure("provider_auth_error") from None
+
+
+def vertex_document_embedding(
+    content: str, *, project: str, location: str
+) -> list[float]:
+    return _vertex_embedding(
+        content,
+        task_type="RETRIEVAL_DOCUMENT",
+        project=project,
+        location=location,
+    )
+
+
+def vertex_query_embedding(content: str, *, project: str, location: str) -> list[float]:
+    return _vertex_embedding(
+        content,
+        task_type="RETRIEVAL_QUERY",
+        project=project,
+        location=location,
+    )
 
 
 def process_card(
