@@ -10,6 +10,8 @@ fi
 
 readonly google_id_token="${GOOGLE_ID_TOKEN:-}"
 readonly normalized_base_url="${api_base_url%/}"
+readonly confirm_semantic_search="${CONFIRM_SEMANTIC_SEARCH:-no}"
+readonly confirm_review_write="${CONFIRM_REVIEW_WRITE:-no}"
 
 curl --fail --silent --show-error \
 	"${normalized_base_url}/health/live" >/dev/null
@@ -17,6 +19,10 @@ curl --fail --silent --show-error \
 	"${normalized_base_url}/health/ready" >/dev/null
 
 if [[ -z "${google_id_token}" ]]; then
+	if [[ "${confirm_semantic_search}" == "yes" || "${confirm_review_write}" == "yes" ]]; then
+		echo "A Google ID token is required for confirmed authenticated smoke checks." >&2
+		exit 1
+	fi
 	echo "Public liveness and database readiness passed."
 	echo "Supply GOOGLE_ID_TOKEN in the environment for owned-read checks."
 	exit 0
@@ -32,7 +38,8 @@ curl --fail --silent --show-error \
 
 echo "Public health and authenticated owned-read checks passed."
 
-if [[ "${CONFIRM_REVIEW_WRITE:-}" != "yes" ]]; then
+if [[ "${confirm_semantic_search}" != "yes" && "${confirm_review_write}" != "yes" ]]; then
+	echo "Set CONFIRM_SEMANTIC_SEARCH=yes for one provider-backed semantic query."
 	echo "Set CONFIRM_REVIEW_WRITE=yes to submit and exactly replay one due-card review."
 	exit 0
 fi
@@ -42,6 +49,34 @@ cleanup() {
 	rm -rf "${temporary_directory}"
 }
 trap cleanup EXIT
+
+if [[ "${confirm_semantic_search}" == "yes" ]]; then
+	readonly semantic_response="${temporary_directory}/semantic-response.json"
+	readonly semantic_headers="${temporary_directory}/semantic-headers.txt"
+	readonly semantic_metrics="${temporary_directory}/semantic-metrics.txt"
+	readonly semantic_report="${SEMANTIC_SMOKE_REPORT_FILE:-${temporary_directory}/semantic-report.json}"
+
+	curl --fail --silent --show-error \
+		--request POST \
+		--header "${authorization_header}" \
+		--header "Content-Type: application/json" \
+		--data '{"query":"able to recover after difficulty","target_language":"en","limit":5}' \
+		--dump-header "${semantic_headers}" \
+		--output "${semantic_response}" \
+		--write-out '%{http_code}\t%{time_total}\n' \
+		"${normalized_base_url}/v1/cards/semantic-search" >"${semantic_metrics}"
+
+	python3 deploy/cloud-run/validate_semantic_smoke.py \
+		--response "${semantic_response}" \
+		--headers "${semantic_headers}" \
+		--metrics "${semantic_metrics}" \
+		--report "${semantic_report}"
+fi
+
+if [[ "${confirm_review_write}" != "yes" ]]; then
+	echo "Set CONFIRM_REVIEW_WRITE=yes to submit and exactly replay one due-card review."
+	exit 0
+fi
 
 readonly due_response="${temporary_directory}/due.json"
 curl --fail --silent --show-error \

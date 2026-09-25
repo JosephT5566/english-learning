@@ -3,6 +3,7 @@
 import google.auth
 import pytest
 import requests
+
 from app.embeddings import (
     EmbeddingFailure,
     vertex_document_embedding,

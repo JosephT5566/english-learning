@@ -4,14 +4,15 @@ import os
 from collections.abc import Iterator
 
 import pytest
+from fastapi.testclient import TestClient
+from sqlalchemy import Engine, MetaData, Table, text
+
 from app import semantic_search
 from app.auth import VerifiedGoogleIdentity
 from app.database import create_database_session_factory
 from app.embeddings import EmbeddingFailure, process_card
 from app.main import create_app
 from app.semantic_text import DIMENSIONS
-from fastapi.testclient import TestClient
-from sqlalchemy import Engine, MetaData, Table, text
 from tests.integration.test_learning_cards import (
     insert_card,
     insert_deck,

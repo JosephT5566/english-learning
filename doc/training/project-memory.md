@@ -140,8 +140,9 @@ Issue #40's authenticated semantic-search API and static Svelte search flow are 
 tests verify ranking and the owner/archive/missing-vector boundary; the full 289-test backend suite,
 frontend checks/build, and one critical browser flow pass. An operator-supplied read-only production
 plan over 596 English candidates observed a 10.054 ms warm exact query with an in-memory 27 kB Top-K
-sort and no temporary I/O; no HNSW need was measured. Next run one bounded provider-backed candidate
-smoke before
+sort and no temporary I/O; no HNSW need was measured. The candidate smoke tooling now supports one
+explicit provider-backed semantic request with content-safe contract, ordering, coverage, request-ID,
+and total-time validation. Next deploy a zero-traffic candidate and run that bounded smoke before
 claiming deployment or observed latency.
 
 Issue #39's retryable embedding lifecycle is merged and verified; see

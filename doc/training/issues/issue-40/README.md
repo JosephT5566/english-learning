@@ -24,6 +24,9 @@ Traditional Chinese walkthrough: [learning notes](learning-notes.zh-TW.md).
   preserves the entered query across retry, and presents loading, empty/unindexed, partial,
   authentication, provider/network, and retry states. Navigation and card links use SvelteKit's
   base-path-aware routing.
+- The protected candidate smoke workflow has an explicit semantic-search opt-in. It makes one fixed
+  provider-backed request, validates the response contract and stable ordering, rejects raw-vector
+  fields, and records only safe counts, request ID, coverage status, and one total-time observation.
 
 ## Local verification
 
@@ -41,7 +44,8 @@ Traditional Chinese walkthrough: [learning notes](learning-notes.zh-TW.md).
 
 ## Remaining acceptance evidence
 
-- Run one small provider-backed quality/latency smoke outside CI and record observed values only.
+- Run the new candidate semantic-search smoke and inspect one expected Top-K match locally; record
+  observed safe latency/coverage and the boolean quality outcome only.
 - Deploy through the existing candidate process, verify an authenticated search, then promote only
   after the normal release checks.
 
