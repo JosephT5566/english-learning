@@ -1,6 +1,9 @@
 # Issue #40 - authenticated semantic vocabulary search
 
-Status: implementation and local verification complete; deployment/provider smoke and final query-plan capture pending. Updated 2026-09-25.
+Status: implementation, local verification, and operator-supplied production query-plan inspection
+complete; deployment/provider smoke pending. Updated 2026-09-25.
+
+Traditional Chinese walkthrough: [learning notes](learning-notes.zh-TW.md).
 
 ## Implemented boundary
 
@@ -38,11 +41,21 @@ Status: implementation and local verification complete; deployment/provider smok
 
 ## Remaining acceptance evidence
 
-- Capture `EXPLAIN (ANALYZE, BUFFERS)` for the final three-table exact query on representative small
-  data, including deck-filtered and unfiltered forms. Do not add HNSW without measured need.
 - Run one small provider-backed quality/latency smoke outside CI and record observed values only.
 - Deploy through the existing candidate process, verify an authenticated search, then promote only
   after the normal release checks.
+
+## Operator-supplied production query-plan observation
+
+On 2026-09-25, a read-only production Neon inspection reported complete current coverage: 596/596
+eligible English cards and 1/1 Japanese card. The final unfiltered exact-ranking shape used
+small-table sequential scans, an in-memory hash join, owned deck index lookups, and a 27 kB top-N
+heapsort over 596 English candidates. Planning took 1.354 ms and execution took 10.054 ms with zero
+shared reads and no temporary I/O. The query-vector CTE and scalar InitPlans each executed once.
+Earlier probes exposed a CTE-induced 1,194-row intermediate join and one 128.336 ms read-heavy run;
+those were retained as query-shape/cache observations rather than treated as API latency. These are
+single SQL Editor observations, not p50/p95 or Cloud Run end-to-end measurements. No HNSW index is
+warranted at the observed corpus size; see the learning notes for the complete interpretation.
 
 ## Five-minute ownership proof
 

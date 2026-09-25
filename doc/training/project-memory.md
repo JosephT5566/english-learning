@@ -138,8 +138,10 @@ interview evidence.
 Issue #40's authenticated semantic-search API and static Svelte search flow are implemented; see
 [`issues/issue-40/README.md`](issues/issue-40/README.md). Focused deterministic PostgreSQL/pgvector
 tests verify ranking and the owner/archive/missing-vector boundary; the full 289-test backend suite,
-frontend checks/build, and one critical browser flow pass. Next inspect the final exact query plan
-on representative small data and run one bounded provider-backed candidate smoke before
+frontend checks/build, and one critical browser flow pass. An operator-supplied read-only production
+plan over 596 English candidates observed a 10.054 ms warm exact query with an in-memory 27 kB Top-K
+sort and no temporary I/O; no HNSW need was measured. Next run one bounded provider-backed candidate
+smoke before
 claiming deployment or observed latency.
 
 Issue #39's retryable embedding lifecycle is merged and verified; see
