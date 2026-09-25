@@ -668,3 +668,48 @@ Use precise language such as “project,” “local load test,” or “deploye
   alert, then deleted the test policy. The first 5xx failure policy is enabled and its exact
   configuration was read back; see `doc/training/issues/issue-27/failure-alert.md` and
   `doc/training/issues/issue-27/notification-test.md`. The platform-log exclusion remains unapplied.
+
+### Owner-safe semantic vocabulary retrieval
+
+- Date: 2026-09-26
+- Status: Deployed and verified through the stable Cloud Run service URL and deployed frontend;
+  bounded provider-backed Top-K quality smoke passed.
+- Problem: Expose meaning-based vocabulary retrieval without allowing the vector ranking path or
+  client filters to bypass authenticated ownership and lifecycle predicates.
+- Constraints and invariants: Reject malformed and unauthenticated requests before provider spend;
+  make one bounded query-embedding call; filter owner, archive, language, optional deck, active
+  model, ready vector, and current content hash in SQL before Top-K; never return raw vectors or
+  another owner's data; distinguish provider failure from a successful empty result.
+- Decision: Use exact pgvector cosine ranking inside the existing FastAPI/PostgreSQL service, with a
+  stable distance/score contract and explicit complete/partial/empty coverage metadata. Keep HNSW
+  deferred until measurements justify it.
+- Implementation references: `apps/api/app/semantic_search.py`,
+  `deploy/cloud-run/validate_semantic_smoke.py`, `.github/workflows/smoke-api-candidate.yml`, the
+  static Svelte `/search` route, and `doc/training/issues/issue-40/README.md`.
+- Verification and failure cases: Deterministic real-PostgreSQL tests proved ordering and exclusion
+  of cross-owner, archived, and missing-vector rows; malformed/unauthenticated input made zero fake
+  provider calls; provider timeout returned retryable 503. The full backend and frontend checks plus
+  one critical browser flow passed. The operator reported that zero-traffic revision
+  `english-learning-api-98034f911a63` passed owned read, controlled review write/replay, and one
+  explicitly enabled provider-backed semantic smoke with five results, complete 596/596 coverage,
+  and request ID `f54491aa-b291-4d7a-b142-42035b4feb67`. The operator then promoted the same
+  revision and reported that the stable service URL passed health, authenticated owned read, and
+  semantic smoke with five results, complete 596/596 coverage, and request ID
+  `d581e030-222e-497d-9c1b-38ea4bd7b9b3`. The operator also reported that the deployed search page
+  worked correctly against the promoted API without retaining private result content. A human check
+  of the fixed recovery-after-difficulty query found an expected directly related concept at rank 1
+  and was recorded only as a pass with rank bucket.
+- Measured result: A warm production SQL Editor plan ranked 596 eligible English vectors in 10.054
+  ms with a 27 kB in-memory Top-K sort and no temporary I/O. The candidate semantic request took
+  2.058828 seconds end to end, and the post-promotion stable-URL request took 2.265995 seconds. These
+  are individual observations, not p50/p95, scale, availability, or SLA claims.
+- Limitations: Candidate, promotion, stable-URL, deployed frontend, and bounded quality results are
+  operator-reported. One human-judged query does not establish aggregate production retrieval
+  quality, user impact, latency distribution, or an SLA; broader evaluation remains Issue #41.
+- Five-minute explanation practiced: Ownership and SQL-plus-vector boundary are documented; an
+  end-to-end spoken practice has not yet been recorded.
+- Candidate resume bullet: Built and deployed owner-safe semantic vocabulary search using FastAPI,
+  PostgreSQL/pgvector, and Vertex AI, with SQL-enforced authorization and lifecycle filters,
+  deterministic ranking/leakage tests, staged Cloud Run verification, and a base-path-safe Svelte
+  search flow. Describe this only as deployed personal-project evidence and keep point latency
+  observations distinct from production performance claims.

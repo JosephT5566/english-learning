@@ -1,7 +1,9 @@
 # Issue #40 - authenticated semantic vocabulary search
 
-Status: implementation, local verification, and operator-supplied production query-plan inspection
-complete; deployment/provider smoke pending. Updated 2026-09-25.
+Status: complete. Implementation, local verification, production query-plan inspection, candidate
+promotion, stable-URL semantic smoke, deployed frontend verification, and the bounded
+retrieval-quality check passed. Updated 2026-09-26.
+Updated 2026-09-26.
 
 Traditional Chinese walkthrough: [learning notes](learning-notes.zh-TW.md).
 
@@ -42,12 +44,53 @@ Traditional Chinese walkthrough: [learning notes](learning-notes.zh-TW.md).
 - Critical browser flow: 1 passed, covering the static `/search` route, authenticated request body,
   partial-index notice, ordered display result, score, and base API origin.
 
-## Remaining acceptance evidence
+## Acceptance closeout
 
-- Run the new candidate semantic-search smoke and inspect one expected Top-K match locally; record
-  observed safe latency/coverage and the boolean quality outcome only.
-- Deploy through the existing candidate process, verify an authenticated search, then promote only
-  after the normal release checks.
+- Deterministic PostgreSQL tests establish ranking correctness and exclusion boundaries.
+- Candidate and stable-URL smoke checks establish the deployed API contract and complete coverage.
+- The deployed static search page passed an operator browser check.
+- A private-content-safe human check found an expected relevant concept at rank 1 for the fixed
+  recovery-after-difficulty query. Only the pass result and rank bucket are retained; this bounded
+  observation is not a general retrieval-quality claim.
+
+## Operator-reported candidate smoke
+
+On 2026-09-26, the operator reported that zero-traffic revision
+`english-learning-api-98034f911a63` passed the protected authenticated candidate smoke. The owned
+read and controlled review write with exact replay passed. The explicitly enabled provider-backed
+semantic request returned five results with `complete` coverage (`596/596`); request ID
+`f54491aa-b291-4d7a-b142-42035b4feb67` was recorded for correlation. Curl observed 2.058828 seconds
+for this one end-to-end request. This is a single operator-reported observation, not a latency
+distribution, availability claim, or retrieval-quality judgment. The candidate URL is intentionally
+not retained as durable evidence because revision URLs are operational endpoints rather than stable
+product contracts.
+
+## Operator-reported promotion and stable-URL smoke
+
+On 2026-09-26, the operator promoted revision `english-learning-api-98034f911a63` to production
+traffic and ran the same bounded semantic smoke through the stable Cloud Run service URL. Public
+health and authenticated owned reads passed. The semantic request returned HTTP 200 with five
+results, `complete` coverage (`596/596`), and request ID
+`d581e030-222e-497d-9c1b-38ea4bd7b9b3`; curl observed 2.265995 seconds. The review-write opt-in was
+intentionally omitted because candidate verification had already passed the controlled write and
+exact replay. This is one operator-reported end-to-end observation, not a latency distribution or
+retrieval-quality claim.
+
+## Operator-reported deployed frontend verification
+
+On 2026-09-26, the operator reported that the deployed application's search page worked correctly
+against the promoted API. This closes the deployed browser-flow check without retaining query text,
+card content, card IDs, or tokens. It verifies the deployed integration path, not the semantic
+relevance of an expected Top-K result.
+
+## Operator-reported bounded Top-K quality check
+
+On 2026-09-26, the operator inspected the deployed response for the fixed
+recovery-after-difficulty query and judged the check passed. An expected directly related concept
+appeared at rank 1, with additional contextually related results in the Top 5. No response body,
+card/deck identifier, or private card content is retained in repository evidence. This closes Issue
+#40's small provider-backed quality smoke; broader quality, cost, and failure evaluation belongs to
+Issue #41.
 
 ## Operator-supplied production query-plan observation
 

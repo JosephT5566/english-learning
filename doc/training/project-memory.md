@@ -1,6 +1,6 @@
 # English Learning Project Memory
 
-Last updated: 2026-09-25
+Last updated: 2026-09-26
 
 ## Purpose
 
@@ -22,7 +22,9 @@ Production statements must distinguish repository-verified evidence from operato
 - Review writes are transactional and idempotent; scheduling is derived by the backend.
 - Legacy Apps Script/Sheet code remains only as rollback and migration evidence and is absent from
   normal runtime traffic and frontend deployment configuration.
-- AI-assisted authoring and semantic search are not active product capabilities.
+- AI-assisted authoring is not an active product capability. Semantic search is implemented,
+  promoted on the API, and verified through the stable Cloud Run service URL and deployed search
+  page; its bounded provider-backed Top-K quality smoke passed.
 
 ## Active milestone
 
@@ -142,8 +144,16 @@ frontend checks/build, and one critical browser flow pass. An operator-supplied 
 plan over 596 English candidates observed a 10.054 ms warm exact query with an in-memory 27 kB Top-K
 sort and no temporary I/O; no HNSW need was measured. The candidate smoke tooling now supports one
 explicit provider-backed semantic request with content-safe contract, ordering, coverage, request-ID,
-and total-time validation. Next deploy a zero-traffic candidate and run that bounded smoke before
-claiming deployment or observed latency.
+and total-time validation. The operator reported that candidate revision
+`english-learning-api-98034f911a63` passed owned-read, controlled write/replay, and provider-backed
+semantic smoke: five results, complete 596/596 coverage, request ID
+`f54491aa-b291-4d7a-b142-42035b4feb67`, and one 2.058828-second end-to-end observation. The operator
+then promoted that revision and reported a successful stable-URL smoke: five results, complete
+596/596 coverage, request ID `d581e030-222e-497d-9c1b-38ea4bd7b9b3`, and one 2.265995-second
+observation. The operator also reported that the deployed search page worked correctly against the
+promoted API and that the fixed recovery-after-difficulty query returned an expected directly
+related concept at rank 1. Issue #40 is complete. Next begin Issue #41's broader retrieval quality,
+cost, and failure evaluation before making a general quality claim or proceeding to tutor work.
 
 Issue #39's retryable embedding lifecycle is merged and verified; see
 [`issues/issue-39/README.md`](issues/issue-39/README.md). On an isolated Neon branch, the operator
