@@ -7,6 +7,7 @@
 	let homePath = $derived(resolve('/'));
 	let reviewPath = $derived(resolve('/review'));
 	let decksPath = $derived(resolve('/decks'));
+	let searchPath = $derived(resolve('/search'));
 </script>
 
 <header>
@@ -25,6 +26,9 @@
 					: undefined}
 			>
 				<a href={`${decksPath}?language=${language}`}>Decks</a>
+			</li>
+			<li aria-current={page.url.pathname === searchPath ? 'page' : undefined}>
+				<a href={searchPath}>Search</a>
 			</li>
 		</ul>
 	</nav>

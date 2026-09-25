@@ -38,6 +38,9 @@ export type ReviewSubmission = components['schemas']['ReviewSubmission'];
 export type TransitionState = components['schemas']['TransitionState'];
 export type ReviewResultItem = components['schemas']['ReviewResultItem'];
 export type ReviewResult = components['schemas']['ReviewResult'];
+export type SemanticSearchRequest = components['schemas']['SemanticSearchRequest'];
+export type SemanticSearchItem = components['schemas']['SemanticSearchItem'];
+export type SemanticSearchResponse = components['schemas']['SemanticSearchResponse'];
 
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -187,6 +190,34 @@ export function isReviewResult(value: unknown): value is ReviewResult {
 				Number.isInteger(item.quality) &&
 				isReviewState(item.previous_state) &&
 				isReviewState(item.resulting_state),
+		)
+	);
+}
+
+export function isSemanticSearchResponse(value: unknown): value is SemanticSearchResponse {
+	return (
+		isRecord(value) &&
+		(value.index_status === 'complete' ||
+			value.index_status === 'partial' ||
+			value.index_status === 'empty') &&
+		Number.isInteger(value.eligible_count) &&
+		Number.isInteger(value.indexed_count) &&
+		Array.isArray(value.items) &&
+		value.items.every(
+			(item) =>
+				isRecord(item) &&
+				typeof item.id === 'string' &&
+				typeof item.deck_id === 'string' &&
+				typeof item.term === 'string' &&
+				typeof item.meaning === 'string' &&
+				isNullableString(item.reading) &&
+				isNullableString(item.pronunciation) &&
+				isNullableString(item.romanization) &&
+				isNullableString(item.part_of_speech) &&
+				typeof item.distance === 'number' &&
+				Number.isFinite(item.distance) &&
+				typeof item.score === 'number' &&
+				Number.isFinite(item.score),
 		)
 	);
 }

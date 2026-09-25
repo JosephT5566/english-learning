@@ -1,6 +1,6 @@
 # Project Memory
 
-Last updated: 2026-09-14
+Last updated: 2026-09-25
 
 ## Product
 
@@ -19,6 +19,8 @@ The app is optimized for a small, personal learning flow rather than a public mu
 An independently runnable FastAPI service exists under `apps/api/`, with liveness, typed and
 secret-safe startup configuration, a lazy SQLAlchemy engine lifecycle, and database-aware readiness.
 The English review flow and shared English/Japanese deck/card reads and writes now use it.
+Authenticated English semantic card search is implemented through the same API and PostgreSQL
+ownership boundary; deployment verification remains pending.
 
 The first production provider boundary is Cloud Run in Singapore plus Neon PostgreSQL in AWS
 Singapore. Neon remains the only writable source of truth; deployment does not add a database
@@ -83,6 +85,8 @@ and sanitized snapshot remain as evidence, but the wrapper requires deliberate e
 - `/decks?language=en|ja` lists the authenticated user's active or archived decks through one shared
   route and component boundary; missing language defaults to English.
 - `/decks/[deckId]` lists owned cards in one deck, and `/cards/[cardId]` shows the owned card detail.
+- `/search` searches active owned English cards by meaning and reports complete, partial, or empty
+  embedding coverage without treating provider failure as an empty result.
 - Japanese management views conditionally show reading and romanization; English shows pronunciation.
 - Users create/edit decks in drawers, create cards in a wide drawer, edit cards inline, and archive
   through an explicit confirmation. The shared overlay wrappers compose repository-owned

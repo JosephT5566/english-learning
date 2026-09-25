@@ -8,6 +8,7 @@ import {
 	isDeckPage,
 	isDueCardPage,
 	isReviewResult,
+	isSemanticSearchResponse,
 	type ArchiveStatus,
 	type ApiErrorBody,
 	type CardDetail,
@@ -21,6 +22,8 @@ import {
 	type Page,
 	type ReviewResult,
 	type ReviewSubmission,
+	type SemanticSearchRequest,
+	type SemanticSearchResponse,
 	type TargetLanguage,
 } from './contracts';
 
@@ -165,7 +168,10 @@ export async function getCard(cardId: string): Promise<CardDetail> {
 export async function createDeck(payload: DeckCreate, idempotencyKey: string): Promise<Deck> {
 	const data = await authenticatedRequest('/v1/decks', {
 		method: 'POST',
-		headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
+		headers: {
+			'Content-Type': 'application/json',
+			'Idempotency-Key': idempotencyKey,
+		},
 		body: JSON.stringify(payload),
 	});
 	if (!isDeck(data))
@@ -185,13 +191,18 @@ export async function updateDeck(deckId: string, payload: DeckUpdate): Promise<D
 }
 
 export async function archiveDeck(deckId: string): Promise<void> {
-	await authenticatedRequest(`/v1/decks/${encodeURIComponent(deckId)}`, { method: 'DELETE' });
+	await authenticatedRequest(`/v1/decks/${encodeURIComponent(deckId)}`, {
+		method: 'DELETE',
+	});
 }
 
 export async function createCard(payload: CardCreate, idempotencyKey: string): Promise<CardDetail> {
 	const data = await authenticatedRequest('/v1/cards', {
 		method: 'POST',
-		headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
+		headers: {
+			'Content-Type': 'application/json',
+			'Idempotency-Key': idempotencyKey,
+		},
 		body: JSON.stringify(payload),
 	});
 	if (!isCardDetail(data))
@@ -211,7 +222,9 @@ export async function updateCard(cardId: string, payload: CardUpdate): Promise<C
 }
 
 export async function archiveCard(cardId: string): Promise<void> {
-	await authenticatedRequest(`/v1/cards/${encodeURIComponent(cardId)}`, { method: 'DELETE' });
+	await authenticatedRequest(`/v1/cards/${encodeURIComponent(cardId)}`, {
+		method: 'DELETE',
+	});
 }
 
 export async function getDueReviews(
@@ -243,6 +256,20 @@ export async function submitReviews(
 	});
 	if (!isReviewResult(data)) {
 		throw new ApiClientError('The review result was invalid.', 'invalid_response', true);
+	}
+	return data;
+}
+
+export async function semanticSearch(
+	payload: SemanticSearchRequest,
+): Promise<SemanticSearchResponse> {
+	const data = await authenticatedRequest('/v1/cards/semantic-search', {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify(payload),
+	});
+	if (!isSemanticSearchResponse(data)) {
+		throw new ApiClientError('The search response was invalid.', 'invalid_response', true);
 	}
 	return data;
 }

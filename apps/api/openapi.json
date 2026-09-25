@@ -1558,6 +1558,177 @@
         "title": "ReviewSubmissionItem",
         "type": "object"
       },
+      "SemanticSearchItem": {
+        "properties": {
+          "deck_id": {
+            "format": "uuid",
+            "title": "Deck Id",
+            "type": "string"
+          },
+          "distance": {
+            "maximum": 2.0,
+            "minimum": 0.0,
+            "title": "Distance",
+            "type": "number"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "meaning": {
+            "title": "Meaning",
+            "type": "string"
+          },
+          "part_of_speech": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Part Of Speech"
+          },
+          "pronunciation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pronunciation"
+          },
+          "reading": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reading"
+          },
+          "romanization": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Romanization"
+          },
+          "score": {
+            "maximum": 1.0,
+            "minimum": -1.0,
+            "title": "Score",
+            "type": "number"
+          },
+          "term": {
+            "title": "Term",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "deck_id",
+          "term",
+          "meaning",
+          "reading",
+          "pronunciation",
+          "romanization",
+          "part_of_speech",
+          "distance",
+          "score"
+        ],
+        "title": "SemanticSearchItem",
+        "type": "object"
+      },
+      "SemanticSearchRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "deck_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deck Id"
+          },
+          "limit": {
+            "default": 10,
+            "maximum": 20.0,
+            "minimum": 1.0,
+            "title": "Limit",
+            "type": "integer"
+          },
+          "query": {
+            "maxLength": 500,
+            "minLength": 2,
+            "title": "Query",
+            "type": "string"
+          },
+          "target_language": {
+            "const": "en",
+            "title": "Target Language",
+            "type": "string"
+          }
+        },
+        "required": [
+          "query",
+          "target_language"
+        ],
+        "title": "SemanticSearchRequest",
+        "type": "object"
+      },
+      "SemanticSearchResponse": {
+        "properties": {
+          "eligible_count": {
+            "minimum": 0.0,
+            "title": "Eligible Count",
+            "type": "integer"
+          },
+          "index_status": {
+            "enum": [
+              "complete",
+              "partial",
+              "empty"
+            ],
+            "title": "Index Status",
+            "type": "string"
+          },
+          "indexed_count": {
+            "minimum": 0.0,
+            "title": "Indexed Count",
+            "type": "integer"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SemanticSearchItem"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items",
+          "index_status",
+          "eligible_count",
+          "indexed_count"
+        ],
+        "title": "SemanticSearchResponse",
+        "type": "object"
+      },
       "TagSummary": {
         "properties": {
           "display_name": {
@@ -1913,6 +2084,50 @@
           }
         ],
         "summary": "Create Card"
+      }
+    },
+    "/v1/cards/semantic-search": {
+      "post": {
+        "description": "Rank only current embeddings belonging to the authenticated owner.",
+        "operationId": "semantic_search_v1_cards_semantic_search_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SemanticSearchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SemanticSearchResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Semantic Search"
       }
     },
     "/v1/cards/{card_id}": {
