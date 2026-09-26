@@ -713,3 +713,30 @@ Use precise language such as “project,” “local load test,” or “deploye
   deterministic ranking/leakage tests, staged Cloud Run verification, and a base-path-safe Svelte
   search flow. Describe this only as deployed personal-project evidence and keep point latency
   observations distinct from production performance claims.
+
+### Semantic retrieval evaluation and release decision
+
+- Date: 2026-09-27
+- Status: Issue #41 complete with an iterate decision; search retained, grounded tutor not approved.
+- Implementation references: `doc/training/issues/issue-41/README.md`, its frozen v2 fixture,
+  content-safe workload/cost runners and SQL probes, plus
+  `apps/api/tests/integration/test_semantic_search.py`.
+- Deterministic verification: 11 focused PostgreSQL/pgvector tests passed the empty/unindexed,
+  partial coverage, stale edit/hash, archive, model-version, provider-timeout, cross-owner, and
+  ordering boundaries. Valid empty/unindexed searches made one query embedding call; invalid input,
+  foreign deck, and archived deck stopped before provider work.
+- Relevance result: the precommitted synthetic set passed macro nDCG@5 `1.0` versus lexical baseline
+  `0.5655`. After rejecting an initial corpus-mismatched fixture, a frozen corpus-grounded set with
+  one verified active card per target observed grade-2 hit@5 for 8/9 positive English queries; seven
+  targets ranked first. Ambiguous severance missed, and the negative control returned five
+  human-irrelevant neighbors.
+- Measured workload: 30/30 deployed requests returned HTTP 200 and complete 596/596 coverage;
+  end-to-end p50/p95 were `1789.565/2793.855 ms`, including one `10824.294 ms` outlier. Twenty
+  repeated observations had p50/p95 `1782.699/1856.942 ms`. Ten v2 query embeddings reported 84
+  input tokens with provider p50/p95 `1280.6/1713.1 ms`; published-rate input cost was estimated at
+  `$0.0000126`, with actual billing uninspected.
+- Decision and limits: Keep the current model, canonical text, exact pgvector scan, and limited
+  search. Do not add HNSW or proceed to tutor work until a frozen relevance/no-answer gate rejects
+  irrelevant Top-K context and ambiguous senses receive further evaluation. These are small,
+  operator-reported personal-project measurements, not an SLA, production-scale claim, or user
+  impact result.
