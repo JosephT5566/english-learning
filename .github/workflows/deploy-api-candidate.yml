@@ -95,23 +95,20 @@ jobs:
         with:
           project_id: ${{ env.GCP_PROJECT_ID }}
 
-      - name: Resolve immutable candidate image and revision
+      - name: Resolve immutable candidate image
         id: release
         shell: bash
         run: |
           set -euo pipefail
           release_id="${GITHUB_SHA:0:12}"
           image="${ARTIFACT_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/${ARTIFACT_REPOSITORY}/${API_IMAGE_NAME}:${release_id}"
-          revision="${API_SERVICE}-${release_id}"
           echo "release_id=${release_id}" >> "${GITHUB_OUTPUT}"
           echo "image=${image}" >> "${GITHUB_OUTPUT}"
-          echo "revision=${revision}" >> "${GITHUB_OUTPUT}"
 
       - name: Verify image and existing service
         shell: bash
         env:
           IMAGE: ${{ steps.release.outputs.image }}
-          REVISION: ${{ steps.release.outputs.revision }}
         run: |
           set -euo pipefail
 
@@ -121,13 +118,6 @@ jobs:
           gcloud run services describe "${API_SERVICE}" \
             --project "${GCP_PROJECT_ID}" \
             --region "${GCP_REGION}" >/dev/null
-
-          if gcloud run revisions describe "${REVISION}" \
-            --project "${GCP_PROJECT_ID}" \
-            --region "${GCP_REGION}" >/dev/null 2>&1; then
-            echo "Candidate revision already exists and will not be overwritten: ${REVISION}" >&2
-            exit 1
-          fi
 
       - name: Record current production traffic
         id: previous
@@ -161,10 +151,10 @@ jobs:
           echo "traffic=${previous_traffic}" >> "${GITHUB_OUTPUT}"
 
       - name: Deploy zero-traffic candidate
+        id: deploy
         shell: bash
         env:
           IMAGE: ${{ steps.release.outputs.image }}
-          RELEASE_ID: ${{ steps.release.outputs.release_id }}
         run: |
           set -euo pipefail
           environment_variables="^|^APP_ENV=production|LOG_LEVEL=INFO|DATABASE_CONNECT_TIMEOUT_SECONDS=5|GOOGLE_OAUTH_CLIENT_ID=${GOOGLE_OAUTH_CLIENT_ID}|GOOGLE_ALLOWED_EMAILS=${GOOGLE_ALLOWED_EMAILS}|CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS}"
@@ -176,7 +166,6 @@ jobs:
             --project "${GCP_PROJECT_ID}" \
             --region "${GCP_REGION}" \
             --image "${IMAGE}" \
-            --revision-suffix "${RELEASE_ID}" \
             --tag candidate \
             --no-traffic \
             --ingress all \
@@ -194,11 +183,23 @@ jobs:
             --liveness-probe httpGet.path=/health/live,initialDelaySeconds=0,timeoutSeconds=2,periodSeconds=10,failureThreshold=3 \
             --quiet
 
+          revision="$(gcloud run services describe "${API_SERVICE}" \
+            --project "${GCP_PROJECT_ID}" \
+            --region "${GCP_REGION}" \
+            --format='value(status.latestCreatedRevisionName)')"
+
+          if [[ -z "${revision}" ]]; then
+            echo "Cloud Run did not report a latest created revision." >&2
+            exit 1
+          fi
+
+          echo "revision=${revision}" >> "${GITHUB_OUTPUT}"
+
       - name: Resolve and verify candidate traffic state
         id: candidate
         shell: bash
         env:
-          EXPECTED_REVISION: ${{ steps.release.outputs.revision }}
+          EXPECTED_REVISION: ${{ steps.deploy.outputs.revision }}
         run: |
           set -euo pipefail
           service_file="${RUNNER_TEMP}/service-after.json"

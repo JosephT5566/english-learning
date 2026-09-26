@@ -1,6 +1,6 @@
 # Decisions And Known Issues
 
-Last updated: 2026-09-18
+Last updated: 2026-09-26
 
 ## Durable Decisions
 
@@ -128,6 +128,12 @@ Last updated: 2026-09-18
 - Some files have inconsistent indentation. Prefer running Prettier when editing broad areas.
 
 ## Change Log
+
+- 2026-09-26: Separated the API release artifact identity from its Cloud Run deployment-attempt
+  identity. Candidate retries reuse the immutable commit-tagged image while allowing Cloud Run to
+  assign a fresh revision name, so a revision created before a later workflow failure no longer
+  forces an empty commit or container republish. Every attempt remains zero-traffic and must pass
+  the same candidate-tag and health verification before promotion.
 
 - 2026-09-25: Added authenticated semantic vocabulary retrieval as an exact filtered pgvector scan
   in the existing FastAPI/PostgreSQL service. The browser cannot supply ownership. SQL applies

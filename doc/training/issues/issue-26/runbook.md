@@ -281,9 +281,10 @@ version-pinned runtime database secret.
 
 The workflow:
 
-1. Resolves the same commit-tagged image and deterministic Cloud Run revision name.
-2. Requires the image and existing API service to exist, and refuses to overwrite an existing
-   revision.
+1. Resolves the same immutable commit-tagged image.
+2. Requires the image and existing API service to exist. Cloud Run assigns a fresh revision name to
+   every deployment attempt, so rerunning a failed job reuses the image without requiring a new
+   commit or republishing the container.
 3. Records the current positive traffic allocations for rollback evidence.
 4. Deploys the image with the checked-in runtime settings, `candidate` tag, and zero production
    traffic. It preserves the existing service invocation IAM policy rather than trying to grant or
@@ -296,6 +297,11 @@ The workflow:
 This is only the public candidate gate. Obtain a fresh Google ID token and run the authenticated
 smoke script below before promotion. The workflow never promotes or rolls back traffic, reruns
 Alembic, rebuilds the image, or reads a database secret.
+
+If this workflow fails after Cloud Run has created a revision, use GitHub Actions **Re-run failed
+jobs**. The retry creates another zero-traffic revision from the same immutable image and moves the
+`candidate` tag only as part of that deployment. Do not create an empty commit or rerun the publish
+workflow merely to obtain a new revision name.
 
 Alternatively, run the protected **Smoke API candidate** workflow with a fresh allowlisted Google
 ID token. It resolves the current zero-traffic `candidate` tag and runs the same script. Its optional

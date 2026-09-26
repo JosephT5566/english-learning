@@ -1,6 +1,6 @@
 # Architecture Memory
 
-Last updated: 2026-09-20
+Last updated: 2026-09-26
 
 ## Stack
 
@@ -113,7 +113,8 @@ Last updated: 2026-09-20
 - `.github/workflows/migrate-production.yml`: protected manual OIDC workflow that serializes Neon
   upgrades through the Secret Manager-backed Cloud Run migration job and verifies every Alembic head.
 - `.github/workflows/deploy-api-candidate.yml`: protected manual WIF workflow that deploys the same
-  commit-tagged image as a verified zero-traffic Cloud Run candidate.
+  immutable commit-tagged image as a verified zero-traffic Cloud Run candidate; Cloud Run assigns a
+  fresh revision name per deployment attempt so a failed attempt can be retried without rebuilding.
 - `.github/workflows/smoke-api-candidate.yml`: protected manual WIF workflow that resolves the tagged
   zero-traffic candidate and runs authenticated smoke checks with a supplied short-lived Google ID token.
 - `deploy/cloud-run/release.sh`: clean-commit Cloud Build, single-task migration, and tagged
