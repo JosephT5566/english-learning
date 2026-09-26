@@ -1,5 +1,7 @@
 # Issue #41 - retrieval quality, cost, and failure evaluation
 
+Traditional Chinese walkthrough: [learning notes](learning-notes.zh-TW.md).
+
 Status: complete with an **iterate** decision. Search remains useful and limited; grounded-tutor
 work is not approved until retrieval adds an evidence-backed no-answer boundary and addresses the
 observed ambiguous-sense failure. Updated 2026-09-27.
