@@ -13,22 +13,31 @@
 <header>
 	<nav aria-label="Primary navigation">
 		<ul>
-			<li aria-current={page.url.pathname === homePath ? 'page' : undefined}>
-				<a href={homePath}>Home</a>
+			<li>
+				<a href={homePath} aria-current={page.url.pathname === homePath ? 'page' : undefined}
+					>Home</a
+				>
 			</li>
-			<li aria-current={page.url.pathname === reviewPath ? 'page' : undefined}>
-				<a href={reviewPath}>Review</a>
+			<li>
+				<a
+					href={reviewPath}
+					aria-current={page.url.pathname === reviewPath ? 'page' : undefined}>Review</a
+				>
 			</li>
-			<li
-				aria-current={page.url.pathname.startsWith(decksPath) ||
-				page.url.pathname.includes('/cards/')
-					? 'page'
-					: undefined}
-			>
-				<a href={`${decksPath}?language=${language}`}>Decks</a>
+			<li>
+				<a
+					href={`${decksPath}?language=${language}`}
+					aria-current={page.url.pathname.startsWith(decksPath) ||
+					page.url.pathname.includes('/cards/')
+						? 'page'
+						: undefined}>Decks</a
+				>
 			</li>
-			<li aria-current={page.url.pathname === searchPath ? 'page' : undefined}>
-				<a href={searchPath}>Search</a>
+			<li>
+				<a
+					href={searchPath}
+					aria-current={page.url.pathname === searchPath ? 'page' : undefined}>Search</a
+				>
 			</li>
 		</ul>
 	</nav>
@@ -36,9 +45,11 @@
 
 <style>
 	header {
+		position: relative;
+		z-index: 10;
 		display: flex;
 		justify-content: center;
-		padding: 0.75rem 1rem 0;
+		padding: 0.75rem 1rem 0.25rem;
 	}
 
 	nav {
@@ -46,54 +57,82 @@
 		justify-content: center;
 		border: 1px solid rgba(64, 117, 166, 0.16);
 		border-radius: 999px;
-		background: rgba(255, 255, 255, 0.62);
+		background: rgba(255, 255, 255, 0.72);
 		box-shadow: 0 6px 20px rgba(47, 78, 105, 0.08);
 	}
 
 	ul {
-		position: relative;
-		padding: 0;
-		margin: 0;
-		height: 3em;
 		display: flex;
-		justify-content: center;
 		align-items: center;
+		min-height: 3rem;
+		padding: 0.25rem;
+		margin: 0;
 		list-style: none;
 	}
 
 	li {
-		position: relative;
-		height: 100%;
-	}
-
-	li[aria-current='page']::before {
-		--size: 6px;
-		content: '';
-		width: calc(var(--size) * 2);
-		height: 0;
-		position: absolute;
-		bottom: 0;
-		left: calc(50% - var(--size));
-		border: 0;
-		border-bottom: 3px solid var(--color-theme-2);
+		display: flex;
 	}
 
 	nav a {
 		display: flex;
-		height: 100%;
 		align-items: center;
-		padding: 0 0.75rem;
-		color: var(--color-text);
+		justify-content: center;
+		min-height: 2.5rem;
+		padding: 0 0.85rem;
+		border-radius: 999px;
+		color: #405c73;
 		font-weight: 700;
 		font-size: 0.72rem;
 		text-transform: uppercase;
 		letter-spacing: 0.1em;
 		text-decoration: none;
-		transition: color 0.2s linear;
+		transition:
+			color 160ms ease-out,
+			background-color 160ms ease-out;
 	}
 
-	a:hover {
-		color: var(--color-theme-1);
+	nav a:hover {
+		color: #264f73;
+		background: rgba(64, 117, 166, 0.1);
 		text-decoration: none;
+	}
+
+	nav a[aria-current='page'] {
+		color: white;
+		background: #4075a6;
+	}
+
+	nav a:focus-visible {
+		outline: 3px solid rgba(64, 117, 166, 0.32);
+		outline-offset: 2px;
+	}
+
+	@media (max-width: 30rem) {
+		header {
+			padding-inline: 0.75rem;
+		}
+
+		nav,
+		ul {
+			width: 100%;
+		}
+
+		li {
+			flex: 1;
+		}
+
+		nav a {
+			width: 100%;
+			padding-inline: 0.4rem;
+			font-size: 0.68rem;
+			letter-spacing: 0.07em;
+		}
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		nav a {
+			transition: none;
+		}
 	}
 </style>

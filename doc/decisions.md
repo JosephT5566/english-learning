@@ -237,3 +237,20 @@ Last updated: 2026-09-26
   missing and failed rows. Archive remains query-time exclusion. No queue, scheduler, cache, or ANN
   index was added. Production role, provider identity, and private-data gates still require operator
   verification before deployment.
+- 2026-09-27: Hardened the review card interaction without changing its API contract: cards still
+  require an answer reveal before grading and continue to submit `no`, `no_a_bit`, `yes_a_bit`, or
+  `yes`. The UI now labels those choices Forgot, Hard, Almost, and Knew it; supports Enter/Space to
+  flip and 1-4 to grade; announces state changes; and cancels interrupted pointer gestures safely.
+- 2026-09-27: Distilled card authoring around term and meaning while preserving the complete create
+  and edit contract. Japanese reading remains in the primary flow; word details, examples, related
+  words, and notes use progressive disclosure and reopen when they contain saved data. Synonyms and
+  antonyms now use removable tokens while continuing to submit the same string-array fields.
+- 2026-09-27: Card details now describe learning context instead of persistence internals. The
+  learner view omits optimistic-lock versions and review-stage numbers, retains those values in the
+  API and mutation logic, and presents the deck, learned date, archive state, and next-review status
+  in plain language. Invalid language links now offer explicit routes back to supported decks.
+- 2026-09-27: Unified Search with the Study Blue visual system and learner-facing vocabulary while
+  preserving separate multilingual keyword and English-only semantic API calls. Search result links
+  now carry explicit language context. Semantic similarity percentages and index terminology are
+  presented as qualitative match strength and plain coverage guidance, with keyword search offered
+  as the immediate fallback when semantic results are unavailable or empty.

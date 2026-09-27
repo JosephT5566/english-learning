@@ -21,8 +21,8 @@
 
 body {
 	min-height: 100dvh;
-	max-height: 100dvh;
 	margin: 0;
+	overflow-x: hidden;
 	background-attachment: fixed;
 	background-color: var(--color-bg-1);
 	background-size: 100vw 100vh;
@@ -35,8 +35,21 @@ body {
 @supports not (height: 100dvh) {
 	body {
 		min-height: 100vh;
-		max-height: 100vh;
 	}
+}
+
+::selection {
+	color: #20394e;
+	background: rgba(64, 117, 166, 0.25);
+}
+
+:where(a, button, input, select, textarea, [tabindex]):focus-visible {
+	outline-color: #4075a6;
+}
+
+* {
+	scrollbar-color: rgba(64, 117, 166, 0.5) transparent;
+	scrollbar-width: thin;
 }
 
 p {
