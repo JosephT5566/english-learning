@@ -24,8 +24,8 @@ Last updated: 2026-09-26
 - `src/routes/decks/+page.svelte`: shared language-aware deck list with active/archive filtering.
 - `src/routes/decks/[deckId]/+page.svelte`: owned deck detail and card list.
 - `src/routes/cards/[cardId]/+page.svelte`: owned card detail with language-relevant fields.
-- `src/routes/search/+page.svelte`: authenticated English semantic search with explicit coverage and
-  retry states; card navigation remains base-path aware.
+- `src/routes/search/+page.svelte`: authenticated multilingual keyword search plus an explicit
+  English-only semantic mode with coverage and retry states; card navigation remains base-path aware.
 - `src/routes/Header.svelte`: base-path-aware primary navigation used by the shared layout.
 - `src/lib/auth.ts`: Google Identity Services initialization, token storage, token validation, profile lookup, sign-out.
 - `src/lib/api/client.ts`: authenticated FastAPI transport, bearer-header handling, response
@@ -70,7 +70,8 @@ Last updated: 2026-09-26
 - `apps/api/app/auth.py`: Google ID-token verification, backend verified-email allowlisting, stable
   subject to internal-user mapping, and the reusable authenticated-user dependency.
 - `apps/api/app/reads.py`: authenticated owner-scoped deck/card/due-review routes, response models,
-  filtering, stable tuple ordering, and safe database-failure translation.
+  normalized multilingual card substring filtering, stable tuple ordering, and safe database-failure
+  translation.
 - `apps/api/app/writes.py`: server-owned deck/card create, optimistic edit, and archive operations.
 - `apps/api/app/reviews.py`: authenticated atomic review submissions, scheduling transitions,
   idempotent replay, and deterministic row-lock concurrency control.

@@ -129,6 +129,12 @@ Last updated: 2026-09-26
 
 ## Change Log
 
+- 2026-09-27: Made provider-free multilingual keyword matching the default `/search` mode. The
+  existing owner-scoped card list accepts a normalized, cursor-bound substring query across term,
+  meaning, reading, pronunciation, and romanization while excluding archived cards and decks from
+  search results. English-only semantic search remains an explicit mode with visible scope and keeps
+  its existing Vertex-backed contract; Japanese semantic retrieval remains deferred.
+
 - 2026-09-26: Separated the API release artifact identity from its Cloud Run deployment-attempt
   identity. Candidate retries reuse the immutable commit-tagged image while allowing Cloud Run to
   assign a fresh revision name, so a revision created before a later workflow failure no longer

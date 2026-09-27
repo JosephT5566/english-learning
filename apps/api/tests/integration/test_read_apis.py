@@ -6,11 +6,10 @@ from datetime import datetime
 from uuid import UUID
 
 import pytest
-from fastapi.testclient import TestClient
-from sqlalchemy import Engine, text
-
 from app.auth import VerifiedGoogleIdentity
 from app.main import create_app
+from fastapi.testclient import TestClient
+from sqlalchemy import Engine, text
 from tests.integration.test_multilingual_domain_fixture import (
     load_multilingual_fixture,
 )
@@ -103,6 +102,88 @@ def test_card_language_and_tag_filters_use_the_same_summary_contract(
     assert set(english_item) == set(japanese_item)
     assert english_item["deck"]["target_language"] == "en"
     assert japanese_item["deck"]["target_language"] == "ja"
+
+
+@pytest.mark.parametrize(
+    ("query", "expected_card_id"),
+    [
+        ("SERENDIPITY", ENGLISH_CARD_ID),
+        ("意外發現", ENGLISH_CARD_ID),
+        ("べんきょう", JAPANESE_CARD_ID),
+        ("BENKYOU", JAPANESE_CARD_ID),
+    ],
+)
+def test_card_query_searches_active_multilingual_summary_fields(
+    api_client: TestClient,
+    query: str,
+    expected_card_id: str,
+) -> None:
+    response = api_client.get("/v1/cards", params={"query": f"  {query}  "})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert [item["id"] for item in body["items"]] == [expected_card_id]
+    assert body["next_cursor"] is None
+
+
+@pytest.mark.parametrize("archive_target", ["card", "deck"])
+def test_card_query_excludes_archived_cards_and_archived_decks(
+    api_client: TestClient,
+    migrated_database_engine: Engine,
+    archive_target: str,
+) -> None:
+    with migrated_database_engine.begin() as connection:
+        if archive_target == "card":
+            connection.execute(
+                text(
+                    "UPDATE learning_cards SET archived_at = now() WHERE id = :card_id"
+                ),
+                {"card_id": JAPANESE_CARD_ID},
+            )
+        else:
+            connection.execute(
+                text(
+                    "UPDATE learning_decks SET archived_at = now() WHERE id = :deck_id"
+                ),
+                {"deck_id": JAPANESE_DECK_ID},
+            )
+
+    response = api_client.get("/v1/cards", params={"query": "benkyou"})
+
+    assert response.status_code == 200
+    assert response.json() == {"items": [], "next_cursor": None}
+
+
+def test_card_query_is_bound_into_cursor_shape(
+    api_client: TestClient,
+    migrated_database_engine: Engine,
+) -> None:
+    with migrated_database_engine.begin() as connection:
+        connection.execute(
+            text("UPDATE learning_cards SET meaning = meaning || ' common'")
+        )
+
+    first = api_client.get("/v1/cards", params={"query": "common", "limit": 1})
+    cursor = first.json()["next_cursor"]
+    assert cursor is not None
+
+    changed = api_client.get(
+        "/v1/cards",
+        params={"query": "commonx", "limit": 1, "cursor": cursor},
+    )
+    assert changed.status_code == 400
+    assert changed.json()["error"]["code"] == "invalid_cursor"
+
+
+@pytest.mark.parametrize("query", [" ", "a"], ids=["blank", "too-short"])
+def test_card_query_rejects_invalid_normalized_length(
+    api_client: TestClient,
+    query: str,
+) -> None:
+    response = api_client.get("/v1/cards", params={"query": query})
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "validation_failed"
 
 
 @pytest.mark.parametrize(
