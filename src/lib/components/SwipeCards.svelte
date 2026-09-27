@@ -7,6 +7,7 @@
 	import _clamp from 'lodash/clamp';
 	import Icon from '@iconify/svelte';
 	import classNames from 'classnames';
+	import { SvelteSet } from 'svelte/reactivity';
 	import Modal from '$lib/components/Modal.svelte';
 
 	// 透過 runes 取得 props
@@ -48,6 +49,33 @@
 	const hasCards = $derived(wordList.length > 0);
 	let modalOpen = $state(false);
 	let modalContent = $state('');
+	let announcement = $state('');
+	const timers = new SvelteSet<ReturnType<typeof setTimeout>>();
+
+	const answerOptions: {
+		decision: ReviewDecision;
+		label: string;
+		shortcut: string;
+		isYes: boolean;
+		icon: string;
+	}[] = [
+		{ decision: 'no', label: 'Forgot', shortcut: '1', isYes: false, icon: 'solar:close-square-bold' },
+		{
+			decision: 'no_a_bit',
+			label: 'Hard',
+			shortcut: '2',
+			isYes: false,
+			icon: 'solar:close-square-outline',
+		},
+		{
+			decision: 'yes_a_bit',
+			label: 'Almost',
+			shortcut: '3',
+			isYes: true,
+			icon: 'solar:check-square-outline',
+		},
+		{ decision: 'yes', label: 'Knew it', shortcut: '4', isYes: true, icon: 'solar:check-square-bold' },
+	];
 
 	const THRESHOLD = 200; // fly-out decision
 	const MOVE_OUT_MULT = 1.5;
@@ -104,6 +132,48 @@
 		root.classList.remove('swipe_yes', 'swipe_no');
 	}
 
+	function schedule(callback: () => void, delay: number) {
+		const timer = setTimeout(() => {
+			timers.delete(timer);
+			callback();
+		}, delay);
+		timers.add(timer);
+	}
+
+	function toggleCard(el: HTMLElement) {
+		const s = scratch.get(el);
+		if (!s || el !== topCardEl() || isClickAndSwiping) return;
+
+		s.isBack = !s.isBack;
+		el.classList.toggle('is-back', s.isBack);
+		isTopCardBack = s.isBack;
+		announcement = s.isBack
+			? `Answer revealed for ${currentWord?.term ?? 'this card'}. Choose how well you remembered it.`
+			: `Question shown for ${currentWord?.term ?? 'this card'}.`;
+
+		if (!s.isBack) {
+			swipeX = 0;
+			clearBadge();
+		}
+	}
+
+	function handleCardKeydown(event: KeyboardEvent, index: number) {
+		if (index !== currentWordIndex || event.repeat || isClickAndSwiping) return;
+		const el = event.currentTarget as HTMLElement;
+
+		if (event.key === 'Enter' || event.key === ' ') {
+			event.preventDefault();
+			toggleCard(el);
+			return;
+		}
+
+		const option = answerOptions.find(({ shortcut }) => shortcut === event.key);
+		if (option && scratch.get(el)?.isBack) {
+			event.preventDefault();
+			programmaticSwipe(option.isYes, option.decision, true);
+		}
+	}
+
 	function attachDrag(el: HTMLElement) {
 		scratch.set(el, {
 			x: 0,
@@ -133,6 +203,7 @@
 
 		function onDown(e: PointerEvent) {
 			const s = scratch.get(el)!;
+			if (s.down) return;
 			// Only the top card AND only on back side can start dragging
 			if (!canAnswerCard(el === topCardEl(), s.isBack, isClickAndSwiping)) {
 				return;
@@ -216,6 +287,8 @@
 			const s = scratch.get(el)!;
 			if (!s.down || s.pointerId !== e.pointerId) return;
 			s.down = false;
+			s.pointerId = -1;
+			if (el.hasPointerCapture(e.pointerId)) el.releasePointerCapture(e.pointerId);
 			// decide: 距離或速度達門檻就飛出
 			const { vx } = velocityOf(s.moveHist);
 			const fast = Math.abs(vx) > VELOCITY_THRESHOLD;
@@ -226,31 +299,54 @@
 			}
 		}
 
+		function cancelDrag() {
+			const s = scratch.get(el);
+			if (!s?.down) return;
+			s.down = false;
+			if (s.pointerId >= 0 && el.hasPointerCapture(s.pointerId)) {
+				el.releasePointerCapture(s.pointerId);
+			}
+			s.pointerId = -1;
+			s.moved = true;
+			snapBack();
+		}
+
 		// Click-to-flip (front<->back), but ignore if it was actually a drag
 		function onClick() {
 			const s = scratch.get(el)!;
 			if (s.down || s.moved) {
+				s.moved = false;
 				return; // was a drag, not a click
 			}
 
-			s.isBack = !s.isBack;
-			el.classList.toggle('is-back', s.isBack);
-			isTopCardBack = s.isBack;
-			// Reset swipe UI when flipping to front
-			if (!s.isBack) {
-				swipeX = 0;
-				clearBadge();
-			}
+			toggleCard(el);
 		}
 
 		el.addEventListener('pointerdown', onDown);
 		el.addEventListener('pointermove', onMove);
 		el.addEventListener('pointerup', onUp);
-		el.addEventListener('pointercancel', onUp);
+		el.addEventListener('pointercancel', cancelDrag);
+		el.addEventListener('lostpointercapture', cancelDrag);
 		el.addEventListener('click', onClick);
+		window.addEventListener('blur', cancelDrag);
+
+		return () => {
+			el.removeEventListener('pointerdown', onDown);
+			el.removeEventListener('pointermove', onMove);
+			el.removeEventListener('pointerup', onUp);
+			el.removeEventListener('pointercancel', cancelDrag);
+			el.removeEventListener('lostpointercapture', cancelDrag);
+			el.removeEventListener('click', onClick);
+			window.removeEventListener('blur', cancelDrag);
+			scratch.delete(el);
+		};
 	}
 
-	function programmaticSwipe(isYes: boolean, decision: ReviewDecision) {
+	function programmaticSwipe(
+		isYes: boolean,
+		decision: ReviewDecision,
+		focusNextCard = false
+	) {
 		const el = topCardEl();
 		const s = el ? scratch.get(el) : undefined;
 		if (!el || !s || !canAnswerCard(true, s.isBack, isClickAndSwiping)) {
@@ -285,15 +381,19 @@
 			el.style.transform = `translate(${moveOutWidth}px, -120px) rotate(${st.rot}deg)`;
 			el.dataset.removed = '1';
 
-			setTimeout(() => {
+			schedule(() => {
 				el.classList.remove('click-and-swiping'); // clean up
 				el.style.transition = '';
 				clearBadge();
 				updateLayoutStack();
 			}, 300);
+
+			if (focusNextCard) {
+				requestAnimationFrame(() => topCardEl()?.focus());
+			}
 		});
 
-		setTimeout(() => {
+		schedule(() => {
 			isClickAndSwiping = false;
 		}, 1000);
 	}
@@ -302,11 +402,14 @@
 		if (!currentWord) {
 			return; // safety guard
 		}
+		const answeredCard = currentWord;
 		onAnswer?.({
 			card_id: currentWord.id,
 			decision,
 			expected_version: currentWord.review_state.version,
 		});
+		const label = answerOptions.find((option) => option.decision === decision)?.label ?? decision;
+		announcement = `${label}. ${answeredCard.term} completed.`;
 		currentWordIndex += 1; // move to next card
 	}
 
@@ -402,16 +505,19 @@
 		}
 
 		const els = Array.from(cardsWrap.querySelectorAll<HTMLElement>('.swipe--card'));
-		els.forEach((el) => {
-			if (!scratch.has(el)) {
-				attachDrag(el); // 避免重複綁定事件
-			}
-		});
+		const cleanups = els.map((el) => attachDrag(el));
 		updateLayoutStack();
+
+		return () => {
+			cleanups.forEach((cleanup) => cleanup());
+			for (const timer of timers) clearTimeout(timer);
+			timers.clear();
+		};
 	});
 </script>
 
 <div class="swipe" bind:this={root}>
+	<p class="sr-only" aria-live="polite" aria-atomic="true">{announcement}</p>
 	{#if !hasCards}
 		<div class="flex flex-col items-center gap-3 mt-10">
 			<Icon icon="solar:cat-bold-duotone" width="120px" height="120px" class="text-slate-400" />
@@ -432,6 +538,11 @@
 			</span>
 		</div>
 	{:else}
+		<div class="review-guidance" id="review-guidance">
+			<p>{isTopCardBack ? 'Choose how well you remembered it.' : 'Flip the card to reveal the answer.'}</p>
+			<span>{isTopCardBack ? 'Swipe or press 1–4' : 'Click, tap, or press Enter'}</span>
+		</div>
+
 		<div class="swipe--status">
 			<span class="icon no" style="opacity:{noOpacity}">
 				<Icon icon="solar:close-square-outline" class={noOpacity === 1 ? 'text-rose-500' : ''} />
@@ -448,7 +559,17 @@
 			{#each wordList as c, i (`${c.id ?? 'no-id'}-${i}`)}
 				{@const f = faceFront(c, studyDirection) as FrontFace}
 				{@const b = faceBack(c, studyDirection) as BackFace}
-				<div class="swipe--card rounded-2xl">
+				<div
+					class="swipe--card rounded-2xl"
+					role="button"
+					tabindex={i === currentWordIndex ? 0 : -1}
+					aria-label={`${isTopCardBack && i === currentWordIndex ? 'Answer' : 'Question'} card for ${f.title}`}
+					aria-expanded={i === currentWordIndex ? isTopCardBack : false}
+					aria-describedby={i === currentWordIndex ? 'review-guidance' : undefined}
+					aria-keyshortcuts="Enter Space 1 2 3 4"
+					aria-hidden={i !== currentWordIndex}
+					onkeydown={(event) => handleCardKeydown(event, i)}
+				>
 					<!-- 3D flip container -->
 					<div class="card-inner">
 						<!-- FRONT -->
@@ -506,6 +627,7 @@
 										handler: (e) => e.stopPropagation(),
 									}}
 									aria-label="Open supplementary info"
+									tabindex={i === currentWordIndex && isTopCardBack ? 0 : -1}
 								>
 									<Icon icon="solar:info-circle-bold" width="25px" height="25px" />
 								</button>
@@ -540,43 +662,20 @@
 	{/if}
 
 	{#if hasCards && !isEnded}
-		<div class="swipe--buttons">
-			<button
-				id="no"
-				onclick={() => programmaticSwipe(false, 'no')}
-				disabled={isClickAndSwiping || !isTopCardBack}
-				aria-label="No"
-			>
-				<Icon icon="solar:close-square-bold" class="text-rose-700" width="60px" height="60px" />
-			</button>
-			<button
-				id="no-a-bit"
-				class="ml-5 text-rose-700"
-				onclick={() => programmaticSwipe(false, 'no_a_bit')}
-				disabled={isClickAndSwiping || !isTopCardBack}
-				aria-label="No A Bit"
-			>
-				<Icon icon="solar:close-square-outline" width="40px" height="40px" />
-				<span>a bit</span>
-			</button>
-			<button
-				id="yes-a-bit"
-				class="mr-5 text-emerald-500"
-				onclick={() => programmaticSwipe(true, 'yes_a_bit')}
-				disabled={isClickAndSwiping || !isTopCardBack}
-				aria-label="Yes A Bit"
-			>
-				<Icon icon="solar:check-square-outline" width="40px" height="40px" />
-				<span>a bit</span>
-			</button>
-			<button
-				id="yes"
-				onclick={() => programmaticSwipe(true, 'yes')}
-				disabled={isClickAndSwiping || !isTopCardBack}
-				aria-label="Yes"
-			>
-				<Icon icon="solar:check-square-bold" class="text-emerald-500" width="60px" height="60px" />
-			</button>
+		<div class="swipe--buttons" aria-label="Review answer">
+			{#each answerOptions as option (option.decision)}
+				<button
+					id={option.decision.replace('_', '-')}
+					class:positive={option.isYes}
+					onclick={() => programmaticSwipe(option.isYes, option.decision)}
+					disabled={isClickAndSwiping || !isTopCardBack}
+					aria-label={option.label}
+				>
+					<Icon icon={option.icon} width="26px" height="26px" aria-hidden="true" />
+					<span>{option.label}</span>
+					<kbd>{option.shortcut}</kbd>
+				</button>
+			{/each}
 		</div>
 	{/if}
 </div>
@@ -605,6 +704,31 @@
 		position: relative;
 		overflow: hidden;
 	}
+	.sr-only {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		padding: 0;
+		margin: -1px;
+		overflow: hidden;
+		clip: rect(0, 0, 0, 0);
+		white-space: nowrap;
+		border: 0;
+	}
+	.review-guidance {
+		text-align: center;
+		color: #334155;
+		line-height: 1.35;
+	}
+	.review-guidance p {
+		font-weight: 700;
+	}
+	.review-guidance span {
+		display: block;
+		margin-top: 2px;
+		font-size: 0.8rem;
+		color: #64748b;
+	}
 	.swipe--status {
 		position: absolute;
 		top: 50%;
@@ -624,7 +748,7 @@
 	.swipe--cards {
 		min-height: 0;
 		flex: 1;
-		padding-top: 40px;
+		padding-top: 24px;
 		display: flex;
 		position: relative;
 		justify-content: center;
@@ -640,9 +764,14 @@
 		position: absolute;
 		overflow: hidden;
 		will-change: transform;
-		touch-action: none;
+		touch-action: pan-y;
 		backface-visibility: hidden;
 		contain: layout paint;
+		cursor: pointer;
+		outline: none;
+	}
+	.swipe--card:focus-visible {
+		box-shadow: 0 0 0 4px #dbeafe, 0 0 0 7px #2563eb;
 	}
 	/* 3D flip scaffolding */
 	.swipe--card .card-inner {
@@ -666,7 +795,9 @@
 		align-items: center;
 		backface-visibility: hidden;
 		border-radius: 8px;
-		overflow: hidden;
+		overflow-x: hidden;
+		overflow-y: auto;
+		overscroll-behavior: contain;
 	}
 
 	.card-front .q {
@@ -688,14 +819,16 @@
 
 	.headline {
 		margin-top: 16px;
-		font-size: 28px;
+		font-size: clamp(1.5rem, 6vw, 1.9rem);
 		text-align: center;
+		overflow-wrap: anywhere;
 	}
 	.subtitle {
 		margin-top: 6px;
 		font-size: 15px;
 		opacity: 0.7;
 		text-align: center;
+		overflow-wrap: anywhere;
 	}
 	.hint {
 		margin-top: 10px;
@@ -733,6 +866,7 @@
 		font-size: 16px;
 		line-height: 1.4;
 		white-space: pre-line;
+		overflow-wrap: anywhere;
 	}
 	.rows {
 		margin: 10px 12px;
@@ -744,6 +878,7 @@
 		display: flex;
 		align-items: center;
 		gap: 6px;
+		flex-wrap: wrap;
 	}
 	.row > span:first-child {
 		font-size: 12px;
@@ -765,13 +900,44 @@
 	}
 
 	.swipe--buttons {
-		display: flex;
-		justify-content: center;
+		display: grid;
+		grid-template-columns: repeat(4, minmax(0, 1fr));
 		gap: 8px;
 		padding-top: 20px;
+		width: min(100%, 520px);
+		margin-inline: auto;
 	}
 	.swipe--buttons button {
 		cursor: pointer;
+		min-width: 0;
+		min-height: 64px;
+		padding: 8px 6px;
+		border: 1px solid #fecdd3;
+		border-radius: 14px;
+		background: #fff1f2;
+		color: #9f1239;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 4px;
+		flex-wrap: wrap;
+		font-size: 0.8rem;
+		font-weight: 700;
+		transition: transform 150ms ease, background-color 150ms ease, border-color 150ms ease;
+	}
+	.swipe--buttons button.positive {
+		border-color: #a7f3d0;
+		background: #ecfdf5;
+		color: #047857;
+	}
+	.swipe--buttons kbd {
+		min-width: 1.25rem;
+		padding: 1px 4px;
+		border: 1px solid currentColor;
+		border-radius: 5px;
+		font: inherit;
+		font-size: 0.65rem;
+		opacity: 0.65;
 	}
 	.swipe--buttons button:hover {
 		transform: translateY(-1px);
@@ -785,7 +951,29 @@
 	}
 
 	.swipe--buttons button:disabled {
-		opacity: 0.5;
+		opacity: 0.45;
 		cursor: not-allowed;
+	}
+
+	@media (max-width: 420px) {
+		.swipe {
+			padding-block: 24px;
+		}
+		.swipe--buttons button {
+			min-height: 58px;
+			flex-direction: column;
+			gap: 1px;
+		}
+		.swipe--buttons kbd {
+			display: none;
+		}
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.swipe--card .card-inner,
+		:global(.swipe--card.click-and-swiping),
+		.swipe--buttons button {
+			transition-duration: 1ms;
+		}
 	}
 </style>

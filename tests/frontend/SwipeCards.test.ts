@@ -63,7 +63,7 @@ describe('SwipeCards', () => {
 	it('requires a flip before answering and emits only the backend command fields', async () => {
 		const onAnswer = vi.fn();
 		const { container } = render(SwipeCards, { props: { wordList: [card], onAnswer } });
-		const yes = screen.getByRole('button', { name: 'Yes' });
+		const yes = screen.getByRole('button', { name: 'Knew it' });
 
 		expect(yes).toBeDisabled();
 		await fireEvent.click(container.querySelector('.swipe--card')!);
@@ -78,5 +78,25 @@ describe('SwipeCards', () => {
 			})
 		);
 		expect(screen.getByText('Your answers are ready to submit.')).toBeInTheDocument();
+	});
+
+	it('supports a complete keyboard review path with explicit guidance', async () => {
+		const onAnswer = vi.fn();
+		render(SwipeCards, { props: { wordList: [card], onAnswer } });
+		const reviewCard = screen.getByRole('button', { name: `Question card for ${card.term}` });
+
+		expect(screen.getByText('Flip the card to reveal the answer.')).toBeInTheDocument();
+		reviewCard.focus();
+		await fireEvent.keyDown(reviewCard, { key: 'Enter' });
+		expect(screen.getByText('Choose how well you remembered it.')).toBeInTheDocument();
+
+		await fireEvent.keyDown(reviewCard, { key: '2' });
+		await waitFor(() =>
+			expect(onAnswer).toHaveBeenCalledWith({
+				card_id: card.id,
+				decision: 'no_a_bit',
+				expected_version: 7,
+			})
+		);
 	});
 });

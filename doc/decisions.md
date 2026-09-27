@@ -237,3 +237,7 @@ Last updated: 2026-09-26
   missing and failed rows. Archive remains query-time exclusion. No queue, scheduler, cache, or ANN
   index was added. Production role, provider identity, and private-data gates still require operator
   verification before deployment.
+- 2026-09-27: Hardened the review card interaction without changing its API contract: cards still
+  require an answer reveal before grading and continue to submit `no`, `no_a_bit`, `yes_a_bit`, or
+  `yes`. The UI now labels those choices Forgot, Hard, Almost, and Knew it; supports Enter/Space to
+  flip and 1-4 to grade; announces state changes; and cancels interrupted pointer gestures safely.
