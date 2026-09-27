@@ -241,3 +241,7 @@ Last updated: 2026-09-26
   require an answer reveal before grading and continue to submit `no`, `no_a_bit`, `yes_a_bit`, or
   `yes`. The UI now labels those choices Forgot, Hard, Almost, and Knew it; supports Enter/Space to
   flip and 1-4 to grade; announces state changes; and cancels interrupted pointer gestures safely.
+- 2026-09-27: Distilled card authoring around term and meaning while preserving the complete create
+  and edit contract. Japanese reading remains in the primary flow; word details, examples, related
+  words, and notes use progressive disclosure and reopen when they contain saved data. Synonyms and
+  antonyms now use removable tokens while continuing to submit the same string-array fields.
