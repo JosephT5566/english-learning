@@ -231,3 +231,116 @@ def test_provider_failure_is_retryable_not_empty(
     assert response.status_code == 503
     assert response.json()["error"]["code"] == "semantic_search_provider_unavailable"
     assert response.json()["error"]["retryable"] is True
+
+
+def test_empty_and_fully_unindexed_corpus_report_empty(
+    search_client: TestClient,
+    migrated_database_engine: Engine,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    assert search_client.get("/v1/me", headers=headers()).status_code == 200
+    calls: list[str] = []
+    monkeypatch.setattr(
+        semantic_search,
+        "vertex_query_embedding",
+        lambda query, **_kwargs: (
+            calls.append(query) or [1.0] + [0.0] * (DIMENSIONS - 1)
+        ),
+    )
+
+    empty_response = search_client.post(
+        "/v1/cards/semantic-search",
+        headers=headers(),
+        json={"query": "nothing indexed", "target_language": "en"},
+    )
+    assert empty_response.status_code == 200
+    assert empty_response.json() == {
+        "items": [],
+        "index_status": "empty",
+        "eligible_count": 0,
+        "indexed_count": 0,
+    }
+
+    owner = owner_id(migrated_database_engine)
+    deck = insert_deck(migrated_database_engine, owner_id=owner)
+    cards = Table("learning_cards", MetaData(), autoload_with=migrated_database_engine)
+    insert_card(
+        migrated_database_engine,
+        cards,
+        valid_card_values(
+            deck_id=deck,
+            owner_id=owner,
+            term="unindexed",
+            meaning="eligible without an embedding",
+        ),
+    )
+    unindexed_response = search_client.post(
+        "/v1/cards/semantic-search",
+        headers=headers(),
+        json={"query": "still nothing indexed", "target_language": "en"},
+    )
+    assert unindexed_response.status_code == 200
+    assert unindexed_response.json() == {
+        "items": [],
+        "index_status": "empty",
+        "eligible_count": 1,
+        "indexed_count": 0,
+    }
+    assert calls == ["nothing indexed", "still nothing indexed"]
+
+
+def test_foreign_and_archived_decks_stop_before_provider(
+    search_client: TestClient,
+    migrated_database_engine: Engine,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    assert search_client.get("/v1/me", headers=headers()).status_code == 200
+    owner = owner_id(migrated_database_engine)
+    foreign_owner = insert_user(migrated_database_engine)
+    foreign_deck = insert_deck(migrated_database_engine, owner_id=foreign_owner)
+    archived_deck = insert_deck(migrated_database_engine, owner_id=owner)
+    with migrated_database_engine.begin() as connection:
+        connection.execute(
+            text(
+                "UPDATE learning_decks SET archived_at = CURRENT_TIMESTAMP WHERE id = :id"
+            ),
+            {"id": archived_deck},
+        )
+    calls: list[str] = []
+    monkeypatch.setattr(
+        semantic_search,
+        "vertex_query_embedding",
+        lambda query, **_kwargs: (
+            calls.append(query) or [1.0] + [0.0] * (DIMENSIONS - 1)
+        ),
+    )
+
+    foreign_response = search_client.post(
+        "/v1/cards/semantic-search",
+        headers=headers(),
+        json={
+            "query": "foreign deck",
+            "target_language": "en",
+            "deck_id": str(foreign_deck),
+        },
+    )
+    assert foreign_response.status_code == 404
+    assert foreign_response.json()["error"]["code"] == "deck_not_found"
+
+    archived_response = search_client.post(
+        "/v1/cards/semantic-search",
+        headers=headers(),
+        json={
+            "query": "archived deck",
+            "target_language": "en",
+            "deck_id": str(archived_deck),
+        },
+    )
+    assert archived_response.status_code == 200
+    assert archived_response.json() == {
+        "items": [],
+        "index_status": "empty",
+        "eligible_count": 0,
+        "indexed_count": 0,
+    }
+    assert calls == []

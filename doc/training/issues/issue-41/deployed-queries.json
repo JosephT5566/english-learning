@@ -1,0 +1,66 @@
+{
+  "version": "issue-41-deployed-en-v1",
+  "notes": "Sanitized queries frozen before the deployed run. Edit and review expected concepts before the first request, then retain the resulting SHA-256 with the report.",
+  "queries": [
+    {
+      "id": "q01-paraphrase-resilience",
+      "type": "paraphrase",
+      "text": "able to bounce back when something goes wrong",
+      "expected_concepts": ["resilient"]
+    },
+    {
+      "id": "q02-paraphrase-obsolete",
+      "type": "paraphrase",
+      "text": "something replaced because a newer version made it no longer useful",
+      "expected_concepts": ["obsolete"]
+    },
+    {
+      "id": "q03-exact-meticulous",
+      "type": "exact",
+      "text": "meticulous",
+      "expected_concepts": ["meticulous"]
+    },
+    {
+      "id": "q04-exact-burnout",
+      "type": "exact",
+      "text": "burnout",
+      "expected_concepts": ["burnout"]
+    },
+    {
+      "id": "q05-ambiguous-careful",
+      "type": "ambiguous",
+      "text": "careful",
+      "expected_concepts": ["meticulous", "frugal", "thrifty", "cautious"]
+    },
+    {
+      "id": "q06-ambiguous-tired",
+      "type": "ambiguous",
+      "text": "tired",
+      "expected_concepts": ["exhausted", "drowsy", "burnout"]
+    },
+    {
+      "id": "q07-natural-reluctance",
+      "type": "natural_sentence",
+      "text": "He does not want to accept the proposal yet.",
+      "expected_concepts": ["reluctant", "hesitant"]
+    },
+    {
+      "id": "q08-natural-drowsiness",
+      "type": "natural_sentence",
+      "text": "She can barely keep her eyes open during the meeting.",
+      "expected_concepts": ["drowsy", "sleepy"]
+    },
+    {
+      "id": "q09-no-confident-match",
+      "type": "no_confident_match",
+      "text": "how to configure a database connection pool",
+      "expected_concepts": []
+    },
+    {
+      "id": "q10-near-synonym-money",
+      "type": "near_synonym",
+      "text": "uses money and resources carefully without wasting them",
+      "expected_concepts": ["frugal", "thrifty"]
+    }
+  ]
+}

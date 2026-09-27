@@ -1,0 +1,66 @@
+{
+  "version": "issue-41-deployed-en-v2",
+  "notes": "Corpus-grounded sanitized queries frozen before retrieval. Positive targets were supplied from consenting active owned cards and must pass the v2 exact-term count preflight.",
+  "queries": [
+    {
+      "id": "q01-paraphrase-communism",
+      "type": "paraphrase",
+      "text": "a political and economic system where property is owned collectively rather than privately",
+      "expected_concepts": ["communism"]
+    },
+    {
+      "id": "q02-paraphrase-severance-pay",
+      "type": "paraphrase",
+      "text": "money an employee receives when the company ends their job",
+      "expected_concepts": ["severance"]
+    },
+    {
+      "id": "q03-exact-brat",
+      "type": "exact",
+      "text": "brat",
+      "expected_concepts": ["brat"]
+    },
+    {
+      "id": "q04-exact-fragrance",
+      "type": "exact",
+      "text": "fragrance",
+      "expected_concepts": ["fragrance"]
+    },
+    {
+      "id": "q05-ambiguous-severance",
+      "type": "ambiguous",
+      "text": "the act of cutting off a connection or ending a relationship",
+      "expected_concepts": ["severance"]
+    },
+    {
+      "id": "q06-ambiguous-hotshot",
+      "type": "ambiguous",
+      "text": "a very successful and skillful person who may act overly confident",
+      "expected_concepts": ["hotshot"]
+    },
+    {
+      "id": "q07-natural-diligently",
+      "type": "natural_sentence",
+      "text": "She worked carefully and persistently until every task was finished.",
+      "expected_concepts": ["diligently"]
+    },
+    {
+      "id": "q08-natural-endangered",
+      "type": "natural_sentence",
+      "text": "This species is at serious risk of disappearing forever.",
+      "expected_concepts": ["endangered"]
+    },
+    {
+      "id": "q09-no-confident-match",
+      "type": "no_confident_match",
+      "text": "instructions for tuning a database connection pool",
+      "expected_concepts": []
+    },
+    {
+      "id": "q10-near-synonym-obtain",
+      "type": "near_synonym",
+      "text": "to acquire or get something that you need",
+      "expected_concepts": ["obtain"]
+    }
+  ]
+}

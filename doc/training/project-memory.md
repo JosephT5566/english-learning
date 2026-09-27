@@ -1,6 +1,6 @@
 # English Learning Project Memory
 
-Last updated: 2026-09-26
+Last updated: 2026-09-27
 
 ## Purpose
 
@@ -116,9 +116,9 @@ interview evidence.
 - Use Cloud Run `asia-southeast1` and Neon AWS Singapore under the documented low-traffic budget.
 - Treat AI input and output as untrusted; AI may create an editable draft but never a confirmed card.
 - Defer queues, caches, and additional infrastructure until a measured need exists.
-- Plan the semantic vocabulary retrieval MVP after Issue #27 through
-  [#38-#41](../product/rag-semantic-search-mvp.md); gate the later tutor #42 on measured retrieval
-  quality. This is planned scope, not implemented evidence.
+- Issues #38-#41 implemented and evaluated the semantic vocabulary retrieval MVP. Keep the current
+  limited search, model/canonical text, and exact scan; gate tutor #42 on a measured relevance/
+  no-answer boundary that handles negative and ambiguous queries.
 
 ## Open decisions
 
@@ -137,6 +137,49 @@ interview evidence.
 
 ## Next action
 
+Issue #41's evaluation boundary is complete with an **iterate** decision; see
+[`issues/issue-41/README.md`](issues/issue-41/README.md). The sanitized metric and gate, deterministic
+versus provider evaluation split, failure matrix, operator commands, result template, and
+content-safe production inspection SQL were frozen before inspecting final Issue #41 results. The
+local lexical baseline reproduced macro nDCG@5 `0.5655` and grade-2 Recall@5 `0.6429`; 21 focused
+unit tests and 9 PostgreSQL/pgvector integration tests passed, and the inspection SQL executed
+successfully against the empty disposable schema. The operator-reported 17-request Vertex run
+passed the synthetic gate with macro nDCG@5 and grade-2 Recall@5 both `1.0`; it reported 314 input
+tokens, provider-request p50 `1354.4 ms`, and p95 `3464.7 ms`. The operator-reported Neon aggregate
+showed 596/596 current ready English embeddings, with zero null vectors or stale hashes, on
+PostgreSQL 18.6 and pgvector 0.8.6. Its coverage plan completed in `2.030 ms` with shared hits only.
+The stored-vector Top-5 diagnostic ranked 596 current authorized candidates with a 25 kB in-memory
+Top-N sort and no temporary I/O. Two executions took `132.961 ms` and `122.666 ms`, each with 205
+shared reads; the repeated result rejected the tentative cold-versus-warm explanation. Because the
+materialized database vector is scanned 596 times, that diagnostic is not API-shaped latency. A new
+content-safe plan used one synthetic vector constant in the API parameter's role and ranked 596
+candidates in `130.020 ms` after `38.884 ms` planning, with a 25 kB Top-N sort, no temporary I/O,
+3,665 shared hits, and 262 shared reads. This is a read-heavy/cold-compute observation, not a warm
+distribution; compared with Issue #40's separate 10.054 ms shared-hit-only plan, it demonstrates
+cache/environment sensitivity and still gives no measured reason for HNSW. Next, complete the
+cache/environment sensitivity and still gives no measured reason for HNSW.
+
+The 2026-09-27 deployed workload returned 30/30 HTTP 200 responses with complete 596/596 coverage;
+end-to-end p50 was `1789.565 ms`, p95 was `2793.855 ms`, and one first request took `10824.294 ms`.
+The later corpus check found zero active exact-term cards for all 17 expected terms in the nine
+positive queries: deployed fixture v1 was based on synthetic concepts absent from the owned corpus.
+Its grades and hit/miss rates are invalid as relevance evidence, while latency, availability,
+coverage, and the unthresholded negative-control behavior remain valid. Next, build and preflight a
+sanitized corpus-grounded v2 fixture. Eight consenting active-card terms now ground 10 queries; the
+frozen v2 SHA-256 is `4756caf33424266c5722b344124a5d226427fc065dece6e02c8746fd7e86a5a4`.
+The operator-reported Neon preflight found exactly one active English card for every v2 target, so
+the corpus-grounding gate passed. The v2 run returned 10/10 HTTP 200 responses with complete 596/596
+coverage. Eight of nine positive queries had a grade-2 Top-5 result (`0.8889`); seven were rank 1,
+while ambiguous severance missed. The negative control returned five grade-0 neighbors, confirming
+that unthresholded Top-K is unsafe as automatic tutor context. The evidence supports keeping search
+but iterating before tutor use. The 10-query cost probe reported 84 input tokens, provider p50
+`1280.6 ms`, p95 `1713.1 ms`, and a published-rate estimate of `$0.0000126`; actual billing was not
+inspected. Eleven focused PostgreSQL/pgvector tests passed the empty/unindexed, partial, edit,
+archive, version, outage, cross-owner, and ordering boundaries. Issue #41 is complete with an
+**iterate** decision: keep the current search/model/canonical text and exact scan, but do not begin
+tutor work until a frozen score/no-answer gate handles negative and ambiguous queries. Next define
+that bounded retrieval iteration or return to Issue #27's remaining operational evidence gaps.
+
 Issue #40's authenticated semantic-search API and static Svelte search flow are implemented; see
 [`issues/issue-40/README.md`](issues/issue-40/README.md). Focused deterministic PostgreSQL/pgvector
 tests verify ranking and the owner/archive/missing-vector boundary; the full 289-test backend suite,
@@ -152,8 +195,8 @@ then promoted that revision and reported a successful stable-URL smoke: five res
 596/596 coverage, request ID `d581e030-222e-497d-9c1b-38ea4bd7b9b3`, and one 2.265995-second
 observation. The operator also reported that the deployed search page worked correctly against the
 promoted API and that the fixed recovery-after-difficulty query returned an expected directly
-related concept at rank 1. Issue #40 is complete. Next begin Issue #41's broader retrieval quality,
-cost, and failure evaluation before making a general quality claim or proceeding to tutor work.
+related concept at rank 1. Issue #40 is complete; Issue #41 contains the broader quality, cost,
+failure, and release decision.
 
 Issue #39's retryable embedding lifecycle is merged and verified; see
 [`issues/issue-39/README.md`](issues/issue-39/README.md). On an isolated Neon branch, the operator
