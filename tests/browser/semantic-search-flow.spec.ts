@@ -26,6 +26,8 @@ test('semantic search preserves static routing and shows partial owned results',
 	});
 
 	await page.goto('/search');
+	await page.getByRole('button', { name: 'Search by meaning', exact: true }).click();
+	await expect(page.getByText('English cards only', { exact: true })).toBeVisible();
 	await page.getByLabel('Meaning or concept').fill('recover after difficulty');
 	await page.getByRole('button', { name: 'Search', exact: true }).click();
 

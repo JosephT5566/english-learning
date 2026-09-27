@@ -1,30 +1,49 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
-	import { ApiClientError, semanticSearch } from '$lib/api/client';
-	import type { SemanticSearchResponse } from '$lib/api/contracts';
+	import { ApiClientError, keywordSearch, semanticSearch } from '$lib/api/client';
+	import type { CardSummary, Page, SemanticSearchResponse } from '$lib/api/contracts';
+
+	type SearchMode = 'keyword' | 'semantic';
 
 	let query = $state('');
 	let submittedQuery = $state('');
-	let result: SemanticSearchResponse | null = $state(null);
+	let mode: SearchMode = $state('keyword');
+	let keywordResult: Page<CardSummary> | null = $state(null);
+	let semanticResult: SemanticSearchResponse | null = $state(null);
 	let busy = $state(false);
 	let error: { message: string; retryable: boolean; auth: boolean } | null = $state(null);
+	let maximumLength = $derived(mode === 'keyword' ? 200 : 500);
+
+	function selectMode(nextMode: SearchMode): void {
+		if (busy || mode === nextMode) return;
+		mode = nextMode;
+		keywordResult = null;
+		semanticResult = null;
+		error = null;
+		submittedQuery = '';
+	}
 
 	async function search(event?: SubmitEvent): Promise<void> {
 		event?.preventDefault();
 		const normalized = query.normalize('NFC').trim();
-		if (normalized.length < 2 || normalized.length > 500 || busy) return;
+		if (normalized.length < 2 || normalized.length > maximumLength || busy) return;
 		query = normalized;
 		submittedQuery = normalized;
 		busy = true;
 		error = null;
+		keywordResult = null;
+		semanticResult = null;
 		try {
-			result = await semanticSearch({
-				query: normalized,
-				target_language: 'en',
-				limit: 10,
-			});
+			if (mode === 'keyword') {
+				keywordResult = await keywordSearch(normalized);
+			} else {
+				semanticResult = await semanticSearch({
+					query: normalized,
+					target_language: 'en',
+					limit: 10,
+				});
+			}
 		} catch (cause) {
-			result = null;
 			if (cause instanceof ApiClientError) {
 				error = {
 					message: cause.message,
@@ -45,28 +64,49 @@
 </script>
 
 <svelte:head>
-	<title>Semantic search · English Learning</title>
-	<meta name="description" content="Search your English vocabulary by meaning." />
+	<title>Search · English Learning</title>
+	<meta name="description" content="Search your English and Japanese vocabulary." />
 </svelte:head>
 
 <section class="search-page">
 	<p class="eyebrow">Your vocabulary</p>
-	<h1>Search by meaning</h1>
-	<p class="intro">
-		Describe the idea you remember. Search only looks through your active English cards.
-	</p>
+	<h1>Find a card</h1>
+	<p class="intro">Search across your active English and Japanese vocabulary.</p>
+
+	<div class="mode-switch" aria-label="Search mode">
+		<button
+			type="button"
+			class:active={mode === 'keyword'}
+			aria-pressed={mode === 'keyword'}
+			disabled={busy}
+			onclick={() => selectMode('keyword')}>Keyword</button
+		>
+		<button
+			type="button"
+			class:active={mode === 'semantic'}
+			aria-pressed={mode === 'semantic'}
+			disabled={busy}
+			onclick={() => selectMode('semantic')}>Search by meaning</button
+		>
+	</div>
+	{#if mode === 'semantic'}
+		<p class="scope-label">English cards only</p>
+	{/if}
 
 	<form onsubmit={search}>
-		<label for="semantic-query">Meaning or concept</label>
+		<label for="search-query">{mode === 'keyword' ? 'Word or meaning' : 'Meaning or concept'}</label
+		>
 		<div class="search-controls">
 			<input
-				id="semantic-query"
+				id="search-query"
 				bind:value={query}
 				minlength="2"
-				maxlength="500"
+				maxlength={maximumLength}
 				required
 				disabled={busy}
-				placeholder="e.g. a lucky discovery"
+				placeholder={mode === 'keyword'
+					? 'e.g. serendipity or べんきょう'
+					: 'e.g. a lucky discovery'}
 			/>
 			<button type="submit" disabled={busy || query.trim().length < 2}>
 				{busy ? 'Searching…' : 'Search'}
@@ -86,24 +126,42 @@
 				<button type="button" onclick={() => search()}>Retry “{submittedQuery}”</button>
 			{/if}
 		</section>
-	{:else if result}
-		{#if result.index_status === 'partial'}
+	{:else if mode === 'keyword' && keywordResult}
+		{#if keywordResult.items.length === 0}
+			<section class="state">
+				<h2>No keyword matches</h2>
+				<p>Try another spelling or switch to search by meaning.</p>
+			</section>
+		{:else}
+			<ol class="results">
+				{#each keywordResult.items as item (item.id)}
+					<li>
+						<a href={resolve(`/cards/${item.id}`)}>
+							<span><strong>{item.term}</strong><small>{item.meaning}</small></span>
+							<span class="language-badge">{item.deck.target_language === 'en' ? 'EN' : 'JP'}</span>
+						</a>
+					</li>
+				{/each}
+			</ol>
+		{/if}
+	{:else if mode === 'semantic' && semanticResult}
+		{#if semanticResult.index_status === 'partial'}
 			<p class="notice" role="status">
-				Some cards are still being indexed. Showing matches from {result.indexed_count}
+				Some cards are still being indexed. Showing matches from {semanticResult.indexed_count}
 				of
-				{result.eligible_count} eligible cards.
+				{semanticResult.eligible_count} eligible cards.
 			</p>
-		{:else if result.index_status === 'empty' && result.eligible_count > 0}
+		{:else if semanticResult.index_status === 'empty' && semanticResult.eligible_count > 0}
 			<p class="notice" role="status">Your eligible cards are not indexed yet. Try again later.</p>
 		{/if}
-		{#if result.items.length === 0}
+		{#if semanticResult.items.length === 0}
 			<section class="state">
 				<h2>No searchable matches yet</h2>
 				<p>Your query is preserved above.</p>
 			</section>
 		{:else}
 			<ol class="results">
-				{#each result.items as item}
+				{#each semanticResult.items as item (item.id)}
 					<li>
 						<a href={resolve(`/cards/${item.id}`)}>
 							<span><strong>{item.term}</strong><small>{item.meaning}</small></span>
@@ -136,6 +194,33 @@
 	.intro {
 		max-width: 38rem;
 		color: #52677a;
+	}
+	.mode-switch {
+		display: inline-flex;
+		gap: 0.25rem;
+		margin-top: 1.25rem;
+		padding: 0.25rem;
+		border: 1px solid rgba(64, 117, 166, 0.2);
+		border-radius: 0.85rem;
+		background: rgba(255, 255, 255, 0.58);
+	}
+	.mode-switch button {
+		background: transparent;
+		color: #52677a;
+	}
+	.mode-switch button.active {
+		background: var(--color-theme-1);
+		color: white;
+	}
+	.scope-label {
+		display: inline-block;
+		margin: 0.75rem 0 0;
+		padding: 0.25rem 0.55rem;
+		border-radius: 999px;
+		background: rgba(64, 117, 166, 0.1);
+		color: #52677a;
+		font-size: 0.78rem;
+		font-weight: 700;
 	}
 	form {
 		margin-top: 2rem;
@@ -210,6 +295,16 @@
 	.score {
 		color: var(--color-theme-1);
 		font-weight: 800;
+	}
+	.language-badge {
+		flex: none;
+		padding: 0.25rem 0.5rem;
+		border-radius: 999px;
+		background: rgba(64, 117, 166, 0.1);
+		color: var(--color-theme-1);
+		font-size: 0.72rem;
+		font-weight: 800;
+		letter-spacing: 0.08em;
 	}
 	@media (max-width: 36rem) {
 		.search-controls {

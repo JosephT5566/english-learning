@@ -157,6 +157,15 @@ export async function getCards(
 	return data;
 }
 
+export async function keywordSearch(queryText: string, limit = 100): Promise<Page<CardSummary>> {
+	const query = queryString({ query: queryText, status: 'active', limit });
+	const data = await authenticatedRequest(`/v1/cards?${query}`);
+	if (!isCardSummaryPage(data)) {
+		throw new ApiClientError('The search response was invalid.', 'invalid_response', true);
+	}
+	return data;
+}
+
 export async function getCard(cardId: string): Promise<CardDetail> {
 	const data = await authenticatedRequest(`/v1/cards/${encodeURIComponent(cardId)}`);
 	if (!isCardDetail(data)) {

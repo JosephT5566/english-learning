@@ -25,6 +25,8 @@ Production statements must distinguish repository-verified evidence from operato
 - AI-assisted authoring is not an active product capability. Semantic search is implemented,
   promoted on the API, and verified through the stable Cloud Run service URL and deployed search
   page; its bounded provider-backed Top-K quality smoke passed.
+- Provider-free multilingual keyword search is implemented locally as the default search-page mode;
+  English-only semantic search remains available explicitly. Deployment is not yet verified.
 
 ## Active milestone
 

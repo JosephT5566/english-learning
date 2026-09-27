@@ -60,7 +60,7 @@ export interface paths {
         };
         /**
          * List Cards
-         * @description List compact owned card summaries with language and tag filtering.
+         * @description List compact owned card summaries with language, tag, and text filtering.
          */
         get: operations["list_cards_v1_cards_get"];
         put?: never;
@@ -825,6 +825,7 @@ export interface operations {
                 target_language?: ("en" | "ja") | null;
                 status?: "active" | "archived" | "all";
                 tag_id?: string | null;
+                query?: string | null;
                 limit?: number;
                 cursor?: string | null;
             };

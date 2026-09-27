@@ -1896,7 +1896,7 @@
     },
     "/v1/cards": {
       "get": {
-        "description": "List compact owned card summaries with language and tag filtering.",
+        "description": "List compact owned card summaries with language, tag, and text filtering.",
         "operationId": "list_cards_v1_cards_get",
         "parameters": [
           {
@@ -1966,6 +1966,23 @@
                 }
               ],
               "title": "Tag Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Query"
             }
           },
           {

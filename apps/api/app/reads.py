@@ -1,5 +1,6 @@
 """Owner-scoped multilingual deck, card, and due-review read APIs."""
 
+import unicodedata
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Annotated, Literal
@@ -283,15 +284,34 @@ def list_cards(
     target_language: Annotated[TargetLanguage | None, Query()] = None,
     status: Annotated[ArchiveStatus, Query()] = "active",
     tag_id: Annotated[UUID | None, Query()] = None,
+    query: Annotated[str | None, Query(max_length=200)] = None,
     limit: MANAGEMENT_LIMIT = 20,
     cursor: Annotated[str | None, Query()] = None,
 ) -> Page[CardSummary]:
-    """List compact owned card summaries with language and tag filtering."""
+    """List compact owned card summaries with language, tag, and text filtering."""
 
     _reject_unknown_filters(
         request,
-        {"deck_id", "target_language", "status", "tag_id", "limit", "cursor"},
+        {
+            "deck_id",
+            "target_language",
+            "status",
+            "tag_id",
+            "query",
+            "limit",
+            "cursor",
+        },
     )
+    normalized_query = None
+    if query is not None:
+        normalized_query = unicodedata.normalize("NFC", query).strip()
+        if not 2 <= len(normalized_query) <= 200:
+            raise ApiError(
+                status_code=422,
+                code="validation_failed",
+                message="The request contains invalid data.",
+                details={"fields": ["query"]},
+            )
     if deck_id is not None:
         _validate_owned_resource(
             session,
@@ -313,6 +333,7 @@ def list_cards(
         "target_language": target_language,
         "status": status,
         "tag_id": str(tag_id) if tag_id else None,
+        "query": normalized_query,
     }
     fingerprint = query_fingerprint(filters, limit)
     cursor_updated_at = cursor_id = None
@@ -337,6 +358,15 @@ def list_cards(
             "WHERE filter_ct.card_id = c.id AND filter_ct.owner_id = c.owner_id "
             "AND filter_ct.tag_id = :tag_id)"
         )
+    if normalized_query is not None:
+        conditions.append("d.archived_at IS NULL")
+        conditions.append(
+            "(POSITION(lower(:query) IN lower(c.term)) > 0 "
+            "OR POSITION(lower(:query) IN lower(c.meaning)) > 0 "
+            "OR POSITION(lower(:query) IN lower(COALESCE(c.reading, ''))) > 0 "
+            "OR POSITION(lower(:query) IN lower(COALESCE(c.pronunciation, ''))) > 0 "
+            "OR POSITION(lower(:query) IN lower(COALESCE(c.romanization, ''))) > 0)"
+        )
     if cursor_updated_at is not None:
         conditions.append("(c.updated_at, c.id) < (:cursor_updated_at, :cursor_id)")
     rows = (
@@ -357,6 +387,7 @@ def list_cards(
                 "deck_id": deck_id,
                 "target_language": target_language,
                 "tag_id": tag_id,
+                "query": normalized_query,
                 "cursor_updated_at": cursor_updated_at,
                 "cursor_id": cursor_id,
                 "fetch_limit": limit + 1,
