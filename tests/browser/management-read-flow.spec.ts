@@ -64,6 +64,14 @@ test('Japanese decks and cards use the shared routes with relevant fields', asyn
 	await expect(page.getByText('まなぶ', { exact: true })).toBeVisible();
 	await expect(page.getByText('manabu', { exact: true })).toBeVisible();
 	await expect(page.getByText('Pronunciation', { exact: true })).toHaveCount(0);
+	await expect(page.getByText('Learned on Sep 11, 2026')).toBeVisible();
+	await expect(page.getByText('Ready to review', { exact: true })).toBeVisible();
+	await expect(page.getByText(/^Version /)).toHaveCount(0);
+	await expect(page.getByText(/^Stage /)).toHaveCount(0);
+
+	await page.setViewportSize({ width: 390, height: 700 });
+	const details = await page.locator('.detail-grid').boundingBox();
+	expect(details?.width).toBeLessThanOrEqual(350);
 });
 
 test('invalid language is rejected before an API request', async ({ page }) => {

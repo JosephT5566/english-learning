@@ -38,6 +38,26 @@
 		return `${resolve('/decks')}?language=${targetLanguage}`;
 	}
 
+	function formatDate(value: string): string {
+		const date = /^\d{4}-\d{2}-\d{2}$/.test(value) ? new Date(`${value}T00:00:00`) : new Date(value);
+		if (Number.isNaN(date.getTime())) return 'Date unavailable';
+		return new Intl.DateTimeFormat('en-US', {
+			year: 'numeric',
+			month: 'short',
+			day: 'numeric',
+		}).format(date);
+	}
+
+	function reviewSchedule(currentCard: CardDetail): string {
+		if (currentCard.archived_at) return 'Review paused while archived';
+		if (!currentCard.review_state) return 'Not scheduled for review';
+		const { next_review_at: nextReviewAt } = currentCard.review_state;
+		const nextReview = new Date(nextReviewAt);
+		if (Number.isNaN(nextReview.getTime())) return 'Review date unavailable';
+		if (nextReview.getTime() <= Date.now()) return 'Ready to review';
+		return `Next review ${formatDate(nextReviewAt)}`;
+	}
+
 	async function loadCurrent(targetLanguage: TargetLanguage): Promise<void> {
 		const sequence = ++requestSequence;
 		viewState = 'loading';
@@ -130,16 +150,17 @@
 <svelte:head><title>{card?.term ?? 'Card'} · English Learning</title></svelte:head>
 
 <section class="management-page">
-	<a class="back-link" href={deckHref()}>← Back to deck</a>
+	<a class="back-link" href={deckHref()}>← {card ? `Back to ${card.deck.title}` : 'Back to decks'}</a>
 	<div class="management-heading">
 		<div>
-			<p class="management-eyebrow">
-				{card?.archived_at ? 'Archived card' : (card?.deck.title ?? 'Learning card')}
-			</p>
 			<h1>{card?.term ?? 'Card details'}</h1>
-			{#if card}<p class="management-subtitle">
-					Version {card.version} · Learned {card.learned_on ?? 'date not set'}
-				</p>{/if}
+			{#if card}
+				<p class="card-context">
+					<span>{card.deck.title}</span>
+					{#if card.learned_on}<span>Learned on {formatDate(card.learned_on)}</span>{/if}
+					{#if card.archived_at}<strong>Archived</strong>{/if}
+				</p>
+			{/if}
 		</div>
 		{#if viewState !== 'invalid-language'}
 			<LanguageTabs current={language} englishHref={listHref('en')} japaneseHref={listHref('ja')} />
@@ -170,10 +191,14 @@
 	{#if viewState === 'invalid-language'}
 		<section class="read-state">
 			<h2>Choose English or Japanese</h2>
-			<p>This link uses an unsupported language.</p>
+			<p>This card link has an unsupported language. Open your English or Japanese decks instead.</p>
+			<div class="read-actions">
+				<a class="secondary-button" href={listHref('en')}>Open English decks</a>
+				<a class="secondary-button" href={listHref('ja')}>Open Japanese decks</a>
+			</div>
 		</section>
 	{:else if viewState === 'redirecting' || viewState === 'loading'}
-		<section class="read-state" aria-live="polite">Loading card…</section>
+		<section class="read-state" aria-live="polite">Loading card details…</section>
 	{:else if viewState === 'error' && error}
 		<ReadError {...error} onretry={() => loadCurrent(language)} />
 	{:else if card && editing}
@@ -219,14 +244,19 @@
 					</dd>
 				</div>{/if}
 			{#if card.target_language_definition}<div class="detail-field wide">
-					<dt>Definition</dt>
+					<dt>{language === 'ja' ? 'Japanese definition' : 'English definition'}</dt>
 					<dd>{card.target_language_definition}</dd>
 				</div>{/if}
 			{#if card.example_sentence}<div class="detail-field wide">
-					<dt>Example</dt>
+					<dt>Example sentence</dt>
 					<dd>
-						{card.example_sentence}{card.example_translation ? `\n${card.example_translation}` : ''}
+						<span>{card.example_sentence}</span>
+						{#if card.example_translation}<span class="example-translation">{card.example_translation}</span>{/if}
 					</dd>
+				</div>{/if}
+			{#if card.example_source}<div class="detail-field wide">
+					<dt>Example source</dt>
+					<dd>{card.example_source}</dd>
 				</div>{/if}
 			{#if card.synonyms.length}<div class="detail-field">
 					<dt>Synonyms</dt>
@@ -237,24 +267,20 @@
 					<dd>{card.antonyms.join(', ')}</dd>
 				</div>{/if}
 			{#if card.tags.length}<div class="detail-field wide">
-					<dt>Tags</dt>
+					<dt>Study tags</dt>
 					<dd>{card.tags.map((tag) => tag.display_name).join(' · ')}</dd>
 				</div>{/if}
 			{#if card.note}<div class="detail-field wide">
-					<dt>Note</dt>
+					<dt>Study note</dt>
 					<dd>{card.note}</dd>
 				</div>{/if}
 			{#if card.supplementary_note}<div class="detail-field wide">
-					<dt>Supplementary note</dt>
+					<dt>More context</dt>
 					<dd>{card.supplementary_note}</dd>
 				</div>{/if}
-			{#if card.review_state}<div class="detail-field wide">
-					<dt>Review</dt>
-					<dd>
-						Stage {card.review_state.review_stage} · Next {new Date(
-							card.review_state.next_review_at,
-						).toLocaleDateString()}
-					</dd>
+			{#if card.review_state}<div class="detail-field wide review-schedule">
+					<dt>Review schedule</dt>
+					<dd>{reviewSchedule(card)}</dd>
 				</div>{/if}
 		</dl>
 	{/if}
@@ -264,7 +290,7 @@
 	<ConfirmDialog
 		eyebrow="Archive card"
 		title={`Remove “${card.term}” from active study?`}
-		description="You can still view it from Archived cards."
+		description="It will no longer appear in active study. You can still find it in Archived cards."
 		cancelLabel="Keep card"
 		confirmLabel="Archive card"
 		busyLabel="Checking result…"
@@ -273,3 +299,64 @@
 		onconfirm={archiveCurrentCard}
 	/>
 {/if}
+
+<style>
+	.card-context {
+		display: flex;
+		align-items: center;
+		flex-wrap: wrap;
+		gap: 0.45rem 0.8rem;
+		margin: 0.75rem 0 0;
+		color: #60788c;
+		font-size: 0.88rem;
+	}
+
+	.card-context span + span::before {
+		margin-right: 0.8rem;
+		color: rgba(64, 117, 166, 0.55);
+		content: '·';
+	}
+
+	.card-context strong {
+		padding: 0.2rem 0.55rem;
+		border-radius: 999px;
+		color: #76431f;
+		background: rgba(180, 107, 57, 0.14);
+		font-size: 0.75rem;
+	}
+
+	.read-actions {
+		display: flex;
+		justify-content: center;
+		flex-wrap: wrap;
+		gap: 0.65rem;
+		margin-top: 1rem;
+	}
+
+	.read-actions a {
+		text-decoration: none;
+	}
+
+	.example-translation {
+		display: block;
+		margin-top: 0.45rem;
+		color: #526b7f;
+	}
+
+	.review-schedule dd {
+		color: #315f89;
+		font-weight: 750;
+	}
+
+	@media (max-width: 40rem) {
+		.card-context {
+			align-items: flex-start;
+			flex-direction: column;
+			gap: 0.3rem;
+		}
+
+		.card-context span + span::before {
+			content: none;
+		}
+	}
+</style>

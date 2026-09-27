@@ -245,3 +245,7 @@ Last updated: 2026-09-26
   and edit contract. Japanese reading remains in the primary flow; word details, examples, related
   words, and notes use progressive disclosure and reopen when they contain saved data. Synonyms and
   antonyms now use removable tokens while continuing to submit the same string-array fields.
+- 2026-09-27: Card details now describe learning context instead of persistence internals. The
+  learner view omits optimistic-lock versions and review-stage numbers, retains those values in the
+  API and mutation logic, and presents the deck, learned date, archive state, and next-review status
+  in plain language. Invalid language links now offer explicit routes back to supported decks.
