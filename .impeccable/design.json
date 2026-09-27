@@ -1,0 +1,367 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-09-27T10:37:08Z",
+  "title": "Design System: English Learning",
+  "extensions": {
+    "colorMeta": {
+      "study-blue": {
+        "role": "primary",
+        "displayName": "Study Blue",
+        "canonical": "#4075a6",
+        "tonalRamp": [
+          "#122536",
+          "#1f3b55",
+          "#2a5278",
+          "#4075a6",
+          "#6e96bb",
+          "#9bb5ce",
+          "#c6d5e3",
+          "#eef4f8"
+        ]
+      },
+      "study-blue-deep": {
+        "role": "primary",
+        "displayName": "Deep Study Blue",
+        "canonical": "#315f89",
+        "tonalRamp": [
+          "#102131",
+          "#1b374f",
+          "#254b6b",
+          "#315f89",
+          "#6287aa",
+          "#91abc3",
+          "#bfd0df",
+          "#edf3f8"
+        ]
+      },
+      "study-blue-ink": {
+        "role": "neutral",
+        "displayName": "Blue Ink",
+        "canonical": "#20394e",
+        "tonalRamp": [
+          "#0d171f",
+          "#172938",
+          "#20394e",
+          "#405c73",
+          "#6f8597",
+          "#9eacb8",
+          "#ccd4da",
+          "#f2f5f7"
+        ]
+      },
+      "study-blue-muted": {
+        "role": "neutral",
+        "displayName": "Muted Study Text",
+        "canonical": "#60788c",
+        "tonalRamp": [
+          "#17202a",
+          "#293947",
+          "#405466",
+          "#60788c",
+          "#8195a5",
+          "#a5b3bf",
+          "#ccd4da",
+          "#f2f5f7"
+        ]
+      },
+      "atmosphere-blue": {
+        "role": "neutral",
+        "displayName": "Atmosphere Blue",
+        "canonical": "rgb(202, 216, 228)",
+        "tonalRamp": [
+          "#1e2933",
+          "#394854",
+          "#586b7a",
+          "#7f93a3",
+          "#a5b7c5",
+          "#cad8e4",
+          "#e0e9f0",
+          "#f4f8fa"
+        ]
+      },
+      "atmosphere-mid": {
+        "role": "neutral",
+        "displayName": "Atmosphere Mid",
+        "canonical": "hsl(209, 36%, 86%)",
+        "tonalRamp": [
+          "#1c2934",
+          "#354958",
+          "#536a7c",
+          "#7c92a4",
+          "#a4b5c3",
+          "#d0dce6",
+          "#e3ebf1",
+          "#f5f8fa"
+        ]
+      },
+      "atmosphere-light": {
+        "role": "neutral",
+        "displayName": "Atmosphere Light",
+        "canonical": "hsl(224, 44%, 95%)",
+        "tonalRamp": [
+          "#232a3a",
+          "#424b60",
+          "#636e86",
+          "#8994aa",
+          "#afb8c9",
+          "#d9deea",
+          "#e8ebf3",
+          "#f7f8fb"
+        ]
+      },
+      "paper": {
+        "role": "neutral",
+        "displayName": "Translucent Paper",
+        "canonical": "rgba(255, 255, 255, 0.65)",
+        "tonalRamp": [
+          "#25282b",
+          "#464b50",
+          "#6b7177",
+          "#93999f",
+          "#b9bec2",
+          "#dde0e2",
+          "#eef0f1",
+          "#ffffff"
+        ]
+      },
+      "paper-solid": {
+        "role": "neutral",
+        "displayName": "Solid Blue Paper",
+        "canonical": "#edf3f8",
+        "tonalRamp": [
+          "#20282e",
+          "#3c4a54",
+          "#5b6d79",
+          "#82939f",
+          "#aab8c2",
+          "#d2dde5",
+          "#e3ebf1",
+          "#f7fafc"
+        ]
+      },
+      "signal-orange": {
+        "role": "secondary",
+        "displayName": "Signal Orange",
+        "canonical": "#ff3e00",
+        "tonalRamp": [
+          "#431305",
+          "#792208",
+          "#ad3007",
+          "#df3a02",
+          "#ff6533",
+          "#ff936f",
+          "#ffc1aa",
+          "#fff0e9"
+        ]
+      },
+      "danger-red": {
+        "role": "tertiary",
+        "displayName": "Danger Red",
+        "canonical": "#a34646",
+        "tonalRamp": [
+          "#321414",
+          "#572424",
+          "#7c3434",
+          "#a34646",
+          "#bf7070",
+          "#d69b9b",
+          "#e9c7c7",
+          "#faeeee"
+        ]
+      },
+      "warning-amber": {
+        "role": "tertiary",
+        "displayName": "Warning Amber",
+        "canonical": "#b46b39",
+        "tonalRamp": [
+          "#331d0d",
+          "#5b3519",
+          "#844d27",
+          "#b46b39",
+          "#ca8d62",
+          "#dbaf8d",
+          "#ecd1bb",
+          "#fbf2ea"
+        ]
+      },
+      "text": {
+        "role": "neutral",
+        "displayName": "Body Ink",
+        "canonical": "rgba(0, 0, 0, 0.7)",
+        "tonalRamp": [
+          "#111111",
+          "#272727",
+          "#414141",
+          "#626262",
+          "#878787",
+          "#adadad",
+          "#d2d2d2",
+          "#f3f3f3"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Editorial Display",
+        "purpose": "Large page, drawer, and dialog headings."
+      },
+      "body": {
+        "displayName": "Operational Body",
+        "purpose": "Readable forms, explanations, and card content."
+      },
+      "playful": {
+        "displayName": "Friendly Moment",
+        "purpose": "Welcome, loading, empty, and completion states."
+      },
+      "label": {
+        "displayName": "Study Label",
+        "purpose": "Eyebrows, metadata, navigation, and compact language labels."
+      }
+    },
+    "shadows": [
+      {
+        "name": "quiet-nav",
+        "value": "0 6px 20px rgba(47, 78, 105, 0.08)",
+        "purpose": "Separates pill navigation from the atmospheric page."
+      },
+      {
+        "name": "list-lift",
+        "value": "0 7px 24px rgba(47, 78, 105, 0.07)",
+        "purpose": "Adds restrained lift to actionable rows."
+      },
+      {
+        "name": "selected-tab",
+        "value": "0 4px 12px rgba(38, 74, 107, 0.18)",
+        "purpose": "Confirms a selected segmented option."
+      },
+      {
+        "name": "drawer-edge",
+        "value": "-18px 0 50px rgba(31, 57, 79, 0.18)",
+        "purpose": "Places a drawer above the page."
+      },
+      {
+        "name": "dialog-lift",
+        "value": "0 22px 60px rgba(31, 57, 79, 0.24)",
+        "purpose": "Reserved for blocking confirmation."
+      }
+    ],
+    "motion": [
+      {
+        "name": "nav-color",
+        "value": "color 0.2s linear",
+        "purpose": "Quiet navigation hover feedback."
+      },
+      {
+        "name": "card-flip",
+        "value": "transform 0.35s ease",
+        "purpose": "Physical front-to-back study-card flip."
+      },
+      {
+        "name": "card-answer",
+        "value": "transform 0.3s ease-in-out",
+        "purpose": "Programmatic answer-card exit."
+      }
+    ],
+    "breakpoints": [
+      { "name": "compact-search", "value": "36rem" },
+      { "name": "single-column", "value": "640px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The default affirmative action for management forms.",
+      "html": "<button class=\"ds-btn-primary\">Save card</button>",
+      "css": ".ds-btn-primary { padding: .7rem 1rem; border: 1px solid #315f89; border-radius: .65rem; color: white; background: #315f89; font: 750 1rem Arial, sans-serif; cursor: pointer; transition: transform .2s, background .2s; } .ds-btn-primary:hover { background: #264f73; transform: translateY(-1px); } .ds-btn-primary:active { transform: translateY(0); } .ds-btn-primary:focus-visible { outline: 3px solid rgba(64,117,166,.28); outline-offset: 2px; }"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "A quiet cancel or supporting action beside a primary button.",
+      "html": "<button class=\"ds-btn-secondary\">Cancel</button>",
+      "css": ".ds-btn-secondary { padding: .7rem 1rem; border: 1px solid rgba(49,95,137,.4); border-radius: .65rem; color: #315f89; background: rgba(255,255,255,.72); font: 750 1rem Arial, sans-serif; cursor: pointer; transition: background .2s, transform .2s; } .ds-btn-secondary:hover { background: rgba(255,255,255,.92); transform: translateY(-1px); } .ds-btn-secondary:active { transform: translateY(0); } .ds-btn-secondary:focus-visible { outline: 3px solid rgba(64,117,166,.28); outline-offset: 2px; }"
+    },
+    {
+      "name": "Management Input",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "A readable field for deck and card details.",
+      "html": "<label class=\"ds-field\"><span>Deck title</span><input value=\"Everyday English\" /></label>",
+      "css": ".ds-field { display: grid; gap: .35rem; color: #405c73; font: 700 .86rem Arial, sans-serif; } .ds-field input { width: 100%; box-sizing: border-box; padding: .72rem .8rem; border: 1px solid rgba(64,117,166,.36); border-radius: .55rem; color: #20394e; background: rgba(255,255,255,.86); font: 400 1rem Arial, sans-serif; } .ds-field input:hover { border-color: #4075a6; } .ds-field input:focus-visible { outline: 3px solid rgba(64,117,166,.28); outline-offset: 2px; }"
+    },
+    {
+      "name": "Primary Navigation",
+      "kind": "nav",
+      "description": "Compact uppercase navigation inside a translucent pill.",
+      "html": "<nav class=\"ds-nav\"><a href=\"#\">Home</a><a class=\"ds-active\" href=\"#\">Review</a><a href=\"#\">Decks</a></nav>",
+      "css": ".ds-nav { display: inline-flex; height: 3rem; align-items: center; border: 1px solid rgba(64,117,166,.16); border-radius: 999px; background: rgba(255,255,255,.62); box-shadow: 0 6px 20px rgba(47,78,105,.08); } .ds-nav a { position: relative; display: flex; height: 100%; align-items: center; padding: 0 .75rem; color: rgba(0,0,0,.7); font: 700 .72rem Arial, sans-serif; letter-spacing: .1em; text-transform: uppercase; text-decoration: none; } .ds-nav a:hover { color: #ff3e00; } .ds-nav a:focus-visible { outline: 3px solid rgba(64,117,166,.28); outline-offset: 2px; } .ds-nav .ds-active::after { content: ''; position: absolute; right: calc(50% - 6px); bottom: 0; left: calc(50% - 6px); border-bottom: 3px solid #4075a6; }"
+    },
+    {
+      "name": "Language Switch",
+      "kind": "nav",
+      "description": "A tactile segmented control for the shared English and Japanese workspace.",
+      "html": "<div class=\"ds-language\"><button class=\"ds-selected\">English <span>EN</span></button><button>Japanese <span>JA</span></button></div>",
+      "css": ".ds-language { display: inline-flex; gap: .25rem; padding: .25rem; border: 1px solid rgba(64,117,166,.22); border-radius: .9rem; background: rgba(255,255,255,.52); } .ds-language button { display: flex; align-items: center; gap: .45rem; padding: .55rem .8rem; border: 0; border-radius: .65rem; color: #39546c; background: transparent; font: 700 1rem Arial, sans-serif; cursor: pointer; } .ds-language button:hover { background: rgba(255,255,255,.7); } .ds-language button:focus-visible { outline: 3px solid rgba(64,117,166,.28); outline-offset: 2px; } .ds-language .ds-selected { color: white; background: #4075a6; box-shadow: 0 4px 12px rgba(38,74,107,.18); } .ds-language span { font: 700 .68rem 'Fira Mono', monospace; letter-spacing: .08em; opacity: .72; }"
+    },
+    {
+      "name": "Management Row",
+      "kind": "card",
+      "refersTo": "management-card",
+      "description": "A mostly-flat actionable resource row with a blue leading edge.",
+      "html": "<article class=\"ds-row\"><div><h3>Everyday English</h3><p>24 active cards</p></div><a href=\"#\">Open</a></article>",
+      "css": ".ds-row { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 1rem; align-items: center; padding: 1rem 1.1rem; border: 1px solid rgba(64,117,166,.2); border-left: 4px solid #4075a6; border-radius: .8rem; background: rgba(255,255,255,.68); box-shadow: 0 7px 24px rgba(47,78,105,.07); color: rgba(0,0,0,.7); font-family: Arial, sans-serif; } .ds-row h3 { margin: 0; font-size: 1.08rem; } .ds-row p { margin: .35rem 0 0; color: #60788c; font-size: .88rem; } .ds-row a { color: #315f89; font-weight: 750; text-decoration: none; } .ds-row a:hover { text-decoration: underline; } .ds-row a:focus-visible { outline: 3px solid rgba(64,117,166,.28); outline-offset: 2px; }"
+    },
+    {
+      "name": "Study Card",
+      "kind": "custom",
+      "description": "The signature portrait card with compact metadata chips and centered vocabulary.",
+      "html": "<article class=\"ds-study-card\"><div class=\"ds-chips\"><span>noun</span><span>daily</span></div><h2>serendipity</h2><p>/ˌserənˈdipədē/</p><small>09/27</small></article>",
+      "css": ".ds-study-card { position: relative; width: 280px; min-height: 360px; box-sizing: border-box; padding: 1rem 1rem 2.5rem; overflow: hidden; border: 1px solid rgba(64,117,166,.18); border-radius: 8px; background: white; color: rgba(0,0,0,.7); font-family: Arial, sans-serif; } .ds-study-card:hover { border-color: rgba(64,117,166,.36); } .ds-study-card h2 { margin: 3rem 0 .5rem; font-size: 1.75rem; text-align: center; } .ds-study-card p { margin: 0; text-align: center; opacity: .8; } .ds-study-card small { position: absolute; bottom: 10px; left: 10px; padding: 2px 6px; border-radius: 999px; background: #f3f4f6; } .ds-chips { display: flex; gap: 6px; flex-wrap: wrap; } .ds-chips span { padding: 2px 6px; border-radius: 999px; background: #f3f4f6; font-size: 12px; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Calm Card Table",
+    "overview": "The interface should feel like sitting down with a small, familiar set of study cards: direct, friendly, and ready for a short daily session. Its cool blue atmosphere lowers visual pressure, while rounded controls and physical flip-and-swipe behavior keep the experience tactile and lightweight.\n\nThis is a practical personal tool, not a dense corporate dashboard. The visual system favors a clear task at the center, modest supporting information, and components that communicate state through shape, color, and movement without surrounding the user with panels or metrics.",
+    "keyCharacteristics": [
+      "Cool, calm blue atmosphere with translucent paper-like surfaces.",
+      "Friendly, lightweight composition with one clear task at a time.",
+      "Tactile and playful cards, controls, pills, flips, and swipes.",
+      "Editorial headings used selectively against a plain, practical body face.",
+      "Mostly-flat depth: borders and tonal separation first, shadows only where layering needs proof."
+    ],
+    "rules": [
+      {
+        "name": "The Blue Table Rule",
+        "body": "Study Blue establishes the workspace; signal colors mark an action or state and must not become competing page themes.",
+        "section": "colors"
+      },
+      {
+        "name": "The One Editorial Moment Rule",
+        "body": "Let the largest page or panel heading carry the serif voice; keep operational content plain and immediately readable.",
+        "section": "typography"
+      },
+      {
+        "name": "The Mostly-Flat Rule",
+        "body": "Use border and tone for ordinary grouping; add a shadow only when an element is actionable, selected, or physically above another surface.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do keep one study task or management decision visually dominant on each screen.",
+      "Do use Study Blue, cool borders, and paper surfaces as the default working vocabulary.",
+      "Do reserve pronounced shadows for selected states and true overlays.",
+      "Do preserve the card flip-before-answer behavior and tactile swipe feedback.",
+      "Do let pills, subtle lift, and short transitions add playfulness without adding visual noise."
+    ],
+    "donts": [
+      "Don't turn the interface into a dense dashboard of metrics, panels, or competing controls.",
+      "Don't replace the calm blue atmosphere with multiple equally dominant accent colors.",
+      "Don't use the editorial display face for dense forms or long operational copy.",
+      "Don't add shadows to every bordered surface; grouping should remain mostly flat.",
+      "Don't trade the personal, lightweight character for generic enterprise styling."
+    ]
+  }
+}
