@@ -6,10 +6,11 @@ from datetime import datetime
 from uuid import UUID
 
 import pytest
-from app.auth import VerifiedGoogleIdentity
-from app.main import create_app
 from fastapi.testclient import TestClient
 from sqlalchemy import Engine, text
+
+from app.auth import VerifiedGoogleIdentity
+from app.main import create_app
 from tests.integration.test_multilingual_domain_fixture import (
     load_multilingual_fixture,
 )
