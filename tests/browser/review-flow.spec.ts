@@ -1,11 +1,11 @@
 import { expect, test } from '@playwright/test';
 
 async function answerOneCard(page: import('@playwright/test').Page) {
-	const yes = page.getByRole('button', { name: 'Yes', exact: true });
-	await expect(yes).toBeDisabled();
+	const knewIt = page.getByRole('button', { name: 'Knew it', exact: true });
+	await expect(knewIt).toBeDisabled();
 	await page.locator('.swipe--card').click();
-	await expect(yes).toBeEnabled();
-	await yes.click();
+	await expect(knewIt).toBeEnabled();
+	await knewIt.click();
 	await page.getByRole('button', { name: 'Submit Results', exact: true }).click();
 }
 
