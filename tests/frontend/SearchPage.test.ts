@@ -50,30 +50,37 @@ describe('Search page', () => {
 	it('defaults to multilingual keyword search and labels Japanese results', async () => {
 		render(SearchPage);
 
-		expect(screen.getByRole('button', { name: 'Keyword' })).toHaveAttribute('aria-pressed', 'true');
-		expect(screen.queryByText('English cards only')).not.toBeInTheDocument();
+		expect(screen.getByRole('button', { name: 'Words & phrases' })).toHaveAttribute(
+			'aria-pressed',
+			'true',
+		);
+		expect(screen.queryByText(/Meaning search currently uses English cards only/)).not.toBeInTheDocument();
 
-		await fireEvent.input(screen.getByLabelText('Word or meaning'), {
+		await fireEvent.input(screen.getByLabelText('Word, phrase, or translation'), {
 			target: { value: 'benkyou' },
 		});
-		await fireEvent.click(screen.getByRole('button', { name: 'Search' }));
+		await fireEvent.click(screen.getByRole('button', { name: 'Search cards' }));
 
 		await waitFor(() => expect(api.keywordSearch).toHaveBeenCalledWith('benkyou'));
 		expect(screen.getByText('勉強')).toBeInTheDocument();
 		expect(screen.getByText('JP')).toBeInTheDocument();
+		expect(screen.getByRole('link', { name: /勉強/ })).toHaveAttribute(
+			'href',
+			'/cards/20000000-0000-0000-0000-000000000002?language=ja',
+		);
 		expect(api.semanticSearch).not.toHaveBeenCalled();
 	});
 
 	it('preserves the query when switching to English-only semantic search', async () => {
 		render(SearchPage);
-		const input = screen.getByLabelText('Word or meaning');
+		const input = screen.getByLabelText('Word, phrase, or translation');
 		await fireEvent.input(input, { target: { value: 'a lucky discovery' } });
 
-		await fireEvent.click(screen.getByRole('button', { name: 'Search by meaning' }));
+		await fireEvent.click(screen.getByRole('button', { name: 'Meaning & concepts' }));
 
-		expect(screen.getByText('English cards only')).toBeInTheDocument();
-		expect(screen.getByLabelText('Meaning or concept')).toHaveValue('a lucky discovery');
-		await fireEvent.click(screen.getByRole('button', { name: 'Search' }));
+		expect(screen.getByText('Meaning search currently uses English cards only.')).toBeInTheDocument();
+		expect(screen.getByLabelText('Describe the meaning or idea')).toHaveValue('a lucky discovery');
+		await fireEvent.click(screen.getByRole('button', { name: 'Search cards' }));
 
 		await waitFor(() =>
 			expect(api.semanticSearch).toHaveBeenCalledWith({
@@ -83,5 +90,26 @@ describe('Search page', () => {
 			}),
 		);
 		expect(api.keywordSearch).not.toHaveBeenCalled();
+	});
+
+	it('offers an exact-word fallback when meaning search has no matches', async () => {
+		api.semanticSearch.mockResolvedValue({
+			items: [],
+			index_status: 'empty',
+			eligible_count: 2,
+			indexed_count: 0,
+		});
+		render(SearchPage);
+
+		await fireEvent.click(screen.getByRole('button', { name: 'Meaning & concepts' }));
+		await fireEvent.input(screen.getByLabelText('Describe the meaning or idea'), {
+			target: { value: 'a calm feeling' },
+		});
+		await fireEvent.click(screen.getByRole('button', { name: 'Search cards' }));
+
+		await waitFor(() => expect(screen.getByText('No related cards found')).toBeInTheDocument());
+		await fireEvent.click(screen.getByRole('button', { name: 'Use words & phrases' }));
+
+		expect(screen.getByLabelText('Word, phrase, or translation')).toHaveValue('a calm feeling');
 	});
 });

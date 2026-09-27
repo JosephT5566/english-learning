@@ -249,3 +249,8 @@ Last updated: 2026-09-26
   learner view omits optimistic-lock versions and review-stage numbers, retains those values in the
   API and mutation logic, and presents the deck, learned date, archive state, and next-review status
   in plain language. Invalid language links now offer explicit routes back to supported decks.
+- 2026-09-27: Unified Search with the Study Blue visual system and learner-facing vocabulary while
+  preserving separate multilingual keyword and English-only semantic API calls. Search result links
+  now carry explicit language context. Semantic similarity percentages and index terminology are
+  presented as qualitative match strength and plain coverage guidance, with keyword search offered
+  as the immediate fallback when semantic results are unavailable or empty.

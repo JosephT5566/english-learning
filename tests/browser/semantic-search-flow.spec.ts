@@ -26,15 +26,21 @@ test('semantic search preserves static routing and shows partial owned results',
 	});
 
 	await page.goto('/search');
-	await page.getByRole('button', { name: 'Search by meaning', exact: true }).click();
-	await expect(page.getByText('English cards only', { exact: true })).toBeVisible();
-	await page.getByLabel('Meaning or concept').fill('recover after difficulty');
-	await page.getByRole('button', { name: 'Search', exact: true }).click();
+	await page.getByRole('button', { name: 'Meaning & concepts', exact: true }).click();
+	await expect(
+		page.getByText('Meaning search currently uses English cards only.', { exact: true }),
+	).toBeVisible();
+	await page.getByLabel('Describe the meaning or idea').fill('recover after difficulty');
+	await page.getByRole('button', { name: 'Search cards', exact: true }).click();
 
 	await expect(page.getByText('resilient', { exact: true })).toBeVisible();
-	await expect(page.getByText('92%', { exact: true })).toBeVisible();
+	await expect(page.getByText('Strong match', { exact: true })).toBeVisible();
+	await expect(page.getByRole('link', { name: /resilient/ })).toHaveAttribute(
+		'href',
+		'/cards/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa?language=en',
+	);
 	await expect(page.getByRole('status')).toContainText(
-		'Showing matches from 2 of 3 eligible cards',
+		'Meaning search is ready for 2 of your 3 English cards',
 	);
 	expect(requests).toHaveLength(1);
 	expect(requests[0].url).toBe('http://127.0.0.1:8001/v1/cards/semantic-search');
@@ -43,4 +49,10 @@ test('semantic search preserves static routing and shows partial owned results',
 		target_language: 'en',
 		limit: 10,
 	});
+
+	await page.setViewportSize({ width: 390, height: 700 });
+	const searchPage = await page.locator('.search-page').boundingBox();
+	expect(searchPage?.width).toBeLessThanOrEqual(366);
+	await expect(page.getByRole('button', { name: 'Meaning & concepts' })).toBeVisible();
+	await expect(page.getByRole('link', { name: /resilient/ })).toBeVisible();
 });
