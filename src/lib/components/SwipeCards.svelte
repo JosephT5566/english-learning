@@ -113,7 +113,7 @@
 
 		els.forEach((el, i) => {
 			const scale = (20 - i) / 20;
-			const translateY = -30 * i;
+			const translateY = -10 * i;
 			const opacity = (10 - i) / 10;
 			el.style.opacity = String(opacity);
 			el.style.zIndex = String(els.length - i);
@@ -698,7 +698,6 @@
 		width: 100%;
 		min-height: 0;
 		flex: 1;
-		padding-block: 40px;
 		display: flex;
 		flex-direction: column;
 		position: relative;
@@ -719,6 +718,7 @@
 		text-align: center;
 		color: #334155;
 		line-height: 1.35;
+		padding-bottom: 40px;
 	}
 	.review-guidance p {
 		font-weight: 700;
@@ -748,20 +748,23 @@
 	.swipe--cards {
 		min-height: 0;
 		flex: 1;
-		padding-top: 24px;
+		max-height: min(500px, 112.5vw);
+		margin-top: 24px;
 		display: flex;
 		position: relative;
 		justify-content: center;
-		align-items: flex-end;
+		align-items: flex-start;
 	}
 
 	.swipe--card {
 		display: inline-block;
 		width: 90vw;
 		max-width: 400px;
-		height: 100%;
-		max-height: 600px;
+		height: auto;
+		max-height: 100%;
+		aspect-ratio: 4 / 5;
 		position: absolute;
+		transform-origin: top center;
 		overflow: hidden;
 		will-change: transform;
 		touch-action: pan-y;

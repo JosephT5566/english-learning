@@ -185,7 +185,7 @@
 </svelte:head>
 
 <div
-	class="review-page-container flex h-dvh min-h-0 items-center justify-center bg-[var(--bg)] p-4"
+	class="review-page-container flex min-h-0 w-full flex-1 flex-col items-center justify-center overflow-hidden bg-[var(--bg)] p-4"
 >
 	{#if viewState === 'loading'}
 		<div class="flex flex-col items-center gap-3" aria-live="polite">
@@ -198,7 +198,7 @@
 			<span class="font-[Contrail_One] text-3xl text-slate-500">Loading...</span>
 		</div>
 	{:else if viewState === 'reviewing'}
-		<div class="flex h-full min-h-0 w-full flex-col items-center gap-4">
+		<div class="flex min-h-0 w-full flex-1 flex-col items-center gap-4">
 			<p class="font-[Contrail_One] text-slate-500" aria-live="polite">
 				{Math.min(answers.length + 1, cards.length)} / {cards.length}
 			</p>
