@@ -254,3 +254,12 @@ Last updated: 2026-09-26
   now carry explicit language context. Semantic similarity percentages and index terminology are
   presented as qualitative match strength and plain coverage guidance, with keyword search offered
   as the immediate fallback when semantic results are unavailable or empty.
+
+- 2026-10-06: Added Issue #53's JSON authoring tab beside the existing manual card drawer. Users
+  copy a deck-aware prompt and bring JSON from their own AI tool; the application validates and
+  previews editable content before explicit confirmation. A read-only owned-deck endpoint reuses
+  Pydantic card-field validation with 1-20 cards and a 100,000-byte request bound. Confirmed saves
+  use sequential existing idempotent card creates, with explicit per-card outcomes rather than an
+  atomic batch API. Exact uncertain commands persist across reload without automatic expiry,
+  while confirmed cards are skipped during retry. No AI generation provider or schema migration
+  is added.

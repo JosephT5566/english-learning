@@ -129,6 +129,44 @@ class CardCreate(CardFields):
     deck_id: UUID
 
 
+class CardDrafts(WriteModel):
+    """Bounded, content-only JSON authoring envelope; never a write command."""
+
+    cards: Annotated[list[CardFields], Field(min_length=1, max_length=20)]
+
+
+@router.post("/decks/{deck_id}/card-drafts/validate", response_model=CardDrafts)
+async def validate_card_drafts(
+    deck_id: UUID,
+    request: Request,
+    payload: Annotated[CardDrafts, Body()],
+    session: SessionDependency,
+    user: CurrentUserDependency,
+) -> CardDrafts:
+    _reject_unknown_filters(request, set())
+    if len(await request.body()) > 100_000:
+        raise ApiError(
+            status_code=413,
+            code="input_too_large",
+            message="JSON must be at most 100,000 bytes.",
+        )
+    deck = session.execute(
+        text(
+            "SELECT archived_at FROM learning_decks WHERE id = :id AND owner_id = :owner_id"
+        ),
+        {"id": deck_id, "owner_id": user.id},
+    ).one_or_none()
+    if deck is None:
+        raise _not_found("deck")
+    if deck.archived_at is not None:
+        raise ApiError(
+            status_code=409,
+            code="deck_archived",
+            message="Cards cannot be added to an archived deck.",
+        )
+    return payload
+
+
 class CardUpdate(WriteModel):
     version: Annotated[int, Field(ge=1)]
     term: Term | None = None

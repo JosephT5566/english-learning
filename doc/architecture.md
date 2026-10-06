@@ -398,6 +398,27 @@ Review update payload shape is:
 4. Archives require confirmation. If the response is unclear, the page reads the resource again and
    only navigates to Archived after observing `archived_at`; otherwise it shows an unconfirmed state.
 
+## JSON Card Authoring
+
+- The add-card drawer defaults to Manual and offers a JSON tab with a copyable prompt derived from
+  the owned deck's target and explanation languages. Users generate JSON in their own AI tool;
+  the application does not call an AI generation provider.
+- Pasted input is a content-only object with a `cards` array. Deck IDs, ownership, languages, and
+  review scheduling are excluded from card entries. The browser enforces a 100,000-byte input
+  bound and sends the object to `POST /v1/decks/{deck_id}/card-drafts/validate`.
+- This authenticated, owner-scoped, active-deck endpoint reuses Pydantic `CardFields`, forbids
+  extra fields, requires 1-20 cards, limits valid request bodies to 100,000 bytes, and returns
+  normalized drafts. It creates no cards or review states. Invalid fields use the existing safe
+  validation envelope, including card indices.
+- Users edit, deselect, and explicitly confirm drafts. The complete selected set is revalidated
+  after edits, then saved sequentially through existing `POST /v1/cards` requests with one UUID
+  idempotency key per card. Saves are individual transactions; confirmed cards remain saved if a
+  later card fails. Existing review-state initialization and post-commit embeddings are reused.
+- The browser persists the exact account-scoped deck/content/key and per-card outcomes before
+  sending each request. Uncertain commands have no automatic expiry, are locked against editing,
+  and replay unchanged after reload. Confirmed cards are skipped. A definite rejection permits
+  correction with a new key. Storage failure prevents starting the affected write.
+
 ## Auth Flow
 
 - `src/routes/+page.svelte` initializes Google Identity Services on mount if the user is not signed in.
