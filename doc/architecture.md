@@ -406,6 +406,14 @@ Review update payload shape is:
 - Pasted input is a content-only object with a `cards` array. Deck IDs, ownership, languages, and
   review scheduling are excluded from card entries. The browser enforces a 100,000-byte input
   bound and sends the object to `POST /v1/decks/{deck_id}/card-drafts/validate`.
+- The input runs local Ajv JSON Schema validation 350 ms after typing or pasting, without an
+  API call. Invalid content disables preview and shows card/field errors. Constrained strings are
+  trimmed before validation to match Pydantic; enums and dates are left unchanged. Calendar dates
+  use `ajv-formats`. Preview and edited selections are also checked synchronously before requests;
+  uncertain save commands still replay unchanged.
+- `npm run api:generate` exports `src/lib/api/card-drafts.schema.json` directly from the Pydantic
+  draft model. The model's JSON Schema annotations publish its existing example and part-of-speech
+  dependencies. CI checks this artifact alongside OpenAPI and generated TypeScript to catch drift.
 - This authenticated, owner-scoped, active-deck endpoint reuses Pydantic `CardFields`, forbids
   extra fields, requires 1-20 cards, limits valid request bodies to 100,000 bytes, and returns
   normalized drafts. It creates no cards or review states. Invalid fields use the existing safe

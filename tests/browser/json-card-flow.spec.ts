@@ -166,3 +166,31 @@ test('unconfirmed JSON create survives reload and retries the identical command'
 	expect(writes).toHaveLength(2);
 	expect(writes[1]).toEqual(writes[0]);
 });
+
+test('JSON field validates locally after paste and recovers after correction without network calls', async ({
+	page,
+}) => {
+	await signIn(page);
+	const writes = await mockJsonApi(page, 'en');
+	const validationCalls: string[] = [];
+	page.on('request', (request) => {
+		if (request.url().includes('/card-drafts/validate')) validationCalls.push(request.url());
+	});
+	await openJson(page, 'en');
+	const input = page.getByLabel('Card JSON');
+	await input.fill('{"cards":[{"term":"learn"}]}');
+	await expect(page.getByText('Card 1 · meaning: This field is required.')).toBeVisible();
+	await expect(input).toHaveAttribute('aria-invalid', 'true');
+	await expect(page.getByRole('button', { name: 'Validate and preview' })).toBeDisabled();
+	expect(validationCalls).toHaveLength(0);
+	await input.fill('{"cards":[{"term":"learn","meaning":"學習"}]}');
+	await expect(
+		page.getByText('JSON format looks valid. Preview to check it with your deck.'),
+	).toBeVisible();
+	await expect(page.getByRole('button', { name: 'Validate and preview' })).toBeEnabled();
+	expect(validationCalls).toHaveLength(0);
+	await page.getByRole('button', { name: 'Validate and preview' }).click();
+	await expect(page.getByText('learn', { exact: true })).toBeVisible();
+	expect(validationCalls).toHaveLength(1);
+	expect(writes).toHaveLength(0);
+});

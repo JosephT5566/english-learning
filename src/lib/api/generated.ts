@@ -283,7 +283,7 @@ export interface components {
             target_language_definition?: string | null;
             /** Term */
             term: string;
-        };
+        } & (unknown & unknown);
         /** CardDetail */
         CardDetail: {
             /** Antonyms */
@@ -390,7 +390,7 @@ export interface components {
             target_language_definition?: string | null;
             /** Term */
             term: string;
-        };
+        } & (unknown & unknown);
         /** CardSummary */
         CardSummary: {
             /** Archived At */

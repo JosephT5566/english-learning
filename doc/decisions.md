@@ -263,3 +263,10 @@ Last updated: 2026-09-26
   atomic batch API. Exact uncertain commands persist across reload without automatic expiry,
   while confirmed cards are skipped during retry. No AI generation provider or schema migration
   is added.
+
+- 2026-10-06: Added local Ajv validation to JSON authoring using a bundled JSON Schema exported
+  from Pydantic. The backend publishes existing cross-field dependencies as schema annotations;
+  frontend code does not reimplement those rules. Debounced input checks run locally, while preview
+  and edited selections are checked synchronously before requests. Backend ownership, active-deck,
+  validation, and confirmation boundaries remain authoritative. CI regenerates and checks the
+  new schema alongside the existing API artifacts.

@@ -94,6 +94,44 @@ class DeckUpdate(WriteModel):
 
 
 class CardFields(WriteModel):
+    # Publish the same cross-field rules enforced below for client-side JSON validation.
+    model_config = ConfigDict(
+        extra="forbid",
+        json_schema_extra={
+            "allOf": [
+                {
+                    "if": {
+                        "anyOf": [
+                            {
+                                "required": [field],
+                                "properties": {field: {"type": "string"}},
+                            }
+                            for field in ("example_translation", "example_source")
+                        ]
+                    },
+                    "then": {
+                        "required": ["example_sentence"],
+                        "properties": {
+                            "example_sentence": {"type": "string", "minLength": 1}
+                        },
+                    },
+                },
+                {
+                    "if": {
+                        "required": ["part_of_speech"],
+                        "properties": {"part_of_speech": {"const": "other"}},
+                    },
+                    "then": {
+                        "required": ["part_of_speech_detail"],
+                        "properties": {
+                            "part_of_speech_detail": {"type": "string", "minLength": 1}
+                        },
+                    },
+                },
+            ]
+        },
+    )
+
     term: Term
     meaning: Meaning
     reading: ShortText | None = None

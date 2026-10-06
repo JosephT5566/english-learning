@@ -3,9 +3,9 @@
 	import { ApiClientError, createCard, validateCardDrafts } from '$lib/api/client';
 	import type { Deck } from '$lib/api/contracts';
 	import CardForm from './CardForm.svelte';
+	import { validateCardJson, type LocalJsonValidation } from '$lib/management/json-card-validation';
 	import {
 		cardPrompt,
-		parseCardJson,
 		saveJsonQueue,
 		validationMessages,
 		type CardDraft,
@@ -37,6 +37,20 @@
 	let busy = $state(false);
 	let messages = $state<string[]>([]);
 	let copied = $state(false);
+	let localResult = $state<LocalJsonValidation | null>(null);
+	let validationPending = $state(false);
+
+	$effect(() => {
+		const input = source;
+		localResult = null;
+		validationPending = Boolean(input.trim());
+		if (!input.trim()) return;
+		const timer = window.setTimeout(() => {
+			localResult = validateCardJson(input);
+			validationPending = false;
+		}, 350);
+		return () => window.clearTimeout(timer);
+	});
 	let editing = $state<number | null>(null);
 	let uncertain = $derived(queue.entries.some((entry) => entry.status === 'unconfirmed'));
 	let confirmed = $derived(queue.entries.filter((entry) => entry.status === 'confirmed').length);
@@ -75,11 +89,18 @@
 	}
 	async function preview(): Promise<void> {
 		if (busy || uncertain) return;
-		setBusy(true);
 		messages = [];
+		const result = validateCardJson(source);
+		localResult = result;
+		validationPending = false;
+		if (!result.valid) {
+			messages = result.messages;
+			return;
+		}
+		setBusy(true);
 		try {
 			checkOwner();
-			const cards = await validateCardDrafts(deck.id, parseCardJson(source));
+			const cards = await validateCardDrafts(deck.id, result.value);
 			queue = {
 				...queue,
 				entries: cards.map((fields) => ({
@@ -135,9 +156,14 @@
 				const entries = queue.entries.filter(
 					(entry) => entry.selected && entry.status !== 'confirmed',
 				);
-				const validated = await validateCardDrafts(deck.id, {
-					cards: entries.map((entry) => entry.fields),
-				});
+				const result = validateCardJson(
+					JSON.stringify({ cards: entries.map((entry) => entry.fields) }),
+				);
+				if (!result.valid) {
+					messages = result.messages;
+					return;
+				}
+				const validated = await validateCardDrafts(deck.id, result.value);
 				entries.forEach((entry, index) => {
 					entry.fields = validated[index];
 				});
@@ -195,6 +221,9 @@
 	<label class="json-input"
 		><span>Card JSON</span><textarea
 			bind:value={source}
+			oninput={() => (messages = [])}
+			aria-invalid={localResult && !localResult.valid ? true : undefined}
+			aria-describedby="json-local-validation"
 			disabled={busy || uncertain}
 			rows="8"
 			placeholder={'{"cards":[{"term":"…","meaning":"…"}]}'}
@@ -202,10 +231,24 @@
 		></textarea></label
 	>
 	<p class="input-hint">One JSON object · 1–20 cards · up to 100,000 bytes</p>
+	<div id="json-local-validation" role="status" aria-live="polite">
+		{#if validationPending}<p class="input-hint">Checking JSON…</p>
+		{:else if localResult?.valid}<p class="input-hint">
+				JSON format looks valid. Preview to check it with your deck.
+			</p>
+		{:else if localResult && !messages.length}
+			<div class="json-errors">
+				<strong>Check this JSON</strong>
+				<ul>
+					{#each localResult?.messages ?? [] as message, index (index)}<li>{message}</li>{/each}
+				</ul>
+			</div>
+		{/if}
+	</div>
 	<button
 		type="button"
 		class="secondary-button"
-		disabled={busy || uncertain || !source.trim()}
+		disabled={busy || uncertain || !source.trim() || localResult?.valid === false}
 		onclick={preview}>{busy ? 'Working…' : 'Validate and preview'}</button
 	>
 	{#if messages.length}<div class="json-errors" role="alert">

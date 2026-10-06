@@ -51,6 +51,47 @@ beforeEach(() => {
 });
 
 describe('JSON card authoring', () => {
+	it('validates pasted card fields after a short delay without calling the backend', async () => {
+		setup();
+		const input = screen.getByLabelText('Card JSON');
+		await fireEvent.input(input, { target: { value: '{"cards":[{"term":"learn"}]}' } });
+		expect(await screen.findByText('Card 1 · meaning: This field is required.')).toBeVisible();
+		expect(input).toHaveAttribute('aria-invalid', 'true');
+		expect(screen.getByRole('button', { name: 'Validate and preview' })).toBeDisabled();
+		expect(validateCardDrafts).not.toHaveBeenCalled();
+		await fireEvent.input(input, { target: { value: JSON.stringify({ cards: [drafts[0]] }) } });
+		expect(
+			await screen.findByText('JSON format looks valid. Preview to check it with your deck.'),
+		).toBeVisible();
+		expect(input).not.toHaveAttribute('aria-invalid');
+		expect(screen.getByRole('button', { name: 'Validate and preview' })).toBeEnabled();
+		expect(validateCardDrafts).not.toHaveBeenCalled();
+	});
+	it('checks the latest input when typing replaces an invalid paste', async () => {
+		setup();
+		const input = screen.getByLabelText('Card JSON');
+		await fireEvent.input(input, { target: { value: '{"cards":[{}]}' } });
+		await fireEvent.input(input, { target: { value: JSON.stringify({ cards: [drafts[0]] }) } });
+		expect(
+			await screen.findByText('JSON format looks valid. Preview to check it with your deck.'),
+		).toBeVisible();
+		expect(screen.queryByText('Card 1 · meaning: This field is required.')).not.toBeInTheDocument();
+		expect(validateCardDrafts).not.toHaveBeenCalled();
+	});
+	it('rejects invalid draft edits locally before confirmation calls', async () => {
+		setup();
+		await preview();
+		await fireEvent.click(screen.getByRole('button', { name: 'Edit card 1' }));
+		await fireEvent.input(screen.getByLabelText('Meaning'), { target: { value: '   ' } });
+		await fireEvent.click(screen.getByRole('button', { name: 'Apply draft edits' }));
+		await fireEvent.click(screen.getByRole('button', { name: 'Add selected cards (2)' }));
+		expect(await screen.findByRole('alert')).toHaveTextContent(
+			'Card 1 · meaning: Enter a nonblank value.',
+		);
+		expect(validateCardDrafts).toHaveBeenCalledOnce();
+		expect(createCard).not.toHaveBeenCalled();
+	});
+
 	it('does not submit malformed JSON or create cards during preview', async () => {
 		setup();
 		await fireEvent.input(screen.getByLabelText('Card JSON'), {
@@ -75,7 +116,7 @@ describe('JSON card authoring', () => {
 		);
 		setup();
 		await fireEvent.input(screen.getByLabelText('Card JSON'), {
-			target: { value: '{"cards":[{}]}' },
+			target: { value: JSON.stringify({ cards: drafts }) },
 		});
 		await fireEvent.click(screen.getByRole('button', { name: 'Validate and preview' }));
 		expect(await screen.findByRole('alert')).toHaveTextContent('Card 2 · meaning');

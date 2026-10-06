@@ -3,6 +3,68 @@
     "schemas": {
       "CardCreate": {
         "additionalProperties": false,
+        "allOf": [
+          {
+            "if": {
+              "anyOf": [
+                {
+                  "properties": {
+                    "example_translation": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "example_translation"
+                  ]
+                },
+                {
+                  "properties": {
+                    "example_source": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "example_source"
+                  ]
+                }
+              ]
+            },
+            "then": {
+              "properties": {
+                "example_sentence": {
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "example_sentence"
+              ]
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "part_of_speech": {
+                  "const": "other"
+                }
+              },
+              "required": [
+                "part_of_speech"
+              ]
+            },
+            "then": {
+              "properties": {
+                "part_of_speech_detail": {
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "part_of_speech_detail"
+              ]
+            }
+          }
+        ],
         "properties": {
           "antonyms": {
             "default": [],
@@ -481,6 +543,68 @@
       },
       "CardFields": {
         "additionalProperties": false,
+        "allOf": [
+          {
+            "if": {
+              "anyOf": [
+                {
+                  "properties": {
+                    "example_translation": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "example_translation"
+                  ]
+                },
+                {
+                  "properties": {
+                    "example_source": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "example_source"
+                  ]
+                }
+              ]
+            },
+            "then": {
+              "properties": {
+                "example_sentence": {
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "example_sentence"
+              ]
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "part_of_speech": {
+                  "const": "other"
+                }
+              },
+              "required": [
+                "part_of_speech"
+              ]
+            },
+            "then": {
+              "properties": {
+                "part_of_speech_detail": {
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "part_of_speech_detail"
+              ]
+            }
+          }
+        ],
         "properties": {
           "antonyms": {
             "default": [],

@@ -1,0 +1,311 @@
+{
+  "$defs": {
+    "CardFields": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "anyOf": [
+              {
+                "properties": {
+                  "example_translation": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "example_translation"
+                ]
+              },
+              {
+                "properties": {
+                  "example_source": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "example_source"
+                ]
+              }
+            ]
+          },
+          "then": {
+            "properties": {
+              "example_sentence": {
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "example_sentence"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "part_of_speech": {
+                "const": "other"
+              }
+            },
+            "required": [
+              "part_of_speech"
+            ]
+          },
+          "then": {
+            "properties": {
+              "part_of_speech_detail": {
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "part_of_speech_detail"
+            ]
+          }
+        }
+      ],
+      "properties": {
+        "antonyms": {
+          "default": [],
+          "items": {
+            "maxLength": 255,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 20,
+          "title": "Antonyms",
+          "type": "array"
+        },
+        "example_sentence": {
+          "anyOf": [
+            {
+              "maxLength": 1000,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Example Sentence"
+        },
+        "example_source": {
+          "anyOf": [
+            {
+              "maxLength": 500,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Example Source"
+        },
+        "example_translation": {
+          "anyOf": [
+            {
+              "maxLength": 1000,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Example Translation"
+        },
+        "learned_on": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Learned On"
+        },
+        "meaning": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Meaning",
+          "type": "string"
+        },
+        "note": {
+          "anyOf": [
+            {
+              "maxLength": 4000,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Note"
+        },
+        "part_of_speech": {
+          "anyOf": [
+            {
+              "enum": [
+                "noun",
+                "verb",
+                "adjective",
+                "adverb",
+                "pronoun",
+                "determiner",
+                "preposition",
+                "conjunction",
+                "interjection",
+                "particle",
+                "auxiliary",
+                "numeral",
+                "phrase",
+                "other"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Part Of Speech"
+        },
+        "part_of_speech_detail": {
+          "anyOf": [
+            {
+              "maxLength": 100,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Part Of Speech Detail"
+        },
+        "pronunciation": {
+          "anyOf": [
+            {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Pronunciation"
+        },
+        "reading": {
+          "anyOf": [
+            {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reading"
+        },
+        "romanization": {
+          "anyOf": [
+            {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Romanization"
+        },
+        "supplementary_note": {
+          "anyOf": [
+            {
+              "maxLength": 4000,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Supplementary Note"
+        },
+        "synonyms": {
+          "default": [],
+          "items": {
+            "maxLength": 255,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 20,
+          "title": "Synonyms",
+          "type": "array"
+        },
+        "target_language_definition": {
+          "anyOf": [
+            {
+              "maxLength": 2000,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Target Language Definition"
+        },
+        "term": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Term",
+          "type": "string"
+        }
+      },
+      "required": [
+        "term",
+        "meaning"
+      ],
+      "title": "CardFields",
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Bounded, content-only JSON authoring envelope; never a write command.",
+  "properties": {
+    "cards": {
+      "items": {
+        "$ref": "#/$defs/CardFields"
+      },
+      "maxItems": 20,
+      "minItems": 1,
+      "title": "Cards",
+      "type": "array"
+    }
+  },
+  "required": [
+    "cards"
+  ],
+  "title": "CardDrafts",
+  "type": "object"
+}

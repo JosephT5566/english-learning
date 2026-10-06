@@ -12,7 +12,7 @@
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
 		"api:schema": "uv run --project apps/api python apps/api/scripts/export_openapi.py",
 		"api:generate": "npm run api:schema && openapi-typescript apps/api/openapi.json -o src/lib/api/generated.ts",
-		"api:check": "npm run api:generate && git diff --exit-code -- apps/api/openapi.json src/lib/api/generated.ts",
+		"api:check": "npm run api:generate && git diff --exit-code -- apps/api/openapi.json src/lib/api/generated.ts src/lib/api/card-drafts.schema.json",
 		"test:frontend": "node --test --experimental-strip-types tests/frontend/*.test.mjs && vitest run",
 		"test:browser": "playwright test",
 		"format": "prettier --write .",
@@ -59,6 +59,8 @@
 		"@sveltejs/adapter-static": "^3.0.9",
 		"@types/google.accounts": "^0.0.17",
 		"@types/lodash": "^4.17.20",
+		"ajv": "^8.20.0",
+		"ajv-formats": "^3.0.1",
 		"bits-ui": "^2.19.2",
 		"classnames": "^2.5.1",
 		"lodash": "^4.17.21"
