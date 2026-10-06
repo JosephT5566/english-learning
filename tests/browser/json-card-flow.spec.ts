@@ -16,7 +16,7 @@ async function signIn(page: Page) {
 }
 
 async function mockJsonApi(page: Page, language: 'en' | 'ja', ambiguous = false) {
-	const writes: { body: string; key: string }[] = [];
+	const writes: { body: string }[] = [];
 	let first = true;
 	const defaults = {
 		reading: null,
@@ -40,41 +40,48 @@ async function mockJsonApi(page: Page, language: 'en' | 'ja', ambiguous = false)
 			json: { cards: payload.cards.map((fields: object) => ({ ...defaults, ...fields })) },
 		});
 	});
-	await page.route('**/v1/cards', async (route) => {
+	await page.route('**/v1/decks/*/cards/bulk', async (route) => {
 		if (route.request().method() !== 'POST') return route.continue();
 		const request = route.request();
-		writes.push({ body: request.postData()!, key: request.headers()['idempotency-key'] });
+		writes.push({ body: request.postData()! });
 		if (ambiguous && first) {
 			first = false;
 			return route.fulfill({ status: 201, json: { unclear: true } });
 		}
-		const fields = request.postDataJSON();
+		const payload = request.postDataJSON();
 		await route.fulfill({
 			status: 201,
 			json: {
-				...defaults,
-				...fields,
-				id: `abababab-abab-4bab-8bab-${String(writes.length).padStart(12, '0')}`,
-				deck: {
-					id: language === 'ja' ? jaDeck : enDeck,
-					title: 'Words',
-					target_language: language,
-					explanation_language: 'zh-TW',
-					archived_at: null,
-				},
-				version: 1,
-				archived_at: null,
-				created_at: '2026-10-06T00:00:00Z',
-				updated_at: '2026-10-06T00:00:00Z',
-				tags: [],
-				review_state: {
-					review_stage: 1,
-					ease_factor: '2.50',
-					interval_days: 0,
-					last_reviewed_at: null,
-					next_review_at: '2026-10-06T00:00:00Z',
-					version: 1,
-				},
+				cards: payload.cards.map(
+					(item: { idempotency_key: string; fields: object }, index: number) => ({
+						idempotency_key: item.idempotency_key,
+						card: {
+							...defaults,
+							...item.fields,
+							id: `abababab-abab-4bab-8bab-${String(index + 1).padStart(12, '0')}`,
+							deck: {
+								id: language === 'ja' ? jaDeck : enDeck,
+								title: 'Words',
+								target_language: language,
+								explanation_language: 'zh-TW',
+								archived_at: null,
+							},
+							version: 1,
+							archived_at: null,
+							created_at: '2026-10-06T00:00:00Z',
+							updated_at: '2026-10-06T00:00:00Z',
+							tags: [],
+							review_state: {
+								review_stage: 1,
+								ease_factor: '2.50',
+								interval_days: 0,
+								last_reviewed_at: null,
+								next_review_at: '2026-10-06T00:00:00Z',
+								version: 1,
+							},
+						},
+					}),
+				),
 			},
 		});
 	});
@@ -111,7 +118,8 @@ test('English JSON authoring previews and confirms one card without changing man
 	expect(writes).toHaveLength(0);
 	await page.getByRole('button', { name: 'Add selected cards (1)' }).click();
 	await expect(page.getByText('1 added · 0 selected')).toBeVisible();
-	expect(JSON.parse(writes[0].body)).toMatchObject({ deck_id: enDeck, term: 'steady' });
+	expect(JSON.parse(writes[0].body).cards[0].fields).toMatchObject({ term: 'steady' });
+	expect(writes).toHaveLength(1);
 });
 
 test('Japanese multiple-card preview edits and selects before creation on a mobile viewport', async ({
@@ -138,8 +146,7 @@ test('Japanese multiple-card preview edits and selects before creation on a mobi
 	await page.getByRole('button', { name: 'Add selected cards (1)' }).click();
 	await expect(page.getByText('1 added · 0 selected')).toBeVisible();
 	expect(writes).toHaveLength(1);
-	expect(JSON.parse(writes[0].body)).toMatchObject({
-		deck_id: jaDeck,
+	expect(JSON.parse(writes[0].body).cards[0].fields).toMatchObject({
 		reading: 'よむ',
 		meaning: '閱讀文字',
 	});
@@ -148,21 +155,28 @@ test('Japanese multiple-card preview edits and selects before creation on a mobi
 	).toBe(true);
 });
 
-test('unconfirmed JSON create survives reload and retries the identical command', async ({
+test('unconfirmed multi-card bulk create survives reload and retries the identical command', async ({
 	page,
 }) => {
 	await signIn(page);
 	const writes = await mockJsonApi(page, 'en', true);
 	await openJson(page, 'en');
-	await page.getByLabel('Card JSON').fill('{"cards":[{"term":"retry","meaning":"再試一次"}]}');
+	await page.getByLabel('Card JSON').fill(
+		JSON.stringify({
+			cards: [
+				{ term: 'retry', meaning: '再試一次' },
+				{ term: 'second', meaning: '第二' },
+			],
+		}),
+	);
 	await page.getByRole('button', { name: 'Validate and preview' }).click();
-	await page.getByRole('button', { name: 'Add selected cards (1)' }).click();
+	await page.getByRole('button', { name: 'Add selected cards (2)' }).click();
 	await expect(page.getByRole('button', { name: 'Retry unchanged cards' })).toBeVisible();
 	await page.reload();
 	await expect(page.getByRole('button', { name: 'Retry unchanged cards' })).toBeVisible();
 	await expect(page.getByRole('tab', { name: 'Manual', exact: true })).toBeDisabled();
 	await page.getByRole('button', { name: 'Retry unchanged cards' }).click();
-	await expect(page.getByText('1 added · 0 selected')).toBeVisible();
+	await expect(page.getByText('2 added · 0 selected')).toBeVisible();
 	expect(writes).toHaveLength(2);
 	expect(writes[1]).toEqual(writes[0]);
 });
@@ -193,4 +207,25 @@ test('JSON field validates locally after paste and recovers after correction wit
 	await expect(page.getByText('learn', { exact: true })).toBeVisible();
 	expect(validationCalls).toHaveLength(1);
 	expect(writes).toHaveLength(0);
+});
+
+test('two selected drafts are confirmed by a single bulk request', async ({ page }) => {
+	await signIn(page);
+	const writes = await mockJsonApi(page, 'en');
+	await openJson(page, 'en');
+	await page.getByLabel('Card JSON').fill(
+		JSON.stringify({
+			cards: [
+				{ term: 'one', meaning: 'first' },
+				{ term: 'two', meaning: 'second' },
+			],
+		}),
+	);
+	await page.getByRole('button', { name: 'Validate and preview' }).click();
+	await page.getByRole('button', { name: 'Add selected cards (2)' }).click();
+	await expect(page.getByText('2 added · 0 selected')).toBeVisible();
+	expect(writes).toHaveLength(1);
+	expect(
+		JSON.parse(writes[0].body).cards.map((item: { fields: { term: string } }) => item.fields.term),
+	).toEqual(['one', 'two']);
 });

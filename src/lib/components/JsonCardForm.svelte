@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { getProfile } from '$lib/auth';
-	import { ApiClientError, createCard, validateCardDrafts } from '$lib/api/client';
+	import { ApiClientError, createCards, validateCardDrafts } from '$lib/api/client';
 	import type { Deck } from '$lib/api/contracts';
 	import CardForm from './CardForm.svelte';
 	import { validateCardJson, type LocalJsonValidation } from '$lib/management/json-card-validation';
@@ -169,31 +169,39 @@
 				});
 				persist();
 			}
-			for (const entry of queue.entries) {
-				if (!entry.selected || entry.status === 'confirmed') continue;
-				checkOwner();
+			const entries = queue.entries.filter(
+				(entry) => entry.selected && entry.status !== 'confirmed',
+			);
+			checkOwner();
+			entries.forEach((entry) => {
 				entry.status = 'unconfirmed';
-				persist(); // Persist the exact command before sending it. Storage failure blocks the write.
-				try {
-					const created = await createCard({ ...entry.fields, deck_id: queue.deckId }, entry.key);
-					entry.cardId = created.id;
+			});
+			persist(); // Preserve the entire exact selection before sending any write.
+			try {
+				const created = await createCards(queue.deckId, {
+					cards: entries.map((entry) => ({ idempotency_key: entry.key, fields: entry.fields })),
+				});
+				entries.forEach((entry, index) => {
+					entry.cardId = created[index].id;
 					entry.status = 'confirmed';
-					wrote = true;
-					persist();
-				} catch (cause) {
-					// Network, malformed success, server, and authentication failures retain the key/body.
-					if (
-						cause instanceof ApiClientError &&
-						!cause.retryable &&
-						cause.kind !== 'authentication' &&
-						cause.kind !== 'invalid_response'
-					) {
+				});
+				wrote = true;
+				persist();
+			} catch (cause) {
+				// Ambiguous failures retain every field/key and lock the whole selection.
+				if (
+					cause instanceof ApiClientError &&
+					!cause.retryable &&
+					cause.kind !== 'authentication' &&
+					cause.kind !== 'invalid_response'
+				) {
+					entries.forEach((entry) => {
 						entry.status = 'rejected';
-						entry.key = crypto.randomUUID();
-						persist();
-					}
-					throw cause;
+					});
+					// Keep keys: a restored legacy queue may already contain committed cards.
+					persist();
 				}
+				throw cause;
 			}
 		} catch (cause) {
 			report(cause);
@@ -269,11 +277,11 @@
 			>
 		</div>
 		{#if uncertain}<p role="status">
-				A card's result was not confirmed. Retry the unchanged cards before editing or starting
-				another set.
+				The selected cards' result was not confirmed. Retry the unchanged cards before editing or
+				starting another set.
 			</p>{/if}
 		<p class="input-hint">
-			Cards are saved individually. If saving stops, cards already added remain in your deck.
+			Selected cards are saved together. If any card is rejected, no new cards are added.
 		</p>
 		<ul class="draft-list">
 			{#each queue.entries as entry, index (index)}

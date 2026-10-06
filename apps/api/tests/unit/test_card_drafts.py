@@ -176,3 +176,58 @@ def test_authentication_is_required():
             http.post(PATH, json={"cards": [{"term": "x", "meaning": "y"}]}).status_code
             == 401
         )
+
+
+@pytest.mark.parametrize(
+    "cards",
+    [
+        [],
+        [
+            {
+                "idempotency_key": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+                "fields": {"term": "x", "meaning": "y"},
+            }
+        ]
+        * 21,
+        [{"idempotency_key": "bad", "fields": {"term": "x", "meaning": "y"}}],
+        [
+            {
+                "idempotency_key": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+                "fields": {"term": "x", "meaning": "y", "deck_id": DECK_ID},
+            }
+        ],
+        [
+            {
+                "idempotency_key": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+                "fields": {"term": "x", "meaning": "y"},
+            }
+        ]
+        * 2,
+    ],
+)
+def test_bulk_invalid_envelope_never_accesses_database(client, cards):
+    http, session = client
+    response = http.post(f"/v1/decks/{DECK_ID}/cards/bulk", json={"cards": cards})
+    assert response.status_code == 422
+    assert session.lookups == 0
+
+
+def test_bulk_oversized_body_never_accesses_database(client):
+    import json
+
+    http, session = client
+    payload = {
+        "cards": [
+            {
+                "idempotency_key": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+                "fields": {"term": "x", "meaning": "y"},
+            }
+        ]
+    }
+    response = http.post(
+        f"/v1/decks/{DECK_ID}/cards/bulk",
+        content=" " * 100_000 + json.dumps(payload),
+        headers={"Content-Type": "application/json"},
+    )
+    assert response.status_code == 413
+    assert session.lookups == 0

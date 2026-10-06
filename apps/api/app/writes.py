@@ -7,7 +7,16 @@ from datetime import date
 from typing import Annotated, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Body, Depends, Header, Request, Response, status
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Body,
+    Depends,
+    Header,
+    Request,
+    Response,
+    status,
+)
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -171,6 +180,30 @@ class CardDrafts(WriteModel):
     """Bounded, content-only JSON authoring envelope; never a write command."""
 
     cards: Annotated[list[CardFields], Field(min_length=1, max_length=20)]
+
+
+class CardBulkCreateItem(WriteModel):
+    idempotency_key: UUID
+    fields: CardFields
+
+
+class CardBulkCreate(WriteModel):
+    cards: Annotated[list[CardBulkCreateItem], Field(min_length=1, max_length=20)]
+
+    @model_validator(mode="after")
+    def unique_keys(self) -> "CardBulkCreate":
+        if len({item.idempotency_key for item in self.cards}) != len(self.cards):
+            raise ValueError("each card must have a distinct idempotency key")
+        return self
+
+
+class CardBulkResultItem(WriteModel):
+    idempotency_key: UUID
+    card: CardDetail
+
+
+class CardBulkResult(WriteModel):
+    cards: list[CardBulkResultItem]
 
 
 @router.post("/decks/{deck_id}/card-drafts/validate", response_model=CardDrafts)
@@ -484,6 +517,16 @@ def create_card(
 ) -> CardDetail:
     _reject_unknown_filters(request, set())
     idempotency_key = _idempotency_key(raw_idempotency_key)
+    detail = _create_card_in_transaction(session, payload, user.id, idempotency_key)
+    session.commit()
+    _try_embed_after_commit(request, detail.id, user.id)
+    return detail
+
+
+def _create_card_in_transaction(
+    session: Session, payload: CardCreate, owner_id: int, idempotency_key: UUID
+) -> CardDetail:
+    """Create or replay a card without committing the caller's transaction."""
     request_hash = _creation_request_hash(payload)
     existing = (
         session.execute(
@@ -495,7 +538,7 @@ def create_card(
                   AND creation_idempotency_key = :idempotency_key
                 """
             ),
-            {"owner_id": user.id, "idempotency_key": idempotency_key},
+            {"owner_id": owner_id, "idempotency_key": idempotency_key},
         )
         .mappings()
         .one_or_none()
@@ -503,15 +546,13 @@ def create_card(
     if existing is not None:
         if existing.creation_request_hash != request_hash:
             raise _idempotency_key_reused()
-        detail = _card_detail(session, existing.id, user.id)
-        session.commit()
-        _try_embed_after_commit(request, existing.id, user.id)
+        detail = _card_detail(session, existing.id, owner_id)
         return detail
     deck_archived = session.execute(
         text(
-            "SELECT archived_at FROM learning_decks WHERE id = :id AND owner_id = :owner_id"
+            "SELECT archived_at FROM learning_decks WHERE id = :id AND owner_id = :owner_id FOR UPDATE"
         ),
-        {"id": payload.deck_id, "owner_id": user.id},
+        {"id": payload.deck_id, "owner_id": owner_id},
     ).one_or_none()
     if deck_archived is None:
         raise _not_found("deck")
@@ -541,7 +582,7 @@ def create_card(
             """
         ),
         {
-            "owner_id": user.id,
+            "owner_id": owner_id,
             **values,
             "creation_idempotency_key": idempotency_key,
             "creation_request_hash": request_hash,
@@ -558,16 +599,14 @@ def create_card(
                       AND creation_idempotency_key = :idempotency_key
                     """
                 ),
-                {"owner_id": user.id, "idempotency_key": idempotency_key},
+                {"owner_id": owner_id, "idempotency_key": idempotency_key},
             )
             .mappings()
             .one()
         )
         if replay.creation_request_hash != request_hash:
             raise _idempotency_key_reused()
-        detail = _card_detail(session, replay.id, user.id)
-        session.commit()
-        _try_embed_after_commit(request, replay.id, user.id)
+        detail = _card_detail(session, replay.id, owner_id)
         return detail
     session.execute(
         text(
@@ -581,22 +620,79 @@ def create_card(
             )
             """
         ),
-        {"card_id": card_id, "owner_id": user.id},
+        {"card_id": card_id, "owner_id": owner_id},
     )
     session.execute(
         text(
             "UPDATE learning_cards SET semantic_content_hash = :hash WHERE id = :id AND owner_id = :owner_id"
         ),
         {
-            "hash": _semantic_hash(session, card_id, user.id),
+            "hash": _semantic_hash(session, card_id, owner_id),
             "id": card_id,
-            "owner_id": user.id,
+            "owner_id": owner_id,
         },
     )
-    detail = _card_detail(session, card_id, user.id)
-    session.commit()
-    _try_embed_after_commit(request, card_id, user.id)
+    detail = _card_detail(session, card_id, owner_id)
     return detail
+
+
+async def _check_bulk_body_size(request: Request) -> None:
+    if len(await request.body()) > 100_000:
+        raise ApiError(
+            status_code=413,
+            code="input_too_large",
+            message="JSON must be at most 100,000 bytes.",
+        )
+
+
+@router.post(
+    "/decks/{deck_id}/cards/bulk",
+    response_model=CardBulkResult,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_cards(
+    deck_id: UUID,
+    body_size_check: Annotated[None, Depends(_check_bulk_body_size)],
+    request: Request,
+    payload: Annotated[CardBulkCreate, Body()],
+    background_tasks: BackgroundTasks,
+    session: SessionDependency,
+    user: CurrentUserDependency,
+) -> CardBulkResult:
+    """Confirm selected drafts atomically, with the existing per-card replay contract."""
+    _reject_unknown_filters(request, set())
+    # Serialize writes against deck archival. Sort keys to prevent deadlocks with
+    # overlapping concurrent requests, including keys previously used in other decks.
+    deck = session.execute(
+        text(
+            "SELECT id FROM learning_decks WHERE id = :id AND owner_id = :owner_id FOR UPDATE"
+        ),
+        {"id": deck_id, "owner_id": user.id},
+    ).scalar_one_or_none()
+    if deck is None:
+        raise _not_found("deck")
+    results = {}
+    for item in sorted(payload.cards, key=lambda item: item.idempotency_key):
+        command = CardCreate(deck_id=deck_id, **item.fields.model_dump())
+        results[item.idempotency_key] = _create_card_in_transaction(
+            session, command, user.id, item.idempotency_key
+        )
+    response = CardBulkResult(
+        cards=[
+            CardBulkResultItem(
+                idempotency_key=item.idempotency_key, card=results[item.idempotency_key]
+            )
+            for item in payload.cards
+        ]
+    )
+    session.commit()
+    # Derived embeddings follow the committed response, so up to 20 provider
+    # attempts do not delay confirmation. Failed attempts use the existing backfill.
+    for item in response.cards:
+        background_tasks.add_task(
+            _try_embed_after_commit, request, item.card.id, user.id
+        )
+    return response
 
 
 @router.patch("/cards/{card_id}", response_model=CardDetail)

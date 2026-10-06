@@ -1,6 +1,80 @@
 {
   "components": {
     "schemas": {
+      "CardBulkCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "cards": {
+            "items": {
+              "$ref": "#/components/schemas/CardBulkCreateItem"
+            },
+            "maxItems": 20,
+            "minItems": 1,
+            "title": "Cards",
+            "type": "array"
+          }
+        },
+        "required": [
+          "cards"
+        ],
+        "title": "CardBulkCreate",
+        "type": "object"
+      },
+      "CardBulkCreateItem": {
+        "additionalProperties": false,
+        "properties": {
+          "fields": {
+            "$ref": "#/components/schemas/CardFields"
+          },
+          "idempotency_key": {
+            "format": "uuid",
+            "title": "Idempotency Key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "idempotency_key",
+          "fields"
+        ],
+        "title": "CardBulkCreateItem",
+        "type": "object"
+      },
+      "CardBulkResult": {
+        "additionalProperties": false,
+        "properties": {
+          "cards": {
+            "items": {
+              "$ref": "#/components/schemas/CardBulkResultItem"
+            },
+            "title": "Cards",
+            "type": "array"
+          }
+        },
+        "required": [
+          "cards"
+        ],
+        "title": "CardBulkResult",
+        "type": "object"
+      },
+      "CardBulkResultItem": {
+        "additionalProperties": false,
+        "properties": {
+          "card": {
+            "$ref": "#/components/schemas/CardDetail"
+          },
+          "idempotency_key": {
+            "format": "uuid",
+            "title": "Idempotency Key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "idempotency_key",
+          "card"
+        ],
+        "title": "CardBulkResultItem",
+        "type": "object"
+      },
       "CardCreate": {
         "additionalProperties": false,
         "allOf": [
@@ -2986,6 +3060,62 @@
           }
         ],
         "summary": "Validate Card Drafts"
+      }
+    },
+    "/v1/decks/{deck_id}/cards/bulk": {
+      "post": {
+        "description": "Confirm selected drafts atomically, with the existing per-card replay contract.",
+        "operationId": "create_cards_v1_decks__deck_id__cards_bulk_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "deck_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Deck Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CardBulkCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CardBulkResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Cards"
       }
     },
     "/v1/me": {

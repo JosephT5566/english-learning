@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import JsonCardForm from '$lib/components/JsonCardForm.svelte';
-import { ApiClientError, createCard, validateCardDrafts } from '$lib/api/client';
+import { ApiClientError, createCards, validateCardDrafts } from '$lib/api/client';
 import { JSON_QUEUE_KEY } from '$lib/management/json-cards';
 
 vi.mock('$env/dynamic/public', () => ({
@@ -14,7 +14,7 @@ vi.mock('$lib/auth', () => ({
 }));
 vi.mock('$lib/api/client', async (original) => ({
 	...(await original<typeof import('$lib/api/client')>()),
-	createCard: vi.fn(),
+	createCards: vi.fn(),
 	validateCardDrafts: vi.fn(),
 }));
 const deck = {
@@ -89,7 +89,7 @@ describe('JSON card authoring', () => {
 			'Card 1 · meaning: Enter a nonblank value.',
 		);
 		expect(validateCardDrafts).toHaveBeenCalledOnce();
-		expect(createCard).not.toHaveBeenCalled();
+		expect(createCards).not.toHaveBeenCalled();
 	});
 
 	it('does not submit malformed JSON or create cards during preview', async () => {
@@ -101,7 +101,7 @@ describe('JSON card authoring', () => {
 		expect(await screen.findByRole('alert')).toHaveTextContent('valid JSON');
 		expect(validateCardDrafts).not.toHaveBeenCalled();
 		await preview();
-		expect(createCard).not.toHaveBeenCalled();
+		expect(createCards).not.toHaveBeenCalled();
 	});
 	it('shows backend card and field errors', async () => {
 		vi.mocked(validateCardDrafts).mockRejectedValue(
@@ -131,32 +131,30 @@ describe('JSON card authoring', () => {
 		});
 		await fireEvent.click(screen.getByRole('button', { name: 'Apply draft edits' }));
 		vi.mocked(validateCardDrafts).mockResolvedValue([{ ...drafts[0], meaning: 'edited' }]);
-		vi.mocked(createCard).mockResolvedValue({ id: 'created' } as never);
+		vi.mocked(createCards).mockResolvedValue([{ id: 'created' }] as never);
 		await fireEvent.click(screen.getByRole('button', { name: 'Add selected cards (1)' }));
-		await waitFor(() => expect(createCard).toHaveBeenCalledOnce());
+		await waitFor(() => expect(createCards).toHaveBeenCalledOnce());
 		expect(validateCardDrafts).toHaveBeenLastCalledWith('deck', {
 			cards: [expect.objectContaining({ meaning: 'edited' })],
 		});
-		expect(createCard).toHaveBeenCalledWith(
-			expect.objectContaining({
-				deck_id: 'deck',
-				term: 'learn',
-				meaning: 'edited',
-			}),
-			expect.any(String),
-		);
+		expect(createCards).toHaveBeenCalledWith('deck', {
+			cards: [
+				{
+					idempotency_key: expect.any(String),
+					fields: expect.objectContaining({ term: 'learn', meaning: 'edited' }),
+				},
+			],
+		});
 	});
-	it('restores uncertain commands and retries the exact key/body without recreating confirmed cards', async () => {
-		vi.mocked(createCard)
-			.mockResolvedValueOnce({ id: 'first' } as never)
-			.mockRejectedValueOnce(new ApiClientError('Offline', 'network', true));
+	it('restores the entire uncertain selection and retries the exact keys/body', async () => {
+		vi.mocked(createCards).mockRejectedValueOnce(new ApiClientError('Offline', 'network', true));
 		const view = setup();
 		await preview();
 		await fireEvent.click(screen.getByRole('button', { name: 'Add selected cards (2)' }));
 		await screen.findByRole('button', { name: 'Retry unchanged cards' });
-		const firstAttempt = vi.mocked(createCard).mock.calls[1];
+		const firstAttempt = vi.mocked(createCards).mock.calls[0];
 		const restored = JSON.parse(localStorage.getItem(JSON_QUEUE_KEY)!);
-		expect(restored.entries[0].status).toBe('confirmed');
+		expect(restored.entries[0].status).toBe('unconfirmed');
 		expect(restored.entries[1].status).toBe('unconfirmed');
 		expect(screen.getByRole('button', { name: 'Edit card 2' })).toBeDisabled();
 		view.unmount();
@@ -169,10 +167,36 @@ describe('JSON card authoring', () => {
 				oncreated: vi.fn(),
 			},
 		});
-		vi.mocked(createCard).mockResolvedValueOnce({ id: 'second' } as never);
+		vi.mocked(createCards).mockResolvedValueOnce([{ id: 'first' }, { id: 'second' }] as never);
 		await fireEvent.click(screen.getByRole('button', { name: 'Retry unchanged cards' }));
-		await waitFor(() => expect(createCard).toHaveBeenCalledTimes(3));
-		expect(vi.mocked(createCard).mock.calls[2]).toEqual(firstAttempt);
+		await waitFor(() => expect(createCards).toHaveBeenCalledTimes(2));
+		expect(vi.mocked(createCards).mock.calls[1]).toEqual(firstAttempt);
 		expect(validateCardDrafts).toHaveBeenCalledTimes(2); // Preview and original confirmation only.
+	});
+	it('skips confirmed entries in a restored legacy queue', async () => {
+		const restored = {
+			version: 1 as const,
+			owner: 'owner',
+			deckId: 'deck',
+			entries: drafts.map((fields, index) => ({
+				fields,
+				selected: true,
+				key:
+					index === 0
+						? 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+						: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+				status: index === 0 ? ('confirmed' as const) : ('unconfirmed' as const),
+			})),
+		};
+		vi.mocked(createCards).mockResolvedValueOnce([{ id: 'second' }] as never);
+		render(JsonCardForm, {
+			props: { deck, restored, onbusy: vi.fn(), onqueue: vi.fn(), oncreated: vi.fn() },
+		});
+		await fireEvent.click(screen.getByRole('button', { name: 'Retry unchanged cards' }));
+		await waitFor(() => expect(createCards).toHaveBeenCalledOnce());
+		expect(createCards).toHaveBeenCalledWith('deck', {
+			cards: [{ idempotency_key: restored.entries[1].key, fields: drafts[1] }],
+		});
+		expect(validateCardDrafts).not.toHaveBeenCalled();
 	});
 });

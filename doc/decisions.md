@@ -270,3 +270,11 @@ Last updated: 2026-09-26
   and edited selections are checked synchronously before requests. Backend ownership, active-deck,
   validation, and confirmation boundaries remain authoritative. CI regenerates and checks the
   new schema alongside the existing API artifacts.
+
+- 2026-10-06: Replaced JSON authoring's sequential card requests with an atomic, owned-deck bulk
+  endpoint and frontend `createCards` method. The bounded Pydantic request preserves per-card
+  idempotency keys across bulk and single-card APIs, avoiding a new replay table or migration.
+  All new cards, review states, and semantic hashes commit together; a conflict rolls back the new
+  selection. Exact retries preserve keys/content across reload, and response correlation must
+  succeed before the UI confirms any card. Derived embeddings follow the response as best-effort
+  in-process work, with the existing backfill as recovery. Manual creation and draft review remain.
