@@ -1,8 +1,144 @@
 {
   "components": {
     "schemas": {
+      "CardBulkCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "cards": {
+            "items": {
+              "$ref": "#/components/schemas/CardBulkCreateItem"
+            },
+            "maxItems": 20,
+            "minItems": 1,
+            "title": "Cards",
+            "type": "array"
+          }
+        },
+        "required": [
+          "cards"
+        ],
+        "title": "CardBulkCreate",
+        "type": "object"
+      },
+      "CardBulkCreateItem": {
+        "additionalProperties": false,
+        "properties": {
+          "fields": {
+            "$ref": "#/components/schemas/CardFields"
+          },
+          "idempotency_key": {
+            "format": "uuid",
+            "title": "Idempotency Key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "idempotency_key",
+          "fields"
+        ],
+        "title": "CardBulkCreateItem",
+        "type": "object"
+      },
+      "CardBulkResult": {
+        "additionalProperties": false,
+        "properties": {
+          "cards": {
+            "items": {
+              "$ref": "#/components/schemas/CardBulkResultItem"
+            },
+            "title": "Cards",
+            "type": "array"
+          }
+        },
+        "required": [
+          "cards"
+        ],
+        "title": "CardBulkResult",
+        "type": "object"
+      },
+      "CardBulkResultItem": {
+        "additionalProperties": false,
+        "properties": {
+          "card": {
+            "$ref": "#/components/schemas/CardDetail"
+          },
+          "idempotency_key": {
+            "format": "uuid",
+            "title": "Idempotency Key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "idempotency_key",
+          "card"
+        ],
+        "title": "CardBulkResultItem",
+        "type": "object"
+      },
       "CardCreate": {
         "additionalProperties": false,
+        "allOf": [
+          {
+            "if": {
+              "anyOf": [
+                {
+                  "properties": {
+                    "example_translation": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "example_translation"
+                  ]
+                },
+                {
+                  "properties": {
+                    "example_source": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "example_source"
+                  ]
+                }
+              ]
+            },
+            "then": {
+              "properties": {
+                "example_sentence": {
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "example_sentence"
+              ]
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "part_of_speech": {
+                  "const": "other"
+                }
+              },
+              "required": [
+                "part_of_speech"
+              ]
+            },
+            "then": {
+              "properties": {
+                "part_of_speech_detail": {
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "part_of_speech_detail"
+              ]
+            }
+          }
+        ],
         "properties": {
           "antonyms": {
             "default": [],
@@ -457,6 +593,302 @@
           "review_state"
         ],
         "title": "CardDetail",
+        "type": "object"
+      },
+      "CardDrafts": {
+        "additionalProperties": false,
+        "description": "Bounded, content-only JSON authoring envelope; never a write command.",
+        "properties": {
+          "cards": {
+            "items": {
+              "$ref": "#/components/schemas/CardFields"
+            },
+            "maxItems": 20,
+            "minItems": 1,
+            "title": "Cards",
+            "type": "array"
+          }
+        },
+        "required": [
+          "cards"
+        ],
+        "title": "CardDrafts",
+        "type": "object"
+      },
+      "CardFields": {
+        "additionalProperties": false,
+        "allOf": [
+          {
+            "if": {
+              "anyOf": [
+                {
+                  "properties": {
+                    "example_translation": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "example_translation"
+                  ]
+                },
+                {
+                  "properties": {
+                    "example_source": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "example_source"
+                  ]
+                }
+              ]
+            },
+            "then": {
+              "properties": {
+                "example_sentence": {
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "example_sentence"
+              ]
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "part_of_speech": {
+                  "const": "other"
+                }
+              },
+              "required": [
+                "part_of_speech"
+              ]
+            },
+            "then": {
+              "properties": {
+                "part_of_speech_detail": {
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "part_of_speech_detail"
+              ]
+            }
+          }
+        ],
+        "properties": {
+          "antonyms": {
+            "default": [],
+            "items": {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 20,
+            "title": "Antonyms",
+            "type": "array"
+          },
+          "example_sentence": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Example Sentence"
+          },
+          "example_source": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Example Source"
+          },
+          "example_translation": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Example Translation"
+          },
+          "learned_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Learned On"
+          },
+          "meaning": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Meaning",
+            "type": "string"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "part_of_speech": {
+            "anyOf": [
+              {
+                "enum": [
+                  "noun",
+                  "verb",
+                  "adjective",
+                  "adverb",
+                  "pronoun",
+                  "determiner",
+                  "preposition",
+                  "conjunction",
+                  "interjection",
+                  "particle",
+                  "auxiliary",
+                  "numeral",
+                  "phrase",
+                  "other"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Part Of Speech"
+          },
+          "part_of_speech_detail": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Part Of Speech Detail"
+          },
+          "pronunciation": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pronunciation"
+          },
+          "reading": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reading"
+          },
+          "romanization": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Romanization"
+          },
+          "supplementary_note": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supplementary Note"
+          },
+          "synonyms": {
+            "default": [],
+            "items": {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 20,
+            "title": "Synonyms",
+            "type": "array"
+          },
+          "target_language_definition": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Language Definition"
+          },
+          "term": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Term",
+            "type": "string"
+          }
+        },
+        "required": [
+          "term",
+          "meaning"
+        ],
+        "title": "CardFields",
         "type": "object"
       },
       "CardSummary": {
@@ -2573,6 +3005,117 @@
           }
         ],
         "summary": "Update Deck"
+      }
+    },
+    "/v1/decks/{deck_id}/card-drafts/validate": {
+      "post": {
+        "operationId": "validate_card_drafts_v1_decks__deck_id__card_drafts_validate_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "deck_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Deck Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CardDrafts"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CardDrafts"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Validate Card Drafts"
+      }
+    },
+    "/v1/decks/{deck_id}/cards/bulk": {
+      "post": {
+        "description": "Confirm selected drafts atomically, with the existing per-card replay contract.",
+        "operationId": "create_cards_v1_decks__deck_id__cards_bulk_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "deck_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Deck Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CardBulkCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CardBulkResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Cards"
       }
     },
     "/v1/me": {

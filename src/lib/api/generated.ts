@@ -157,6 +157,43 @@ export interface paths {
         patch: operations["update_deck_v1_decks__deck_id__patch"];
         trace?: never;
     };
+    "/v1/decks/{deck_id}/card-drafts/validate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Validate Card Drafts */
+        post: operations["validate_card_drafts_v1_decks__deck_id__card_drafts_validate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/decks/{deck_id}/cards/bulk": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Cards
+         * @description Confirm selected drafts atomically, with the existing per-card replay contract.
+         */
+        post: operations["create_cards_v1_decks__deck_id__cards_bulk_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/me": {
         parameters: {
             query?: never;
@@ -221,6 +258,34 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** CardBulkCreate */
+        CardBulkCreate: {
+            /** Cards */
+            cards: components["schemas"]["CardBulkCreateItem"][];
+        };
+        /** CardBulkCreateItem */
+        CardBulkCreateItem: {
+            fields: components["schemas"]["CardFields"];
+            /**
+             * Idempotency Key
+             * Format: uuid
+             */
+            idempotency_key: string;
+        };
+        /** CardBulkResult */
+        CardBulkResult: {
+            /** Cards */
+            cards: components["schemas"]["CardBulkResultItem"][];
+        };
+        /** CardBulkResultItem */
+        CardBulkResultItem: {
+            card: components["schemas"]["CardDetail"];
+            /**
+             * Idempotency Key
+             * Format: uuid
+             */
+            idempotency_key: string;
+        };
         /** CardCreate */
         CardCreate: {
             /**
@@ -266,7 +331,7 @@ export interface components {
             target_language_definition?: string | null;
             /** Term */
             term: string;
-        };
+        } & (unknown & unknown);
         /** CardDetail */
         CardDetail: {
             /** Antonyms */
@@ -325,6 +390,55 @@ export interface components {
             /** Version */
             version: number;
         };
+        /**
+         * CardDrafts
+         * @description Bounded, content-only JSON authoring envelope; never a write command.
+         */
+        CardDrafts: {
+            /** Cards */
+            cards: components["schemas"]["CardFields"][];
+        };
+        /** CardFields */
+        CardFields: {
+            /**
+             * Antonyms
+             * @default []
+             */
+            antonyms: string[];
+            /** Example Sentence */
+            example_sentence?: string | null;
+            /** Example Source */
+            example_source?: string | null;
+            /** Example Translation */
+            example_translation?: string | null;
+            /** Learned On */
+            learned_on?: string | null;
+            /** Meaning */
+            meaning: string;
+            /** Note */
+            note?: string | null;
+            /** Part Of Speech */
+            part_of_speech?: ("noun" | "verb" | "adjective" | "adverb" | "pronoun" | "determiner" | "preposition" | "conjunction" | "interjection" | "particle" | "auxiliary" | "numeral" | "phrase" | "other") | null;
+            /** Part Of Speech Detail */
+            part_of_speech_detail?: string | null;
+            /** Pronunciation */
+            pronunciation?: string | null;
+            /** Reading */
+            reading?: string | null;
+            /** Romanization */
+            romanization?: string | null;
+            /** Supplementary Note */
+            supplementary_note?: string | null;
+            /**
+             * Synonyms
+             * @default []
+             */
+            synonyms: string[];
+            /** Target Language Definition */
+            target_language_definition?: string | null;
+            /** Term */
+            term: string;
+        } & (unknown & unknown);
         /** CardSummary */
         CardSummary: {
             /** Archived At */
@@ -1169,6 +1283,76 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Deck"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    validate_card_drafts_v1_decks__deck_id__card_drafts_validate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                deck_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CardDrafts"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CardDrafts"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_cards_v1_decks__deck_id__cards_bulk_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                deck_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CardBulkCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CardBulkResult"];
                 };
             };
             /** @description Validation Error */

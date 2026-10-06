@@ -55,6 +55,8 @@
 		onsave,
 		oncancel,
 		onreload,
+		submitLabel = 'Save card',
+		inputIdPrefix = 'card',
 	}: {
 		language: TargetLanguage;
 		initial?: CardDetail | null;
@@ -65,6 +67,8 @@
 		onsave: (payload: CardFields) => void;
 		oncancel: () => void;
 		onreload?: () => void;
+		submitLabel?: string;
+		inputIdPrefix?: string;
 	} = $props();
 
 	let term = $state(draft?.term ?? initial?.term ?? '');
@@ -115,7 +119,8 @@
 		const input = target === 'synonyms' ? synonymInput : antonymInput;
 		const current = target === 'synonyms' ? synonyms : antonyms;
 		const additions = words(input).filter(
-			(item) => !current.some((existing) => existing.toLocaleLowerCase() === item.toLocaleLowerCase()),
+			(item) =>
+				!current.some((existing) => existing.toLocaleLowerCase() === item.toLocaleLowerCase()),
 		);
 
 		if (target === 'synonyms') {
@@ -146,7 +151,8 @@
 		const additions = words(pending);
 		return [...current, ...additions].filter(
 			(item, index, values) =>
-				values.findIndex((value) => value.toLocaleLowerCase() === item.toLocaleLowerCase()) === index,
+				values.findIndex((value) => value.toLocaleLowerCase() === item.toLocaleLowerCase()) ===
+				index,
 		);
 	}
 
@@ -194,12 +200,12 @@
 				<span>Meaning <b aria-hidden="true">*</b></span>
 				<textarea aria-label="Meaning" bind:value={meaning} required maxlength="2000"></textarea>
 			</label>
-		{#if language === 'ja'}
+			{#if language === 'ja'}
 				<label>
 					<span>Reading <small>Optional</small></span>
 					<input aria-label="Reading" bind:value={reading} maxlength="255" autocomplete="off" />
 				</label>
-		{/if}
+			{/if}
 		</div>
 
 		<div class="optional-sections">
@@ -210,9 +216,13 @@
 				</summary>
 				<div class="section-fields two-column">
 					{#if language === 'ja'}
-						<label><span>Romanization</span><input bind:value={romanization} maxlength="255" /></label>
+						<label
+							><span>Romanization</span><input bind:value={romanization} maxlength="255" /></label
+						>
 					{:else}
-						<label><span>Pronunciation</span><input bind:value={pronunciation} maxlength="255" /></label>
+						<label
+							><span>Pronunciation</span><input bind:value={pronunciation} maxlength="255" /></label
+						>
 					{/if}
 					<label><span>Learned on</span><input type="date" bind:value={learnedOn} /></label>
 					<label>
@@ -250,8 +260,14 @@
 					<small>Sentence, translation, and source</small>
 				</summary>
 				<div class="section-fields">
-					<label><span>Example sentence</span><textarea bind:value={exampleSentence} maxlength="1000"></textarea></label>
-					<label><span>Translation</span><textarea bind:value={exampleTranslation} maxlength="1000"></textarea></label>
+					<label
+						><span>Example sentence</span><textarea bind:value={exampleSentence} maxlength="1000"
+						></textarea></label
+					>
+					<label
+						><span>Translation</span><textarea bind:value={exampleTranslation} maxlength="1000"
+						></textarea></label
+					>
 					<label><span>Source</span><input bind:value={exampleSource} maxlength="500" /></label>
 				</div>
 			</details>
@@ -263,38 +279,78 @@
 				</summary>
 				<div class="section-fields two-column">
 					<div class="token-field">
-						<label for="synonym-input">Synonyms</label>
+						<label for={`${inputIdPrefix}-synonym-input`}>Synonyms</label>
 						<div class="token-list" aria-live="polite">
 							{#each synonyms as synonym, index (`${synonym}-${index}`)}
 								<span class="token">
 									{synonym}
-									<button type="button" aria-label={`Remove synonym ${synonym}`} onclick={() => removeWord('synonyms', index)}>
-										<Icon icon="solar:close-circle-linear" width="16" height="16" aria-hidden="true" />
+									<button
+										type="button"
+										aria-label={`Remove synonym ${synonym}`}
+										onclick={() => removeWord('synonyms', index)}
+									>
+										<Icon
+											icon="solar:close-circle-linear"
+											width="16"
+											height="16"
+											aria-hidden="true"
+										/>
 									</button>
 								</span>
 							{/each}
 						</div>
 						<div class="token-entry">
-							<input id="synonym-input" bind:value={synonymInput} onkeydown={(event) => handleWordKeydown(event, 'synonyms')} onblur={() => addWords('synonyms')} placeholder="Type a word" autocomplete="off" />
-							<button type="button" onclick={() => addWords('synonyms')} disabled={!synonymInput.trim()}>Add</button>
+							<input
+								id={`${inputIdPrefix}-synonym-input`}
+								bind:value={synonymInput}
+								onkeydown={(event) => handleWordKeydown(event, 'synonyms')}
+								onblur={() => addWords('synonyms')}
+								placeholder="Type a word"
+								autocomplete="off"
+							/>
+							<button
+								type="button"
+								onclick={() => addWords('synonyms')}
+								disabled={!synonymInput.trim()}>Add</button
+							>
 						</div>
 						<small>Press Enter after each word.</small>
 					</div>
 					<div class="token-field">
-						<label for="antonym-input">Antonyms</label>
+						<label for={`${inputIdPrefix}-antonym-input`}>Antonyms</label>
 						<div class="token-list" aria-live="polite">
 							{#each antonyms as antonym, index (`${antonym}-${index}`)}
 								<span class="token">
 									{antonym}
-									<button type="button" aria-label={`Remove antonym ${antonym}`} onclick={() => removeWord('antonyms', index)}>
-										<Icon icon="solar:close-circle-linear" width="16" height="16" aria-hidden="true" />
+									<button
+										type="button"
+										aria-label={`Remove antonym ${antonym}`}
+										onclick={() => removeWord('antonyms', index)}
+									>
+										<Icon
+											icon="solar:close-circle-linear"
+											width="16"
+											height="16"
+											aria-hidden="true"
+										/>
 									</button>
 								</span>
 							{/each}
 						</div>
 						<div class="token-entry">
-							<input id="antonym-input" bind:value={antonymInput} onkeydown={(event) => handleWordKeydown(event, 'antonyms')} onblur={() => addWords('antonyms')} placeholder="Type a word" autocomplete="off" />
-							<button type="button" onclick={() => addWords('antonyms')} disabled={!antonymInput.trim()}>Add</button>
+							<input
+								id={`${inputIdPrefix}-antonym-input`}
+								bind:value={antonymInput}
+								onkeydown={(event) => handleWordKeydown(event, 'antonyms')}
+								onblur={() => addWords('antonyms')}
+								placeholder="Type a word"
+								autocomplete="off"
+							/>
+							<button
+								type="button"
+								onclick={() => addWords('antonyms')}
+								disabled={!antonymInput.trim()}>Add</button
+							>
 						</div>
 						<small>Press Enter after each word.</small>
 					</div>
@@ -308,7 +364,12 @@
 				</summary>
 				<div class="section-fields">
 					<label><span>Note</span><textarea bind:value={note} maxlength="4000"></textarea></label>
-					<label><span>Supplementary note</span><textarea bind:value={supplementaryNote} maxlength="4000"></textarea></label>
+					<label
+						><span>Supplementary note</span><textarea
+							bind:value={supplementaryNote}
+							maxlength="4000"
+						></textarea></label
+					>
 				</div>
 			</details>
 		</div>
@@ -318,7 +379,7 @@
 		<button type="button" class="secondary-button" disabled={busy} onclick={oncancel}>Cancel</button
 		>
 		<button type="submit" class="primary-button" disabled={busy}
-			>{busy ? 'Saving…' : 'Save card'}</button
+			>{busy ? 'Saving…' : submitLabel}</button
 		>
 	</div>
 </form>

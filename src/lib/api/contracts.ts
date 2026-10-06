@@ -27,6 +27,7 @@ export type DeckCreate = components['schemas']['DeckCreate'];
 export type DeckUpdate = components['schemas']['DeckUpdate'];
 export type CardCreate = components['schemas']['CardCreate'];
 export type CardUpdate = components['schemas']['CardUpdate'];
+export type CardBulkCreate = components['schemas']['CardBulkCreate'];
 
 export interface Page<T> {
 	items: T[];

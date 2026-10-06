@@ -1,5 +1,6 @@
 import { env } from '$env/dynamic/public';
 import { getTokenIfValid, signOut } from '$lib/auth';
+import { isCardDraft, type CardDraft, JSON_CARD_LIMIT } from '$lib/management/json-cards';
 import {
 	isApiErrorEnvelope,
 	isCardDetail,
@@ -13,6 +14,7 @@ import {
 	type ApiErrorBody,
 	type CardDetail,
 	type CardCreate,
+	type CardBulkCreate,
 	type CardSummary,
 	type CardUpdate,
 	type Deck,
@@ -217,6 +219,59 @@ export async function createCard(payload: CardCreate, idempotencyKey: string): P
 	if (!isCardDetail(data))
 		throw new ApiClientError('The created card response was invalid.', 'invalid_response', true);
 	return data;
+}
+
+export async function createCards(deckId: string, payload: CardBulkCreate): Promise<CardDetail[]> {
+	const data = await authenticatedRequest(`/v1/decks/${encodeURIComponent(deckId)}/cards/bulk`, {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify(payload),
+	});
+	if (
+		!data ||
+		typeof data !== 'object' ||
+		!('cards' in data) ||
+		!Array.isArray(data.cards) ||
+		data.cards.length !== payload.cards.length ||
+		!data.cards.every(
+			(item, index) =>
+				item &&
+				typeof item === 'object' &&
+				item.idempotency_key === payload.cards[index].idempotency_key &&
+				isCardDetail(item.card) &&
+				item.card.deck.id === deckId,
+		) ||
+		new Set(data.cards.map((item) => item.card.id)).size !== data.cards.length
+	)
+		throw new ApiClientError('The created cards response was invalid.', 'invalid_response', true);
+	return data.cards.map((item) => item.card);
+}
+
+export async function validateCardDrafts(deckId: string, payload: unknown): Promise<CardDraft[]> {
+	const data = await authenticatedRequest(
+		`/v1/decks/${encodeURIComponent(deckId)}/card-drafts/validate`,
+		{
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify(payload),
+		},
+	);
+	const requestCards =
+		payload && typeof payload === 'object' && 'cards' in payload ? payload.cards : null;
+	if (
+		!Array.isArray(requestCards) ||
+		!data ||
+		typeof data !== 'object' ||
+		!('cards' in data) ||
+		!Array.isArray(data.cards) ||
+		data.cards.length < 1 ||
+		data.cards.length > JSON_CARD_LIMIT ||
+		data.cards.length !== requestCards.length ||
+		!data.cards.every(isCardDraft)
+	) {
+		throw new ApiClientError('The draft response was invalid.', 'invalid_response', true);
+	}
+	return data.cards;
 }
 
 export async function updateCard(cardId: string, payload: CardUpdate): Promise<CardDetail> {

@@ -398,6 +398,46 @@ Review update payload shape is:
 4. Archives require confirmation. If the response is unclear, the page reads the resource again and
    only navigates to Archived after observing `archived_at`; otherwise it shows an unconfirmed state.
 
+## JSON Card Authoring
+
+- The add-card drawer defaults to Manual and offers a JSON tab with a copyable prompt derived from
+  the owned deck's target and explanation languages. Users generate JSON in their own AI tool;
+  the application does not call an AI generation provider.
+- Pasted input is a content-only object with a `cards` array. Deck IDs, ownership, languages, and
+  review scheduling are excluded from card entries. The browser enforces a 100,000-byte input
+  bound and sends the object to `POST /v1/decks/{deck_id}/card-drafts/validate`.
+- The input runs local Ajv JSON Schema validation 350 ms after typing or pasting, without an
+  API call. Invalid content disables preview and shows card/field errors. Constrained strings are
+  trimmed before validation to match Pydantic; enums and dates are left unchanged. Calendar dates
+  use `ajv-formats`. Preview and edited selections are also checked synchronously before requests;
+  uncertain save commands still replay unchanged.
+- `npm run api:generate` exports `src/lib/api/card-drafts.schema.json` directly from the Pydantic
+  draft model. The model's JSON Schema annotations publish its existing example and part-of-speech
+  dependencies. CI checks this artifact alongside OpenAPI and generated TypeScript to catch drift.
+- This authenticated, owner-scoped, active-deck endpoint reuses Pydantic `CardFields`, forbids
+  extra fields, requires 1-20 cards, limits valid request bodies to 100,000 bytes, and returns
+  normalized drafts. It creates no cards or review states. Invalid fields use the existing safe
+  validation envelope, including card indices.
+- Users edit, deselect, and explicitly confirm drafts. The complete selected set is revalidated
+  after edits, then saved with one `POST /v1/decks/{deck_id}/cards/bulk` request. Its Pydantic
+  envelope contains 1-20 `{idempotency_key, fields}` entries and is bounded to 100,000 bytes.
+  Deck context stays in the route. All new cards, fresh review states, and semantic hashes commit
+  in one transaction; any rejection rolls back every new card in the selection.
+- Bulk and single-card creation share the same per-card idempotency keys and normalized request
+  hashes. Keys must be distinct within a selection. The response returns key/card pairs in input
+  order. An owned deck row lock serializes creation against archival; sorted keys prevent overlapping
+  batches from acquiring unique-key conflicts in different orders. Exact existing-card replay is
+  allowed after archival, but new cards are rejected. Existing single-card clients remain supported.
+- The browser persists the entire account-scoped selected content/keys before sending the request.
+  Uncertain commands have no automatic expiry, lock the selection against editing, and replay
+  unchanged after reload. Previously confirmed cards are skipped, including older individual-save
+  queues. A definite rejection permits correction; keys stay stable until a draft is edited.
+  Storage failure prevents starting the write. Bulk response guards require matching keys, deck,
+  count, and distinct card IDs before marking any entry confirmed.
+- Bulk embeddings run as best-effort in-process background tasks after the confirmed response,
+  using the existing hash-guarded embedding operation. They do not hold the card transaction or
+  delay confirmation; process interruption and provider failure use the existing explicit backfill.
+
 ## Auth Flow
 
 - `src/routes/+page.svelte` initializes Google Identity Services on mount if the user is not signed in.

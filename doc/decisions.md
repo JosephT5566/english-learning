@@ -254,3 +254,27 @@ Last updated: 2026-09-26
   now carry explicit language context. Semantic similarity percentages and index terminology are
   presented as qualitative match strength and plain coverage guidance, with keyword search offered
   as the immediate fallback when semantic results are unavailable or empty.
+
+- 2026-10-06: Added Issue #53's JSON authoring tab beside the existing manual card drawer. Users
+  copy a deck-aware prompt and bring JSON from their own AI tool; the application validates and
+  previews editable content before explicit confirmation. A read-only owned-deck endpoint reuses
+  Pydantic card-field validation with 1-20 cards and a 100,000-byte request bound. Confirmed saves
+  use sequential existing idempotent card creates, with explicit per-card outcomes rather than an
+  atomic batch API. Exact uncertain commands persist across reload without automatic expiry,
+  while confirmed cards are skipped during retry. No AI generation provider or schema migration
+  is added.
+
+- 2026-10-06: Added local Ajv validation to JSON authoring using a bundled JSON Schema exported
+  from Pydantic. The backend publishes existing cross-field dependencies as schema annotations;
+  frontend code does not reimplement those rules. Debounced input checks run locally, while preview
+  and edited selections are checked synchronously before requests. Backend ownership, active-deck,
+  validation, and confirmation boundaries remain authoritative. CI regenerates and checks the
+  new schema alongside the existing API artifacts.
+
+- 2026-10-06: Replaced JSON authoring's sequential card requests with an atomic, owned-deck bulk
+  endpoint and frontend `createCards` method. The bounded Pydantic request preserves per-card
+  idempotency keys across bulk and single-card APIs, avoiding a new replay table or migration.
+  All new cards, review states, and semantic hashes commit together; a conflict rolls back the new
+  selection. Exact retries preserve keys/content across reload, and response correlation must
+  succeed before the UI confirms any card. Derived embeddings follow the response as best-effort
+  in-process work, with the existing backfill as recovery. Manual creation and draft review remain.

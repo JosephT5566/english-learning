@@ -13,7 +13,7 @@ Last updated: 2026-09-20
 - Type/Svelte validation: `npm run check`
 - Frontend contract/component tests: `npm run test:frontend`
 - Critical local browser tests: `npm run test:browser`
-- Export FastAPI OpenAPI and generate frontend TypeScript: `npm run api:generate`
+- Export FastAPI OpenAPI, card-draft JSON Schema, and frontend TypeScript: `npm run api:generate`
 - Regenerate and fail if committed API artifacts drift: `npm run api:check`
 - Format all files: `npm run format`
 - Lint and formatting check: `npm run lint`
@@ -129,9 +129,10 @@ and pooled Neon URLs from Secret Manager through their own runtime identities.
 ## Validation Expectations
 
 Run `npm run check` after changing TypeScript, Svelte components, stores, or API contracts. Run
-`npm run api:generate` after changing FastAPI request or response models, and commit both generated
-artifacts. Run `npm run build` when changing routing, static deployment configuration, environment
-behavior, or imports that may differ between dev and production.
+`npm run api:generate` after changing FastAPI request or response models, and commit the generated
+OpenAPI, TypeScript, and card-draft JSON Schema artifacts. Run `npm run build` when changing
+routing, static deployment configuration, environment behavior, or imports that may differ between
+dev and production.
 
 ## Style Notes
 

@@ -20,6 +20,8 @@
 		TargetLanguage,
 	} from '$lib/api/contracts';
 	import CardForm from '$lib/components/CardForm.svelte';
+	import JsonCardForm from '$lib/components/JsonCardForm.svelte';
+	import { loadJsonQueue, type JsonCardQueue } from '$lib/management/json-cards';
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 	import DeckForm from '$lib/components/DeckForm.svelte';
 	import Drawer from '$lib/components/Drawer.svelte';
@@ -53,8 +55,33 @@
 	let mutationNotice: MutationErrorCopy | null = $state(null);
 	let pendingCreate: PendingManagementCreation | null = $state(null);
 	let pendingLoaded = false;
+	let authoringTab: 'manual' | 'json' = $state('manual');
+	let jsonQueue: JsonCardQueue | null = $state(null);
+	let jsonOutstanding = $derived.by(() =>
+		Boolean(jsonQueue?.entries.some((entry) => entry.selected && entry.status !== 'confirmed')),
+	);
 	let requestSequence = 0;
 	let deckId = $derived(page.params.deckId ?? '');
+
+	function switchAuthoringTab(event: KeyboardEvent): void {
+		if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+		const current = event.currentTarget as HTMLButtonElement;
+		const tabs = [
+			...(current.parentElement?.querySelectorAll<HTMLButtonElement>('button:not(:disabled)') ??
+				[]),
+		];
+		if (!tabs.length) return;
+		event.preventDefault();
+		const index = tabs.indexOf(current);
+		const next =
+			event.key === 'Home'
+				? 0
+				: event.key === 'End'
+					? tabs.length - 1
+					: (index + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length;
+		tabs[next].click();
+		tabs[next].focus();
+	}
 
 	function deckHref(targetLanguage: TargetLanguage, status = archiveStatus): string {
 		return `${resolve('/decks/[deckId]', { deckId })}?language=${targetLanguage}&status=${status}`;
@@ -196,6 +223,8 @@
 	}
 
 	function openCardCreate(): void {
+		if (jsonOutstanding && jsonQueue?.deckId !== deckId) return;
+		authoringTab = jsonOutstanding ? 'json' : 'manual';
 		if (
 			pendingCreate &&
 			(pendingCreate.kind !== 'card' ||
@@ -234,6 +263,14 @@
 			const owner = getProfile()?.sub;
 			const pending = owner ? loadPendingManagement(owner) : null;
 			pendingCreate = pending;
+			jsonQueue = owner ? loadJsonQueue(owner) : null;
+			if (
+				jsonQueue?.deckId === deckId &&
+				jsonQueue.entries.some((entry) => entry.selected && entry.status !== 'confirmed')
+			) {
+				authoringTab = 'json';
+				cardCreateOpen = true;
+			}
 			if (
 				pending?.kind === 'card' &&
 				'deck_id' in pending.payload &&
@@ -283,10 +320,11 @@
 					class="primary-button"
 					type="button"
 					disabled={Boolean(
-						pendingCreate &&
-							(pendingCreate.kind !== 'card' ||
-								!('deck_id' in pendingCreate.payload) ||
-								pendingCreate.payload.deck_id !== deckId),
+						(jsonOutstanding && jsonQueue?.deckId !== deckId) ||
+							(pendingCreate &&
+								(pendingCreate.kind !== 'card' ||
+									!('deck_id' in pendingCreate.payload) ||
+									pendingCreate.payload.deck_id !== deckId)),
 					)}
 					title={pendingCreate ? 'Finish the pending creation before starting another.' : undefined}
 					onclick={openCardCreate}>New card</button
@@ -309,6 +347,15 @@
 				>
 			{/if}
 		</div>
+		{#if jsonOutstanding && jsonQueue && jsonQueue.deckId !== deckId}
+			<p>
+				Finish your JSON drafts in <a
+					class="back-link"
+					href={`${resolve('/decks/[deckId]', { deckId: jsonQueue.deckId })}?language=${language}`}
+					>their deck</a
+				> before adding more cards.
+			</p>
+		{/if}
 		{#if mutationNotice && !editOpen && !cardCreateOpen}<MutationNotice
 				notice={mutationNotice}
 			/>{/if}
@@ -391,21 +438,70 @@
 	</Drawer>
 {/if}
 
-{#if cardCreateOpen}
+{#if cardCreateOpen && deck}
 	<Drawer
 		title={`New ${languageName(language)} card`}
 		wide
 		dismissible={!mutationBusy}
 		onclose={() => !mutationBusy && (cardCreateOpen = false)}
 	>
-		<CardForm
-			{language}
-			draft={pendingCreate?.kind === 'card' ? (pendingCreate.payload as CardCreate) : null}
-			busy={mutationBusy}
-			notice={mutationNotice}
-			onsave={saveNewCard}
-			oncancel={() => (cardCreateOpen = false)}
-		/>
+		<div class="authoring-tabs" role="tablist" aria-label="Card creation method">
+			<button
+				type="button"
+				class="secondary-button"
+				id="manual-authoring-tab"
+				role="tab"
+				aria-controls="manual-authoring-panel"
+				aria-selected={authoringTab === 'manual'}
+				tabindex={authoringTab === 'manual' ? 0 : -1}
+				onkeydown={switchAuthoringTab}
+				disabled={mutationBusy || jsonOutstanding}
+				onclick={() => (authoringTab = 'manual')}>Manual</button
+			>
+			<button
+				type="button"
+				class="secondary-button"
+				id="json-authoring-tab"
+				role="tab"
+				aria-controls="json-authoring-panel"
+				aria-selected={authoringTab === 'json'}
+				tabindex={authoringTab === 'json' ? 0 : -1}
+				onkeydown={switchAuthoringTab}
+				disabled={mutationBusy || Boolean(pendingCreate)}
+				onclick={() => (authoringTab = 'json')}>JSON</button
+			>
+		</div>
+		<div
+			id="manual-authoring-panel"
+			role="tabpanel"
+			aria-labelledby="manual-authoring-tab"
+			hidden={authoringTab !== 'manual'}
+		>
+			<CardForm
+				{language}
+				draft={pendingCreate?.kind === 'card' ? (pendingCreate.payload as CardCreate) : null}
+				busy={mutationBusy}
+				notice={mutationNotice}
+				onsave={saveNewCard}
+				oncancel={() => (cardCreateOpen = false)}
+			/>
+		</div>
+		<div
+			id="json-authoring-panel"
+			role="tabpanel"
+			aria-labelledby="json-authoring-tab"
+			hidden={authoringTab !== 'json'}
+		>
+			<JsonCardForm
+				{deck}
+				restored={jsonQueue?.deckId === deckId ? jsonQueue : null}
+				onbusy={(busy) => (mutationBusy = busy)}
+				onqueue={(queue) => (jsonQueue = queue)}
+				oncreated={() => {
+					void loadCurrent(language, archiveStatus);
+				}}
+			/>
+		</div>
 	</Drawer>
 {/if}
 
@@ -422,3 +518,16 @@
 		onconfirm={archiveCurrentDeck}
 	/>
 {/if}
+
+<style>
+	.authoring-tabs {
+		display: flex;
+		gap: 0.5rem;
+		margin-bottom: 1.5rem;
+	}
+	.authoring-tabs button[aria-selected='true'] {
+		background: #dbeafe;
+		border-color: #2563eb;
+		color: #1d4ed8;
+	}
+</style>
