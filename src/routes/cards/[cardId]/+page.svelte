@@ -4,6 +4,7 @@
 	import { page } from '$app/state';
 	import { archiveCard, getCard, updateCard } from '$lib/api/client';
 	import type { CardCreate, CardDetail, TargetLanguage } from '$lib/api/contracts';
+	import CardDialog from '$lib/components/CardDialog.svelte';
 	import CardForm from '$lib/components/CardForm.svelte';
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 	import LanguageTabs from '$lib/components/LanguageTabs.svelte';
@@ -39,7 +40,9 @@
 	}
 
 	function formatDate(value: string): string {
-		const date = /^\d{4}-\d{2}-\d{2}$/.test(value) ? new Date(`${value}T00:00:00`) : new Date(value);
+		const date = /^\d{4}-\d{2}-\d{2}$/.test(value)
+			? new Date(`${value}T00:00:00`)
+			: new Date(value);
 		if (Number.isNaN(date.getTime())) return 'Date unavailable';
 		return new Intl.DateTimeFormat('en-US', {
 			year: 'numeric',
@@ -150,7 +153,9 @@
 <svelte:head><title>{card?.term ?? 'Card'} · English Learning</title></svelte:head>
 
 <section class="management-page">
-	<a class="back-link" href={deckHref()}>← {card ? `Back to ${card.deck.title}` : 'Back to decks'}</a>
+	<a class="back-link" href={deckHref()}
+		>← {card ? `Back to ${card.deck.title}` : 'Back to decks'}</a
+	>
 	<div class="management-heading">
 		<div>
 			<h1>{card?.term ?? 'Card details'}</h1>
@@ -166,11 +171,12 @@
 			<LanguageTabs current={language} englishHref={listHref('en')} japaneseHref={listHref('ja')} />
 		{/if}
 	</div>
-	{#if card && viewState === 'ready' && !card.archived_at && !editing}
+	{#if card && viewState === 'ready' && !card.archived_at}
 		<div class="resource-actions">
 			<button
 				class="primary-button"
 				type="button"
+				disabled={editing || mutationBusy}
 				onclick={() => {
 					mutationNotice = null;
 					editing = true;
@@ -179,6 +185,7 @@
 			<button
 				class="danger-button"
 				type="button"
+				disabled={editing || mutationBusy}
 				onclick={() => {
 					mutationNotice = null;
 					archiveConfirm = true;
@@ -191,7 +198,9 @@
 	{#if viewState === 'invalid-language'}
 		<section class="read-state">
 			<h2>Choose English or Japanese</h2>
-			<p>This card link has an unsupported language. Open your English or Japanese decks instead.</p>
+			<p>
+				This card link has an unsupported language. Open your English or Japanese decks instead.
+			</p>
 			<div class="read-actions">
 				<a class="secondary-button" href={listHref('en')}>Open English decks</a>
 				<a class="secondary-button" href={listHref('ja')}>Open Japanese decks</a>
@@ -201,19 +210,6 @@
 		<section class="read-state" aria-live="polite">Loading card details…</section>
 	{:else if viewState === 'error' && error}
 		<ReadError {...error} onretry={() => loadCurrent(language)} />
-	{:else if card && editing}
-		<section class="inline-editor" aria-label="Edit card">
-			<h2>Edit card</h2>
-			<CardForm
-				{language}
-				initial={card}
-				busy={mutationBusy}
-				notice={mutationNotice}
-				onsave={saveCard}
-				oncancel={() => (editing = false)}
-				onreload={discardEdits}
-			/>
-		</section>
 	{:else if card}
 		<dl class="detail-grid">
 			<div class="detail-field wide">
@@ -251,7 +247,9 @@
 					<dt>Example sentence</dt>
 					<dd>
 						<span>{card.example_sentence}</span>
-						{#if card.example_translation}<span class="example-translation">{card.example_translation}</span>{/if}
+						{#if card.example_translation}<span class="example-translation"
+								>{card.example_translation}</span
+							>{/if}
 					</dd>
 				</div>{/if}
 			{#if card.example_source}<div class="detail-field wide">
@@ -285,6 +283,24 @@
 		</dl>
 	{/if}
 </section>
+
+{#if editing && card && viewState === 'ready'}
+	<CardDialog
+		title="Edit card"
+		dismissible={!mutationBusy}
+		onclose={() => !mutationBusy && (editing = false)}
+	>
+		<CardForm
+			{language}
+			initial={card}
+			busy={mutationBusy}
+			notice={mutationNotice}
+			onsave={saveCard}
+			oncancel={() => (editing = false)}
+			onreload={discardEdits}
+		/>
+	</CardDialog>
+{/if}
 
 {#if archiveConfirm && card}
 	<ConfirmDialog

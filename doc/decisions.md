@@ -285,3 +285,9 @@ Last updated: 2026-09-26
   remain invalid. Formatting changes whitespace without rewriting number tokens or field values,
   and does not validate with the server or create cards. Existing limits, debounce, editable draft
   preview, and explicit confirmation remain in force.
+
+- 2026-10-07: Moved manual/JSON card creation and confirmed-card editing into a shared Bits UI
+  dialog, up to 60rem wide on desktop and full-screen on mobile. The header stays visible while
+  the form body scrolls, with safe-area padding and the existing single-column mobile fields.
+  Dismissal remains blocked during requests, and focus returns to the opening control. Deck
+  drawers, draft editing, validation, conflict recovery, and API contracts retain their behavior.

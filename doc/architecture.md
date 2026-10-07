@@ -388,8 +388,10 @@ Review update payload shape is:
 
 ## Management Mutation Flow
 
-1. Deck create/edit uses a compact drawer, card create uses a wide drawer, and card edit replaces the
-   detail grid inline. Language-specific fields remain conditional within the shared form.
+1. Deck create/edit uses a compact drawer. Card create/edit shares `CardDialog.svelte`, a
+   centered Bits UI dialog up to 60rem wide on desktop and full-screen at 640px or narrower.
+   Its header stays visible while the body scrolls; the existing mobile single-column form remains.
+   Language-specific fields remain conditional within the shared form.
 2. Before create, the browser stores one exact body/UUID key for the current Google subject. An
    unclear, retryable, or authentication result keeps and locks that command; an exact manual retry
    sends the same pair. Confirmation or definite rejection clears it.

@@ -19,6 +19,7 @@
 		DeckCreate,
 		TargetLanguage,
 	} from '$lib/api/contracts';
+	import CardDialog from '$lib/components/CardDialog.svelte';
 	import CardForm from '$lib/components/CardForm.svelte';
 	import JsonCardForm from '$lib/components/JsonCardForm.svelte';
 	import { loadJsonQueue, type JsonCardQueue } from '$lib/management/json-cards';
@@ -439,9 +440,8 @@
 {/if}
 
 {#if cardCreateOpen && deck}
-	<Drawer
+	<CardDialog
 		title={`New ${languageName(language)} card`}
-		wide
 		dismissible={!mutationBusy}
 		onclose={() => !mutationBusy && (cardCreateOpen = false)}
 	>
@@ -502,7 +502,7 @@
 				}}
 			/>
 		</div>
-	</Drawer>
+	</CardDialog>
 {/if}
 
 {#if archiveConfirm && deck}

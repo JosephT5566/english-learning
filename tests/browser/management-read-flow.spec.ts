@@ -250,3 +250,63 @@ test('ambiguous archive refetches before showing the archived result', async ({ 
 		new RegExp(`/decks/${japaneseDeckId}\\?language=ja&status=archived$`),
 	);
 });
+
+test('new-card dialog is wide on desktop, traps focus, and restores the opener on Escape', async ({
+	page,
+}) => {
+	await signIn(page);
+	await page.setViewportSize({ width: 1440, height: 900 });
+	await page.goto(`/decks/${japaneseDeckId}?language=ja`);
+	const opener = page.getByRole('button', { name: 'New card' });
+	await opener.click();
+	const dialog = page.getByRole('dialog', { name: 'New Japanese card' });
+	await expect(dialog).toHaveAttribute('data-slot', 'card-dialog');
+	const box = await dialog.boundingBox();
+	expect(box!.width).toBeGreaterThan(800);
+	expect(Math.abs(box!.x + box!.width / 2 - 720)).toBeLessThan(2);
+	await page.getByRole('button', { name: 'Close', exact: true }).focus();
+	await page.keyboard.press('Shift+Tab');
+	expect(await dialog.evaluate((node) => node.contains(document.activeElement))).toBe(true);
+	await page.screenshot({ path: '/tmp/card-dialog-desktop.png' });
+	await page.keyboard.press('Escape');
+	await expect(dialog).toBeHidden();
+	await expect(opener).toBeFocused();
+});
+
+test('card edit dialog fits mobile and short viewports with a visible header and scrollable body', async ({
+	page,
+}) => {
+	await signIn(page);
+	await page.setViewportSize({ width: 390, height: 844 });
+	await page.goto(`/cards/${englishCardId}?language=en`);
+	const opener = page.getByRole('button', { name: 'Edit card' });
+	await opener.click();
+	const dialog = page.getByRole('dialog', { name: 'Edit card', exact: true });
+	await expect(dialog).toHaveAttribute('data-slot', 'card-dialog');
+	await page.getByLabel('Meaning', { exact: true }).fill('unsaved mobile edit');
+	for (const label of ['Word details', 'Example']) {
+		const details = dialog
+			.locator('details')
+			.filter({ has: page.locator('summary').getByText(label, { exact: true }) });
+		if ((await details.getAttribute('open')) === null) await details.locator('summary').click();
+	}
+	await page.screenshot({ path: '/tmp/card-dialog-mobile.png' });
+	for (const height of [844, 400]) {
+		await page.setViewportSize({ width: 390, height });
+		const box = await dialog.boundingBox();
+		expect(box!.x).toBe(0);
+		expect(box!.y).toBe(0);
+		expect(box!.width).toBe(390);
+		expect(box!.height).toBe(height);
+		expect(await dialog.evaluate((node) => node.scrollWidth <= node.clientWidth)).toBe(true);
+		await page.getByRole('button', { name: 'Save card', exact: true }).scrollIntoViewIfNeeded();
+		await expect(page.getByRole('button', { name: 'Close', exact: true })).toBeVisible();
+		expect(
+			await dialog.locator('.card-dialog-body').evaluate((node) => node.scrollTop),
+		).toBeGreaterThan(0);
+	}
+	await page.keyboard.press('Escape');
+	await expect(dialog).toBeHidden();
+	await expect(opener).toBeFocused();
+	await expect(page.getByText('unsaved mobile edit', { exact: true })).toBeHidden();
+});

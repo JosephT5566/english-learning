@@ -89,9 +89,9 @@ and sanitized snapshot remain as evidence, but the wrapper requires deliberate e
   Users can switch to English-only semantic search, which reports complete, partial, or empty
   embedding coverage without treating provider failure as an empty result.
 - Japanese management views conditionally show reading and romanization; English shows pronunciation.
-- Users create/edit decks in drawers, create cards in a wide drawer, edit cards inline, and archive
-  through an explicit confirmation. The shared overlay wrappers compose repository-owned
-  shadcn-svelte Sheet and Alert Dialog components, backed by Bits UI for modal focus, keyboard,
+- Users create/edit decks in drawers, create and edit cards in a wide responsive dialog, and archive
+  through an explicit confirmation. The shared overlay wrappers use Bits UI Dialog and repository-owned
+  shadcn-svelte Sheet and Alert Dialog components for modal focus, keyboard,
   portal, and ARIA behavior. New cards default `learned_on` to browser-local today.
 - Unclear creates retain an account-scoped exact request/key; stale edits keep entered values until
   the user explicitly reloads and discards them; unclear archives refetch before claiming success.
