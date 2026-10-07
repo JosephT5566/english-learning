@@ -297,3 +297,8 @@ Last updated: 2026-09-26
   text on blur; Enter, comma, or Add confirms tokens, while form submission includes pending text.
   IME composition confirmation does not add a partial word. This applies to manual creation,
   confirmed-card editing, and JSON draft editing through their shared CardForm.
+
+- 2026-10-07: Keep the shared Header mounted and hide its navigation while the existing
+  isSignedIn store is false. Visibility preserves the header's layout space to avoid content
+  shifting; hidden navigation is inert and excluded from accessibility navigation. Existing
+  layout-load redirects and API authentication checks remain unchanged.

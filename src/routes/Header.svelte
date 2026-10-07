@@ -2,6 +2,7 @@
 	import { page } from '$app/state';
 	import { resolve } from '$app/paths';
 	import { browser } from '$app/environment';
+	import { isSignedIn } from '$lib/stores/auth';
 
 	let language = $derived(browser && page.url.searchParams.get('language') === 'ja' ? 'ja' : 'en');
 	let homePath = $derived(resolve('/'));
@@ -11,7 +12,12 @@
 </script>
 
 <header>
-	<nav aria-label="Primary navigation">
+	<nav
+		aria-label="Primary navigation"
+		class:signed-out={!$isSignedIn}
+		inert={!$isSignedIn}
+		aria-hidden={!$isSignedIn}
+	>
 		<ul>
 			<li>
 				<a href={homePath} aria-current={page.url.pathname === homePath ? 'page' : undefined}
@@ -19,9 +25,8 @@
 				>
 			</li>
 			<li>
-				<a
-					href={reviewPath}
-					aria-current={page.url.pathname === reviewPath ? 'page' : undefined}>Review</a
+				<a href={reviewPath} aria-current={page.url.pathname === reviewPath ? 'page' : undefined}
+					>Review</a
 				>
 			</li>
 			<li>
@@ -34,9 +39,8 @@
 				>
 			</li>
 			<li>
-				<a
-					href={searchPath}
-					aria-current={page.url.pathname === searchPath ? 'page' : undefined}>Search</a
+				<a href={searchPath} aria-current={page.url.pathname === searchPath ? 'page' : undefined}
+					>Search</a
 				>
 			</li>
 		</ul>
@@ -59,6 +63,10 @@
 		border-radius: 999px;
 		background: rgba(255, 255, 255, 0.72);
 		box-shadow: 0 6px 20px rgba(47, 78, 105, 0.08);
+	}
+
+	nav.signed-out {
+		visibility: hidden;
 	}
 
 	ul {
