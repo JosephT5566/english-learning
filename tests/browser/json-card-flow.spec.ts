@@ -229,3 +229,43 @@ test('two selected drafts are confirmed by a single bulk request', async ({ page
 		JSON.parse(writes[0].body).cards.map((item: { fields: { term: string } }) => item.fields.term),
 	).toEqual(['one', 'two']);
 });
+
+test('JSON draft related-word typing and paste keep the section open until explicit confirmation', async ({
+	page,
+}) => {
+	await signIn(page);
+	await mockJsonApi(page, 'en');
+	await openJson(page, 'en');
+	await page.getByLabel('Card JSON').fill('{"cards":[{"term":"steady","meaning":"stable"}]}');
+	await page.getByRole('button', { name: 'Validate and preview' }).click();
+	await page.getByRole('button', { name: 'Edit card 1' }).click();
+	const form = page.locator('.json-authoring .card-form');
+	const related = form
+		.locator('details')
+		.filter({ has: page.locator('summary').getByText('Related words', { exact: true }) });
+	await related.locator('summary').click();
+	const synonyms = form.getByLabel('Synonyms', { exact: true });
+	await synonyms.pressSequentially('reliable');
+	await expect(related).toHaveAttribute('open', '');
+	await expect(synonyms).toBeFocused();
+	await expect(synonyms).toHaveValue('reliable');
+	await expect(form.getByRole('button', { name: 'Remove synonym reliable' })).toBeHidden();
+	const antonyms = form.getByLabel('Antonyms', { exact: true });
+	await antonyms.fill('unstable, erratic');
+	await expect(related).toHaveAttribute('open', '');
+	await expect(synonyms).toHaveValue('reliable');
+	await expect(form.getByRole('button', { name: 'Remove synonym reliable' })).toBeHidden();
+	await synonyms.press('Enter');
+	await expect(form.getByRole('button', { name: 'Remove synonym reliable' })).toBeVisible();
+	await antonyms.locator('..').getByRole('button', { name: 'Add', exact: true }).click();
+	await expect(form.getByRole('button', { name: 'Remove antonym unstable' })).toBeVisible();
+	await expect(form.getByRole('button', { name: 'Remove antonym erratic' })).toBeVisible();
+	await expect(related).toHaveAttribute('open', '');
+	await related.locator('summary').click();
+	await form.getByLabel('Meaning', { exact: true }).fill('consistent');
+	await expect(related).not.toHaveAttribute('open');
+	await page.getByRole('button', { name: 'Apply draft edits' }).click();
+	await page.locator('.draft-details summary').click();
+	await expect(page.locator('.draft-details pre')).toContainText('"reliable"');
+	await expect(page.locator('.draft-details pre')).toContainText('"unstable"');
+});

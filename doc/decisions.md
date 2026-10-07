@@ -291,3 +291,9 @@ Last updated: 2026-09-26
   the form body scrolls, with safe-area padding and the existing single-column mobile fields.
   Dismissal remains blocked during requests, and focus returns to the opening control. Deck
   drawers, draft editing, validation, conflict recovery, and API contracts retain their behavior.
+
+- 2026-10-07: Bound optional CardForm disclosures to user-controlled open state so editing
+  inputs no longer resets manually opened or closed sections. Related-word inputs retain pending
+  text on blur; Enter, comma, or Add confirms tokens, while form submission includes pending text.
+  IME composition confirmation does not add a partial word. This applies to manual creation,
+  confirmed-card editing, and JSON draft editing through their shared CardForm.

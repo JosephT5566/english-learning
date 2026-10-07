@@ -96,23 +96,31 @@
 	let supplementaryNote = $state(draft?.supplementary_note ?? initial?.supplementary_note ?? '');
 	let learnedOn = $state(draft?.learned_on ?? initial?.learned_on ?? localToday());
 
-	const hasWordDetails = Boolean(
-		(draft?.pronunciation ?? initial?.pronunciation) ||
-			(draft?.romanization ?? initial?.romanization) ||
-			(draft?.part_of_speech ?? initial?.part_of_speech) ||
-			(draft?.target_language_definition ?? initial?.target_language_definition),
+	let wordDetailsOpen = $state(
+		Boolean(
+			(draft?.pronunciation ?? initial?.pronunciation) ||
+				(draft?.romanization ?? initial?.romanization) ||
+				(draft?.part_of_speech ?? initial?.part_of_speech) ||
+				(draft?.target_language_definition ?? initial?.target_language_definition),
+		),
 	);
-	const hasExample = Boolean(
-		(draft?.example_sentence ?? initial?.example_sentence) ||
-			(draft?.example_translation ?? initial?.example_translation) ||
-			(draft?.example_source ?? initial?.example_source),
+	let exampleOpen = $state(
+		Boolean(
+			(draft?.example_sentence ?? initial?.example_sentence) ||
+				(draft?.example_translation ?? initial?.example_translation) ||
+				(draft?.example_source ?? initial?.example_source),
+		),
 	);
-	const hasConnections = Boolean(
-		(draft?.synonyms ?? initial?.synonyms ?? []).length ||
-			(draft?.antonyms ?? initial?.antonyms ?? []).length,
+	let relatedWordsOpen = $state(
+		Boolean(
+			(draft?.synonyms ?? initial?.synonyms ?? []).length ||
+				(draft?.antonyms ?? initial?.antonyms ?? []).length,
+		),
 	);
-	const hasNotes = Boolean(
-		(draft?.note ?? initial?.note) || (draft?.supplementary_note ?? initial?.supplementary_note),
+	let notesOpen = $state(
+		Boolean(
+			(draft?.note ?? initial?.note) || (draft?.supplementary_note ?? initial?.supplementary_note),
+		),
 	);
 
 	function addWords(target: 'synonyms' | 'antonyms'): void {
@@ -141,6 +149,8 @@
 	}
 
 	function handleWordKeydown(event: KeyboardEvent, target: 'synonyms' | 'antonyms'): void {
+		// Enter can confirm an IME candidate rather than a completed related word.
+		if (event.isComposing || event.keyCode === 229) return;
 		if (event.key === 'Enter' || event.key === ',') {
 			event.preventDefault();
 			addWords(target);
@@ -209,7 +219,7 @@
 		</div>
 
 		<div class="optional-sections">
-			<details open={hasWordDetails}>
+			<details bind:open={wordDetailsOpen}>
 				<summary>
 					<span>Word details</span>
 					<small>Pronunciation, type, definition, and date</small>
@@ -254,7 +264,7 @@
 				</div>
 			</details>
 
-			<details open={hasExample}>
+			<details bind:open={exampleOpen}>
 				<summary>
 					<span>Example</span>
 					<small>Sentence, translation, and source</small>
@@ -272,7 +282,7 @@
 				</div>
 			</details>
 
-			<details open={hasConnections}>
+			<details bind:open={relatedWordsOpen}>
 				<summary>
 					<span>Related words</span>
 					<small>Synonyms and antonyms</small>
@@ -304,7 +314,6 @@
 								id={`${inputIdPrefix}-synonym-input`}
 								bind:value={synonymInput}
 								onkeydown={(event) => handleWordKeydown(event, 'synonyms')}
-								onblur={() => addWords('synonyms')}
 								placeholder="Type a word"
 								autocomplete="off"
 							/>
@@ -314,7 +323,7 @@
 								disabled={!synonymInput.trim()}>Add</button
 							>
 						</div>
-						<small>Press Enter after each word.</small>
+						<small>Press Enter or choose Add. Commas separate words.</small>
 					</div>
 					<div class="token-field">
 						<label for={`${inputIdPrefix}-antonym-input`}>Antonyms</label>
@@ -342,7 +351,6 @@
 								id={`${inputIdPrefix}-antonym-input`}
 								bind:value={antonymInput}
 								onkeydown={(event) => handleWordKeydown(event, 'antonyms')}
-								onblur={() => addWords('antonyms')}
 								placeholder="Type a word"
 								autocomplete="off"
 							/>
@@ -352,12 +360,12 @@
 								disabled={!antonymInput.trim()}>Add</button
 							>
 						</div>
-						<small>Press Enter after each word.</small>
+						<small>Press Enter or choose Add. Commas separate words.</small>
 					</div>
 				</div>
 			</details>
 
-			<details open={hasNotes}>
+			<details bind:open={notesOpen}>
 				<summary>
 					<span>Notes</span>
 					<small>Personal context and supplementary detail</small>
