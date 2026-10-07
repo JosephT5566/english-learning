@@ -1,11 +1,17 @@
 <script lang="ts">
+	import { applyEdits, format } from 'jsonc-parser';
 	import { getProfile } from '$lib/auth';
 	import { ApiClientError, createCards, validateCardDrafts } from '$lib/api/client';
 	import type { Deck } from '$lib/api/contracts';
 	import CardForm from './CardForm.svelte';
-	import { validateCardJson, type LocalJsonValidation } from '$lib/management/json-card-validation';
+	import {
+		validateCardJson,
+		type LocalJsonValidation,
+		type JsonErrorLocation,
+	} from '$lib/management/json-card-validation';
 	import {
 		cardPrompt,
+		parseCardJson,
 		saveJsonQueue,
 		validationMessages,
 		type CardDraft,
@@ -26,6 +32,8 @@
 		oncreated: () => void;
 	} = $props();
 	let source = $state('');
+	let inputElement: HTMLTextAreaElement;
+	let formatNotice = $state('');
 	let queue: JsonCardQueue = $state(
 		restored ?? {
 			version: 1,
@@ -39,6 +47,7 @@
 	let copied = $state(false);
 	let localResult = $state<LocalJsonValidation | null>(null);
 	let validationPending = $state(false);
+	let localIssues = $derived(localResult && !localResult.valid ? (localResult.issues ?? []) : []);
 
 	$effect(() => {
 		const input = source;
@@ -86,6 +95,34 @@
 		} catch {
 			messages = ['Copy the prompt from the text below.'];
 		}
+	}
+	function formatJson(): void {
+		if (busy || uncertain || !source.trim()) return;
+		messages = [];
+		formatNotice = '';
+		try {
+			parseCardJson(source);
+			source = applyEdits(
+				source,
+				format(source, undefined, {
+					insertSpaces: true,
+					tabSize: 2,
+					eol: '\n',
+				}),
+			);
+			formatNotice = 'JSON formatted.';
+		} catch {
+			localResult = validateCardJson(source);
+			validationPending = false;
+		}
+	}
+	function jumpToError(location: JsonErrorLocation): void {
+		if (busy || uncertain) return;
+		inputElement.focus();
+		inputElement.setSelectionRange(location.offset, location.offset + location.length);
+		// Keep the selected line visible, including errors at the end of a long paste.
+		const lineHeight = Number.parseFloat(window.getComputedStyle(inputElement).lineHeight);
+		inputElement.scrollTop = Math.max(0, (location.line - 2) * lineHeight);
 	}
 	async function preview(): Promise<void> {
 		if (busy || uncertain) return;
@@ -179,7 +216,10 @@
 			persist(); // Preserve the entire exact selection before sending any write.
 			try {
 				const created = await createCards(queue.deckId, {
-					cards: entries.map((entry) => ({ idempotency_key: entry.key, fields: entry.fields })),
+					cards: entries.map((entry) => ({
+						idempotency_key: entry.key,
+						fields: entry.fields,
+					})),
 				});
 				entries.forEach((entry, index) => {
 					entry.cardId = created[index].id;
@@ -228,8 +268,12 @@
 	</details>
 	<label class="json-input"
 		><span>Card JSON</span><textarea
+			bind:this={inputElement}
 			bind:value={source}
-			oninput={() => (messages = [])}
+			oninput={() => {
+				messages = [];
+				formatNotice = '';
+			}}
 			aria-invalid={localResult && !localResult.valid ? true : undefined}
 			aria-describedby="json-local-validation"
 			disabled={busy || uncertain}
@@ -238,8 +282,33 @@
 			spellcheck="false"
 		></textarea></label
 	>
+	<div class="prompt-heading">
+		<button
+			type="button"
+			class="secondary-button"
+			onclick={formatJson}
+			disabled={busy || uncertain || !source.trim()}>Format JSON</button
+		>
+		<span class="input-hint" role="status">{formatNotice}</span>
+	</div>
 	<p class="input-hint">One JSON object · 1–20 cards · up to 100,000 bytes</p>
 	<div id="json-local-validation" role="status" aria-live="polite">
+		{#if !validationPending && localResult && !localResult.valid && messages.length}
+			{#each localIssues as issue, index (index)}
+				{#if issue.location}
+					<p class="input-hint">
+						Error {index + 1}: Line {issue.location.line}, column {issue.location.column}.
+						<button
+							type="button"
+							class="secondary-button"
+							disabled={busy || uncertain}
+							onclick={() => issue.location && jumpToError(issue.location)}
+							>Jump to error {index + 1}</button
+						>
+					</p>
+				{/if}
+			{/each}
+		{/if}
 		{#if validationPending}<p class="input-hint">Checking JSON…</p>
 		{:else if localResult?.valid}<p class="input-hint">
 				JSON format looks valid. Preview to check it with your deck.
@@ -248,7 +317,23 @@
 			<div class="json-errors">
 				<strong>Check this JSON</strong>
 				<ul>
-					{#each localResult?.messages ?? [] as message, index (index)}<li>{message}</li>{/each}
+					{#each localIssues as issue, index (index)}
+						<li>
+							<span>{issue.message}</span>
+							{#if issue.location}
+								<p class="input-hint">
+									Error {index + 1}: Line {issue.location.line}, column {issue.location.column}.
+									<button
+										type="button"
+										class="secondary-button"
+										disabled={busy || uncertain}
+										onclick={() => issue.location && jumpToError(issue.location)}
+										>Jump to error {index + 1}</button
+									>
+								</p>
+							{/if}
+						</li>
+					{/each}
 				</ul>
 			</div>
 		{/if}
@@ -262,7 +347,9 @@
 	{#if messages.length}<div class="json-errors" role="alert">
 			<strong>Check these cards</strong>
 			<ul>
-				{#each messages as message, messageIndex (messageIndex)}<li>{message}</li>{/each}
+				{#each messages as message, messageIndex (messageIndex)}<li>
+						{message}
+					</li>{/each}
 			</ul>
 		</div>{/if}
 	{#if queue.entries.length}
@@ -385,6 +472,8 @@
 		padding: 0.875rem;
 		font-family: 'Fira Mono', monospace;
 		font-size: 0.85rem;
+		line-height: 1.5;
+		white-space: pre;
 		font-weight: 400;
 		background: #f8fafc;
 	}

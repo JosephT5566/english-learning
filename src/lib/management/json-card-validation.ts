@@ -1,15 +1,64 @@
 import Ajv2020, { type ErrorObject } from 'ajv/dist/2020.js';
 import addFormats from 'ajv-formats';
+import { findNodeAtLocation, parseTree, type Node, type ParseError } from 'jsonc-parser';
 import schema from '$lib/api/card-drafts.schema.json';
-import { CARD_OPTIONAL_TEXT_FIELDS, parseCardJson } from './json-cards';
+import { CARD_OPTIONAL_TEXT_FIELDS, JSON_BYTE_LIMIT, parseCardJson } from './json-cards';
 
 const ajv = new Ajv2020({ allErrors: true, strictRequired: false });
 addFormats(ajv, { formats: ['date'], mode: 'full' });
 const validate = ajv.compile(schema);
 
+export type JsonErrorLocation = {
+	offset: number;
+	length: number;
+	line: number;
+	column: number;
+};
+export type JsonIssue = { message: string; location?: JsonErrorLocation };
+
+function location(source: string, offset: number, length: number): JsonErrorLocation {
+	const lines = source.slice(0, offset).split(/\r\n|\r|\n/);
+	return {
+		offset,
+		length,
+		line: lines.length,
+		column: lines.at(-1)!.length + 1,
+	};
+}
+
+function sourceTree(source: string, errors: ParseError[] = []): Node | undefined {
+	try {
+		return parseTree(source, errors, { disallowComments: true, allowTrailingComma: false });
+	} catch {
+		// Deeply nested untrusted input may exceed the parser's stack. Keep validation errors usable.
+		return undefined;
+	}
+}
+
+function issueLocation(
+	source: string,
+	tree: Node | undefined,
+	error: ErrorObject,
+): JsonErrorLocation | undefined {
+	if (!tree) return;
+	const path = error.instancePath
+		.split('/')
+		.slice(1)
+		.map((part) => part.replaceAll('~1', '/').replaceAll('~0', '~'));
+	if (error.keyword === 'additionalProperties') path.push(error.params.additionalProperty);
+	let node: Node | undefined = tree;
+	for (const part of path) {
+		if (!node) break;
+		node = findNodeAtLocation(node, [node.type === 'array' ? Number(part) : part]);
+	}
+	if (!node) return;
+	// Missing fields point to their containing object rather than inventing a text range.
+	return location(source, node.offset, error.keyword === 'required' ? 1 : node.length);
+}
+
 export type LocalJsonValidation =
 	| { valid: true; value: unknown; messages: [] }
-	| { valid: false; messages: string[] };
+	| { valid: false; messages: string[]; issues?: JsonIssue[] };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return !!value && typeof value === 'object' && !Array.isArray(value);
@@ -72,19 +121,35 @@ export function validateCardJson(source: string): LocalJsonValidation {
 		if (validate(value)) return { valid: true, value, messages: [] };
 		const errors = validate.errors ?? [];
 		// For a nullable field with a wrong value, skip the irrelevant "expected null" branch.
-		const messages = [
-			...new Set(
-				errors
-					.filter((error) => !(error.keyword === 'type' && error.params.type === 'null'))
-					.map(errorMessage)
-					.filter((message): message is string => message !== null),
-			),
-		];
-		return { valid: false, messages: messages.slice(0, 30) };
-	} catch (cause) {
+		const tree = sourceTree(source);
+		const issues: JsonIssue[] = [];
+		for (const error of errors) {
+			if (error.keyword === 'type' && error.params.type === 'null') continue;
+			const message = errorMessage(error);
+			if (!message || issues.some((issue) => issue.message === message)) continue;
+			issues.push({ message, location: issueLocation(source, tree, error) });
+			if (issues.length === 30) break;
+		}
 		return {
 			valid: false,
-			messages: [cause instanceof Error ? cause.message : 'Check the JSON input.'],
+			messages: issues.map((issue) => issue.message),
+			issues,
+		};
+	} catch (cause) {
+		const message = cause instanceof Error ? cause.message : 'Check the JSON input.';
+		const errors: ParseError[] = [];
+		// Do not parse oversized input a second time just to provide a location.
+		if (new TextEncoder().encode(source).length <= JSON_BYTE_LIMIT) sourceTree(source, errors);
+		const first = errors[0];
+		return {
+			valid: false,
+			messages: [message],
+			issues: [
+				{
+					message,
+					location: first ? location(source, first.offset, first.length) : undefined,
+				},
+			],
 		};
 	}
 }

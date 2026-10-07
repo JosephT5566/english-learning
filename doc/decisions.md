@@ -278,3 +278,10 @@ Last updated: 2026-09-26
   selection. Exact retries preserve keys/content across reload, and response correlation must
   succeed before the UI confirms any card. Derived embeddings follow the response as best-effort
   in-process work, with the existing backfill as recovery. Manual creation and draft review remain.
+
+- 2026-10-07: Kept JSON authoring as a native textarea with explicit formatting and error navigation.
+  jsonc-parser supplies browser-independent syntax offsets and maps local schema errors to original
+  source ranges; missing fields point to their containing object. Comments and trailing commas
+  remain invalid. Formatting changes whitespace without rewriting number tokens or field values,
+  and does not validate with the server or create cards. Existing limits, debounce, editable draft
+  preview, and explicit confirmation remain in force.
