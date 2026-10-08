@@ -279,14 +279,12 @@
 				jsonQueue.entries.some((entry) => entry.selected && entry.status !== 'confirmed')
 			) {
 				authoringTab = 'json';
-				cardCreateOpen = true;
 			}
 			if (
 				pending?.kind === 'card' &&
 				'deck_id' in pending.payload &&
 				pending.payload.deck_id === deckId
 			) {
-				cardCreateOpen = true;
 				mutationNotice = {
 					title: 'Card creation was not confirmed',
 					message: 'Your values are restored. Save again to retry the same request safely.',

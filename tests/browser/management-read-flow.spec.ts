@@ -167,6 +167,12 @@ test('Japanese card creation retries one exact idempotent command and defaults l
 	await expect(page.getByLabel('Learned on')).toHaveValue(expectedToday);
 	await page.getByRole('button', { name: 'Save card' }).click();
 	await expect(page.getByRole('alert')).toContainText('Result not confirmed');
+	await page.reload();
+	await expect(page.getByRole('button', { name: 'New card' })).toBeVisible();
+	await expect(page.getByRole('dialog')).toBeHidden();
+	await page.getByRole('button', { name: 'New card' }).click();
+	await expect(page.getByLabel('Term', { exact: true })).toHaveValue('復習する');
+	await expect(page.getByLabel('Meaning')).toHaveValue('to review');
 	await page.getByRole('button', { name: 'Save card' }).click();
 	await expect(page).toHaveURL(/\/cards\/abababab-abab-4bab-8bab-abababababab\?language=ja$/);
 	expect(creates).toHaveLength(2);

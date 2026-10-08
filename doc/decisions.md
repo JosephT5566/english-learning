@@ -308,3 +308,7 @@ Last updated: 2026-09-26
   and binds pagination cursors to it; existing updated-date cursors remain compatible. The page
   persists sorting in its URL, resets pagination on changes, and ignores stale load-more responses.
   No response fields, keyword matching, or write contracts changed.
+
+- 2026-10-08: Restoring a pending manual card save or unfinished JSON queue on a deck page
+  keeps the creation dialog closed until the user chooses New card. Recovery still restores
+  the original draft and idempotency keys for an explicit, safe retry.

@@ -173,6 +173,9 @@ test('unconfirmed multi-card bulk create survives reload and retries the identic
 	await page.getByRole('button', { name: 'Add selected cards (2)' }).click();
 	await expect(page.getByRole('button', { name: 'Retry unchanged cards' })).toBeVisible();
 	await page.reload();
+	await expect(page.getByRole('button', { name: 'New card' })).toBeVisible();
+	await expect(page.getByRole('dialog')).toBeHidden();
+	await page.getByRole('button', { name: 'New card' }).click();
 	await expect(page.getByRole('button', { name: 'Retry unchanged cards' })).toBeVisible();
 	await expect(page.getByRole('tab', { name: 'Manual', exact: true })).toBeDisabled();
 	await page.getByRole('button', { name: 'Retry unchanged cards' }).click();
