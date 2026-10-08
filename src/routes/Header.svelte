@@ -3,6 +3,10 @@
 	import { resolve } from '$app/paths';
 	import { browser } from '$app/environment';
 	import { isSignedIn } from '$lib/stores/auth';
+	import HouseIcon from '@lucide/svelte/icons/house';
+	import PlayingCardsFunIcon from '@lucide/svelte/icons/playing-cards-fan';
+	import WalletCardsIcon from '@lucide/svelte/icons/wallet-cards';
+	import SearchIcon from '@lucide/svelte/icons/search';
 
 	let language = $derived(browser && page.url.searchParams.get('language') === 'ja' ? 'ja' : 'en');
 	let homePath = $derived(resolve('/'));
@@ -20,27 +24,41 @@
 	>
 		<ul>
 			<li>
-				<a href={homePath} aria-current={page.url.pathname === homePath ? 'page' : undefined}
-					>Home</a
+				<a
+					href={homePath}
+					aria-label="Home"
+					title="Home"
+					aria-current={page.url.pathname === homePath ? 'page' : undefined}
+					><HouseIcon size={20} aria-hidden="true" /></a
 				>
 			</li>
 			<li>
-				<a href={reviewPath} aria-current={page.url.pathname === reviewPath ? 'page' : undefined}
-					>Review</a
+				<a
+					href={reviewPath}
+					aria-label="Review"
+					title="Review"
+					aria-current={page.url.pathname === reviewPath ? 'page' : undefined}
+					><PlayingCardsFunIcon size={20} aria-hidden="true" /></a
 				>
 			</li>
 			<li>
 				<a
 					href={`${decksPath}?language=${language}`}
+					aria-label="Decks"
+					title="Decks"
 					aria-current={page.url.pathname.startsWith(decksPath) ||
 					page.url.pathname.includes('/cards/')
 						? 'page'
-						: undefined}>Decks</a
+						: undefined}><WalletCardsIcon size={20} aria-hidden="true" /></a
 				>
 			</li>
 			<li>
-				<a href={searchPath} aria-current={page.url.pathname === searchPath ? 'page' : undefined}
-					>Search</a
+				<a
+					href={searchPath}
+					aria-label="Search"
+					title="Search"
+					aria-current={page.url.pathname === searchPath ? 'page' : undefined}
+					><SearchIcon size={20} aria-hidden="true" /></a
 				>
 			</li>
 		</ul>
@@ -86,14 +104,11 @@
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		min-height: 2.5rem;
+		min-width: 2.75rem;
+		min-height: 2.75rem;
 		padding: 0 0.85rem;
 		border-radius: 999px;
 		color: #405c73;
-		font-weight: 700;
-		font-size: 0.72rem;
-		text-transform: uppercase;
-		letter-spacing: 0.1em;
 		text-decoration: none;
 		transition:
 			color 160ms ease-out,
@@ -133,8 +148,6 @@
 		nav a {
 			width: 100%;
 			padding-inline: 0.4rem;
-			font-size: 0.68rem;
-			letter-spacing: 0.07em;
 		}
 	}
 

@@ -312,3 +312,13 @@ Last updated: 2026-09-26
 - 2026-10-08: Restoring a pending manual card save or unfinished JSON queue on a deck page
   keeps the creation dialog closed until the user chooses New card. Recovery still restores
   the original draft and idempotency keys for an explicit, safe retry.
+
+- 2026-10-08: Use Lucide icons for deck detail create, edit, archive, pagination, and sorting
+  controls and the card dialog close button. Icon actions retain accessible names, tooltips,
+  and 44px touch targets; the sort selector retains its accessible label and descriptive options.
+  Deck-list Manage cards and card-list View card links also use Lucide icons with the same
+  accessible names, tooltips, and touch target sizes, retaining their base-aware navigation.
+  Header navigation uses Home, Review, Decks, and Search icons with accessible names and tooltips;
+  active-route styling and signed-out visibility behavior are preserved.
+  Search mode, submit, retry, and keyword fallback buttons use Lucide icons with accessible names,
+  tooltips, visible focus, and 44px minimum touch targets. Loading animation respects reduced motion.

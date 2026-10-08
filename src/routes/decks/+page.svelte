@@ -2,6 +2,7 @@
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
+	import PanelsTopLeftIcon from '@lucide/svelte/icons/panels-top-left';
 	import { getProfile } from '$lib/auth';
 	import { ApiClientError, createDeck, getDecks } from '$lib/api/client';
 	import type { ArchiveStatus, Deck, DeckCreate, TargetLanguage } from '$lib/api/contracts';
@@ -247,8 +248,11 @@
 							</p>
 						</div>
 						<a
+							class="management-icon-link"
+							aria-label="Manage cards"
+							title="Manage cards"
 							href={`${resolve('/decks/[deckId]', { deckId: deck.id })}?language=${deck.target_language}&status=active`}
-							>Manage cards</a
+							><PanelsTopLeftIcon size={20} aria-hidden="true" /></a
 						>
 					</li>
 				{/each}

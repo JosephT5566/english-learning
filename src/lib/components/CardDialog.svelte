@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { Dialog } from 'bits-ui';
+	import XIcon from '@lucide/svelte/icons/x';
 	import type { Snippet } from 'svelte';
 
 	let {
@@ -42,8 +43,12 @@
 				<Dialog.Description class="visually-hidden">
 					Review your card details before saving.
 				</Dialog.Description>
-				<Dialog.Close type="button" class="icon-button" aria-label="Close" disabled={!dismissible}
-					>×</Dialog.Close
+				<Dialog.Close
+					type="button"
+					class="icon-button"
+					aria-label="Close"
+					disabled={!dismissible}
+					title="Close"><XIcon size={20} aria-hidden="true" /></Dialog.Close
 				>
 			</header>
 			<div class="card-dialog-body">{@render children()}</div>
@@ -90,6 +95,15 @@
 		overflow-y: auto;
 		overscroll-behavior: contain;
 		padding: 1.5rem;
+	}
+	:global(.card-dialog .icon-button) {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 2.75rem;
+		height: 2.75rem;
+		padding: 0;
+		flex-shrink: 0;
 	}
 	@media (max-width: 640px) {
 		:global(.card-dialog) {

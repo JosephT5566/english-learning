@@ -2,6 +2,13 @@
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
+	import PlusIcon from '@lucide/svelte/icons/plus';
+	import EyeIcon from '@lucide/svelte/icons/eye';
+	import PencilIcon from '@lucide/svelte/icons/pencil';
+	import ArchiveIcon from '@lucide/svelte/icons/archive';
+	import ArrowDownIcon from '@lucide/svelte/icons/arrow-down';
+	import LoaderCircleIcon from '@lucide/svelte/icons/loader-circle';
+	import ArrowDownWideNarrowIcon from '@lucide/svelte/icons/arrow-down-wide-narrow';
 	import { getProfile } from '$lib/auth';
 	import {
 		ApiClientError,
@@ -325,8 +332,9 @@
 		<div class="resource-actions">
 			{#if !deck.archived_at && archiveStatus === 'active'}
 				<button
-					class="primary-button"
+					class="primary-button action-icon"
 					type="button"
+					aria-label="New card"
 					disabled={Boolean(
 						(jsonOutstanding && jsonQueue?.deckId !== deckId) ||
 							(pendingCreate &&
@@ -334,24 +342,28 @@
 									!('deck_id' in pendingCreate.payload) ||
 									pendingCreate.payload.deck_id !== deckId)),
 					)}
-					title={pendingCreate ? 'Finish the pending creation before starting another.' : undefined}
-					onclick={openCardCreate}>New card</button
+					title={pendingCreate ? 'Resume pending card creation' : 'New card'}
+					onclick={openCardCreate}><PlusIcon size={20} aria-hidden="true" /></button
 				>
 				<button
-					class="secondary-button"
+					class="secondary-button action-icon"
 					type="button"
+					aria-label="Edit deck"
+					title="Edit deck"
 					onclick={() => {
 						mutationNotice = null;
 						editOpen = true;
-					}}>Edit deck</button
+					}}><PencilIcon size={20} aria-hidden="true" /></button
 				>
 				<button
-					class="danger-button"
+					class="danger-button action-icon"
 					type="button"
+					aria-label="Archive deck"
+					title="Archive deck"
 					onclick={() => {
 						mutationNotice = null;
 						archiveConfirm = true;
-					}}>Archive deck</button
+					}}><ArchiveIcon size={20} aria-hidden="true" /></button
 				>
 			{/if}
 		</div>
@@ -387,7 +399,10 @@
 		</nav>
 
 		<label class="card-sort">
-			<span>Sort by</span>
+			<span class="sort-icon" title="Sort by">
+				<ArrowDownWideNarrowIcon size={20} aria-hidden="true" />
+				<span class="visually-hidden">Sort by</span>
+			</span>
 			<select
 				value={cardSort}
 				onchange={(event) => {
@@ -426,17 +441,27 @@
 							<p>{card.meaning}</p>
 						</div>
 						<a
+							class="management-icon-link"
+							aria-label="View card"
+							title="View card"
 							href={`${resolve('/cards/[cardId]', { cardId: card.id })}?language=${card.deck.target_language}`}
-							>View card</a
+							><EyeIcon size={20} aria-hidden="true" /></a
 						>
 					</li>
 				{/each}
 			</ul>
 			{#if nextCursor}<button
-					class="load-more"
+					class="load-more action-icon"
 					type="button"
+					aria-label={loadingMore ? 'Loading…' : 'Load more cards'}
+					title={loadingMore ? 'Loading…' : 'Load more cards'}
+					aria-busy={loadingMore}
 					disabled={loadingMore}
-					onclick={loadMore}>{loadingMore ? 'Loading…' : 'Load more cards'}</button
+					onclick={loadMore}
+					>{#if loadingMore}<LoaderCircleIcon size={20} aria-hidden="true" />{:else}<ArrowDownIcon
+							size={20}
+							aria-hidden="true"
+						/>{/if}</button
 				>{/if}
 		{/if}
 	{/if}
@@ -542,6 +567,28 @@
 {/if}
 
 <style>
+	.action-icon {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 2.75rem;
+		height: 2.75rem;
+		padding: 0;
+	}
+	.action-icon:focus-visible {
+		outline: 3px solid rgba(64, 117, 166, 0.5);
+		outline-offset: 3px;
+	}
+	.action-icon:disabled {
+		opacity: 0.6;
+	}
+	.load-more.action-icon {
+		display: flex;
+	}
+	.sort-icon {
+		display: inline-flex;
+		align-items: center;
+	}
 	.card-sort {
 		display: flex;
 		align-items: center;
