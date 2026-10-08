@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 
+const englishDeckId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 const japaneseDeckId = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
 const japaneseCardId = 'ffffffff-ffff-4fff-8fff-ffffffffffff';
 const englishCardId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
@@ -166,6 +167,12 @@ test('Japanese card creation retries one exact idempotent command and defaults l
 	await expect(page.getByLabel('Learned on')).toHaveValue(expectedToday);
 	await page.getByRole('button', { name: 'Save card' }).click();
 	await expect(page.getByRole('alert')).toContainText('Result not confirmed');
+	await page.reload();
+	await expect(page.getByRole('button', { name: 'New card' })).toBeVisible();
+	await expect(page.getByRole('dialog')).toBeHidden();
+	await page.getByRole('button', { name: 'New card' }).click();
+	await expect(page.getByLabel('Term', { exact: true })).toHaveValue('復習する');
+	await expect(page.getByLabel('Meaning')).toHaveValue('to review');
 	await page.getByRole('button', { name: 'Save card' }).click();
 	await expect(page).toHaveURL(/\/cards\/abababab-abab-4bab-8bab-abababababab\?language=ja$/);
 	expect(creates).toHaveLength(2);
@@ -249,4 +256,117 @@ test('ambiguous archive refetches before showing the archived result', async ({ 
 	await expect(page).toHaveURL(
 		new RegExp(`/decks/${japaneseDeckId}\\?language=ja&status=archived$`),
 	);
+});
+
+test('new-card dialog is wide on desktop, traps focus, and restores the opener on Escape', async ({
+	page,
+}) => {
+	await signIn(page);
+	await page.setViewportSize({ width: 1440, height: 900 });
+	await page.goto(`/decks/${japaneseDeckId}?language=ja`);
+	const opener = page.getByRole('button', { name: 'New card' });
+	await opener.click();
+	const dialog = page.getByRole('dialog', { name: 'New Japanese card' });
+	await expect(dialog).toHaveAttribute('data-slot', 'card-dialog');
+	const box = await dialog.boundingBox();
+	expect(box!.width).toBeGreaterThan(800);
+	expect(Math.abs(box!.x + box!.width / 2 - 720)).toBeLessThan(2);
+	await page.getByRole('button', { name: 'Close', exact: true }).focus();
+	await page.keyboard.press('Shift+Tab');
+	expect(await dialog.evaluate((node) => node.contains(document.activeElement))).toBe(true);
+	await page.screenshot({ path: '/tmp/card-dialog-desktop.png' });
+	await page.keyboard.press('Escape');
+	await expect(dialog).toBeHidden();
+	await expect(opener).toBeFocused();
+});
+
+test('card edit dialog fits mobile and short viewports with a visible header and scrollable body', async ({
+	page,
+}) => {
+	await signIn(page);
+	await page.setViewportSize({ width: 390, height: 844 });
+	await page.goto(`/cards/${englishCardId}?language=en`);
+	const opener = page.getByRole('button', { name: 'Edit card' });
+	await opener.click();
+	const dialog = page.getByRole('dialog', { name: 'Edit card', exact: true });
+	await expect(dialog).toHaveAttribute('data-slot', 'card-dialog');
+	await page.getByLabel('Meaning', { exact: true }).fill('unsaved mobile edit');
+	for (const label of ['Word details', 'Example']) {
+		const details = dialog
+			.locator('details')
+			.filter({ has: page.locator('summary').getByText(label, { exact: true }) });
+		if ((await details.getAttribute('open')) === null) await details.locator('summary').click();
+	}
+	await page.screenshot({ path: '/tmp/card-dialog-mobile.png' });
+	for (const height of [844, 400]) {
+		await page.setViewportSize({ width: 390, height });
+		const box = await dialog.boundingBox();
+		expect(box!.x).toBe(0);
+		expect(box!.y).toBe(0);
+		expect(box!.width).toBe(390);
+		expect(box!.height).toBe(height);
+		expect(await dialog.evaluate((node) => node.scrollWidth <= node.clientWidth)).toBe(true);
+		await page.getByRole('button', { name: 'Save card', exact: true }).scrollIntoViewIfNeeded();
+		await expect(page.getByRole('button', { name: 'Close', exact: true })).toBeVisible();
+		expect(
+			await dialog.locator('.card-dialog-body').evaluate((node) => node.scrollTop),
+		).toBeGreaterThan(0);
+	}
+	await page.keyboard.press('Escape');
+	await expect(dialog).toBeHidden();
+	await expect(opener).toBeFocused();
+	await expect(page.getByText('unsaved mobile edit', { exact: true })).toBeHidden();
+});
+
+test('deck sorting preserves URL and pagination while ignoring stale load-more responses', async ({
+	page,
+}) => {
+	await signIn(page);
+	let releaseOld: (() => void) | undefined;
+	const sorts: string[] = [];
+	await page.route('**/v1/cards?*', async (route) => {
+		const url = new URL(route.request().url());
+		const sort = url.searchParams.get('sort') ?? 'updated_at';
+		const cursor = url.searchParams.get('cursor');
+		sorts.push(sort);
+		const upstream = await route.fetch();
+		const template = (await upstream.json()).items[0];
+		if (sort === 'updated_at' && cursor)
+			await new Promise<void>((resolve) => {
+				releaseOld = resolve;
+			});
+		const index = cursor ? 2 : 1;
+		await route.fulfill({
+			json: {
+				items: [
+					{
+						...template,
+						id: `abababab-abab-4bab-8bab-${String(index).padStart(12, '0')}`,
+						term: `${sort}-${index}`,
+					},
+				],
+				next_cursor: cursor ? null : `${sort}-next`,
+			},
+		});
+	});
+	await page.goto(`/decks/${englishDeckId}?language=en`);
+	await expect(page.getByRole('heading', { name: 'updated_at-1' })).toBeVisible();
+	await page.getByRole('button', { name: 'Load more cards' }).click();
+	await expect.poll(() => Boolean(releaseOld)).toBe(true);
+	await page.getByLabel('Sort by').selectOption('created_at');
+	await expect(page).toHaveURL(/sort=created_at/);
+	await expect(page.getByRole('heading', { name: 'created_at-1' })).toBeVisible();
+	const oldResponse = page.waitForResponse((response) =>
+		response.url().includes('cursor=updated_at-next'),
+	);
+	releaseOld!();
+	await oldResponse;
+	await page.getByRole('button', { name: 'Load more cards' }).click();
+	await expect(page.getByRole('heading', { name: 'created_at-2' })).toBeVisible();
+	await expect(page.getByRole('heading', { name: 'updated_at-2' })).toBeHidden();
+	await expect(page.getByRole('button', { name: 'Load more cards' })).toBeHidden();
+	await page.reload();
+	await expect(page.getByLabel('Sort by')).toHaveValue('created_at');
+	await expect(page.getByRole('heading', { name: 'created_at-1' })).toBeVisible();
+	expect(sorts).toEqual(['updated_at', 'updated_at', 'created_at', 'created_at', 'created_at']);
 });

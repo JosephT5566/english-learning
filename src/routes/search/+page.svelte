@@ -1,5 +1,10 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
+	import TextSearchIcon from '@lucide/svelte/icons/text-search';
+	import LightbulbIcon from '@lucide/svelte/icons/lightbulb';
+	import SearchIcon from '@lucide/svelte/icons/search';
+	import LoaderCircleIcon from '@lucide/svelte/icons/loader-circle';
+	import RotateCcwIcon from '@lucide/svelte/icons/rotate-ccw';
 	import { ApiClientError, keywordSearch, semanticSearch } from '$lib/api/client';
 	import type { CardSummary, Page, SemanticSearchResponse } from '$lib/api/contracts';
 
@@ -89,15 +94,19 @@
 			type="button"
 			class:active={mode === 'keyword'}
 			aria-pressed={mode === 'keyword'}
+			aria-label="Words & phrases"
+			title="Words & phrases"
 			disabled={busy}
-			onclick={() => selectMode('keyword')}>Words & phrases</button
+			onclick={() => selectMode('keyword')}><TextSearchIcon size={20} aria-hidden="true" /></button
 		>
 		<button
 			type="button"
 			class:active={mode === 'semantic'}
 			aria-pressed={mode === 'semantic'}
+			aria-label="Meaning & concepts"
+			title="Meaning & concepts"
 			disabled={busy}
-			onclick={() => selectMode('semantic')}>Meaning & concepts</button
+			onclick={() => selectMode('semantic')}><LightbulbIcon size={20} aria-hidden="true" /></button
 		>
 	</div>
 	{#if mode === 'semantic'}
@@ -120,8 +129,17 @@
 					? 'e.g. serendipity or べんきょう'
 					: 'e.g. a lucky discovery'}
 			/>
-			<button type="submit" disabled={busy || query.trim().length < 2}>
-				{busy ? 'Searching…' : 'Search cards'}
+			<button
+				type="submit"
+				aria-label={busy ? 'Searching…' : 'Search cards'}
+				title={busy ? 'Searching…' : 'Search cards'}
+				disabled={busy || query.trim().length < 2}
+			>
+				{#if busy}<LoaderCircleIcon
+						size={20}
+						class="loading-icon"
+						aria-hidden="true"
+					/>{:else}<SearchIcon size={20} aria-hidden="true" />{/if}
 			</button>
 		</div>
 		<p class="search-hint">
@@ -140,7 +158,12 @@
 			{#if error.auth}
 				<a href={resolve('/')}>Go to sign in</a>
 			{:else if error.retryable}
-				<button type="button" onclick={() => search()}>Retry “{submittedQuery}”</button>
+				<button
+					type="button"
+					aria-label={`Retry “${submittedQuery}”`}
+					title={`Retry “${submittedQuery}”`}
+					onclick={() => search()}><RotateCcwIcon size={20} aria-hidden="true" /></button
+				>
 			{/if}
 		</section>
 	{:else if mode === 'keyword' && keywordResult}
@@ -152,7 +175,9 @@
 		{:else}
 			<div class="results-heading" aria-live="polite">
 				<h2>Results for “{submittedQuery}”</h2>
-				<span>{keywordResult.items.length} {keywordResult.items.length === 1 ? 'card' : 'cards'}</span>
+				<span
+					>{keywordResult.items.length} {keywordResult.items.length === 1 ? 'card' : 'cards'}</span
+				>
 			</div>
 			<ol class="results">
 				{#each keywordResult.items as item (item.id)}
@@ -184,14 +209,23 @@
 			<section class="state">
 				<h2>No related cards found</h2>
 				<p>Try a shorter description or search for an exact word or phrase.</p>
-				<button type="button" class="secondary-action" onclick={() => selectMode('keyword')}>
-					Use words & phrases
+				<button
+					type="button"
+					class="secondary-action"
+					aria-label="Use words & phrases"
+					title="Use words & phrases"
+					onclick={() => selectMode('keyword')}
+				>
+					<TextSearchIcon size={20} aria-hidden="true" />
 				</button>
 			</section>
 		{:else}
 			<div class="results-heading" aria-live="polite">
 				<h2>Related to “{submittedQuery}”</h2>
-				<span>{semanticResult.items.length} {semanticResult.items.length === 1 ? 'card' : 'cards'}</span>
+				<span
+					>{semanticResult.items.length}
+					{semanticResult.items.length === 1 ? 'card' : 'cards'}</span
+				>
 			</div>
 			<ol class="results">
 				{#each semanticResult.items as item (item.id)}
@@ -200,7 +234,8 @@
 							<span class="result-copy">
 								<strong>{item.term}</strong>
 								<small>{item.meaning}</small>
-								{#if item.pronunciation}<small class="result-context">{item.pronunciation}</small>{/if}
+								{#if item.pronunciation}<small class="result-context">{item.pronunciation}</small
+									>{/if}
 							</span>
 							<span class="score">{matchLabel(item.score)}</span>
 						</a>
@@ -241,6 +276,10 @@
 		background: rgba(255, 255, 255, 0.58);
 	}
 	.mode-switch button {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		min-width: 2.75rem;
 		min-height: 2.75rem;
 		padding: 0.65rem 0.9rem;
 		border: 0;
@@ -296,6 +335,11 @@
 	}
 	.search-controls button,
 	.state button {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		min-width: 2.75rem;
+		min-height: 2.75rem;
 		padding: 0.8rem 1.1rem;
 		border: 1px solid #315f89;
 		border-radius: 0.65rem;
@@ -312,6 +356,23 @@
 	.search-controls button:disabled {
 		cursor: not-allowed;
 		opacity: 0.55;
+	}
+	button:focus-visible {
+		outline: 3px solid rgba(64, 117, 166, 0.5);
+		outline-offset: 3px;
+	}
+	:global(.loading-icon) {
+		animation: search-spin 1s linear infinite;
+	}
+	@keyframes search-spin {
+		to {
+			transform: rotate(360deg);
+		}
+	}
+	@media (prefers-reduced-motion: reduce) {
+		:global(.loading-icon) {
+			animation: none;
+		}
 	}
 	.search-hint {
 		margin: 0.55rem 0 0;
@@ -383,7 +444,10 @@
 		border-bottom: 1px solid rgba(64, 117, 166, 0.22);
 		color: inherit;
 		text-decoration: none;
-		transition: color 150ms ease, padding 150ms ease, background-color 150ms ease;
+		transition:
+			color 150ms ease,
+			padding 150ms ease,
+			background-color 150ms ease;
 	}
 	.results a:hover {
 		padding-inline: 0.65rem;

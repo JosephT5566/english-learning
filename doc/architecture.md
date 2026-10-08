@@ -182,7 +182,9 @@ writes have no fallback or dual-write path.
    and malformed or query-incompatible cursors before running the list query.
 3. Every SQL statement scopes by the resolved owner. Explicit deck, card, and tag lookups return the
    same not-found result for missing and cross-owner resources.
-4. Deck/card lists seek after `(updated_at, id)` in descending order. Due reviews seek after
+4. Deck lists seek after `(updated_at, id)` in descending order. Card lists use the validated
+   `sort=updated_at|created_at` (default `updated_at`) with descending `(date, id)` ordering.
+   Due reviews seek after
    `(next_review_at, card_id)` in ascending order and retain one server `as_of` time in the cursor.
 5. Queries fetch `limit + 1`, return only `limit`, and emit a next cursor only when another record
    exists. Empty collections return `items: []` and `next_cursor: null`.
@@ -388,8 +390,10 @@ Review update payload shape is:
 
 ## Management Mutation Flow
 
-1. Deck create/edit uses a compact drawer, card create uses a wide drawer, and card edit replaces the
-   detail grid inline. Language-specific fields remain conditional within the shared form.
+1. Deck create/edit uses a compact drawer. Card create/edit shares `CardDialog.svelte`, a
+   centered Bits UI dialog up to 60rem wide on desktop and full-screen at 640px or narrower.
+   Its header stays visible while the body scrolls; the existing mobile single-column form remains.
+   Language-specific fields remain conditional within the shared form.
 2. Before create, the browser stores one exact body/UUID key for the current Google subject. An
    unclear, retryable, or authentication result keeps and locks that command; an exact manual retry
    sends the same pair. Confirmation or definite rejection clears it.

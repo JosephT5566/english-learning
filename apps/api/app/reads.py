@@ -283,6 +283,7 @@ def list_cards(
     deck_id: Annotated[UUID | None, Query()] = None,
     target_language: Annotated[TargetLanguage | None, Query()] = None,
     status: Annotated[ArchiveStatus, Query()] = "active",
+    sort: Annotated[Literal["updated_at", "created_at"], Query()] = "updated_at",
     tag_id: Annotated[UUID | None, Query()] = None,
     query: Annotated[str | None, Query(max_length=200)] = None,
     limit: MANAGEMENT_LIMIT = 20,
@@ -296,6 +297,7 @@ def list_cards(
             "deck_id",
             "target_language",
             "status",
+            "sort",
             "tag_id",
             "query",
             "limit",
@@ -335,16 +337,20 @@ def list_cards(
         "tag_id": str(tag_id) if tag_id else None,
         "query": normalized_query,
     }
+    # Preserve existing default-sort cursors; created-date cursors have their own shape.
+    if sort != "updated_at":
+        filters["sort"] = sort
+    sort_field = {"updated_at": "updated_at", "created_at": "created_at"}[sort]
     fingerprint = query_fingerprint(filters, limit)
-    cursor_updated_at = cursor_id = None
+    cursor_date = cursor_id = None
     if cursor is not None:
         position, _ = decode_cursor(
             cursor,
             kind="cards",
             fingerprint=fingerprint,
-            position_fields={"updated_at", "id"},
+            position_fields={sort_field, "id"},
         )
-        cursor_updated_at = parse_cursor_datetime(position["updated_at"])
+        cursor_date = parse_cursor_datetime(position[sort_field])
         cursor_id = parse_cursor_uuid(position["id"])
 
     conditions = ["c.owner_id = :owner_id", _archive_clause(status, "c")]
@@ -367,18 +373,18 @@ def list_cards(
             "OR POSITION(lower(:query) IN lower(COALESCE(c.pronunciation, ''))) > 0 "
             "OR POSITION(lower(:query) IN lower(COALESCE(c.romanization, ''))) > 0)"
         )
-    if cursor_updated_at is not None:
-        conditions.append("(c.updated_at, c.id) < (:cursor_updated_at, :cursor_id)")
+    if cursor_date is not None:
+        conditions.append(f"(c.{sort_field}, c.id) < (:cursor_date, :cursor_id)")
     rows = (
         session.execute(
             text(
                 f"""
-            SELECT {CARD_COLUMNS}
+            SELECT {CARD_COLUMNS}, c.created_at
             FROM learning_cards AS c
             JOIN learning_decks AS d
               ON (d.id, d.owner_id) = (c.deck_id, c.owner_id)
             WHERE {" AND ".join(conditions)}
-            ORDER BY c.updated_at DESC, c.id DESC
+            ORDER BY c.{sort_field} DESC, c.id DESC
             LIMIT :fetch_limit
             """
             ),
@@ -388,7 +394,7 @@ def list_cards(
                 "target_language": target_language,
                 "tag_id": tag_id,
                 "query": normalized_query,
-                "cursor_updated_at": cursor_updated_at,
+                "cursor_date": cursor_date,
                 "cursor_id": cursor_id,
                 "fetch_limit": limit + 1,
             },
@@ -396,7 +402,7 @@ def list_cards(
         .mappings()
         .all()
     )
-    return _page(rows, limit, CardSummary, "cards", fingerprint, "updated_at")
+    return _page(rows, limit, CardSummary, "cards", fingerprint, sort_field)
 
 
 @router.get("/cards/{card_id}", response_model=CardDetail)

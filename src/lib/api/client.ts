@@ -16,6 +16,7 @@ import {
 	type CardCreate,
 	type CardBulkCreate,
 	type CardSummary,
+	type CardSort,
 	type CardUpdate,
 	type Deck,
 	type DeckCreate,
@@ -150,8 +151,15 @@ export async function getCards(
 	status: ArchiveStatus = 'active',
 	limit = 20,
 	cursor?: string,
+	sort: CardSort = 'updated_at',
 ): Promise<Page<CardSummary>> {
-	const query = queryString({ deck_id: deckId, status, limit, cursor });
+	const query = queryString({
+		deck_id: deckId,
+		status,
+		limit,
+		cursor,
+		sort: sort === 'updated_at' ? undefined : sort,
+	});
 	const data = await authenticatedRequest(`/v1/cards?${query}`);
 	if (!isCardSummaryPage(data)) {
 		throw new ApiClientError('The card list response was invalid.', 'invalid_response', true);

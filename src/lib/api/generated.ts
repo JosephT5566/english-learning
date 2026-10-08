@@ -938,6 +938,7 @@ export interface operations {
                 deck_id?: string | null;
                 target_language?: ("en" | "ja") | null;
                 status?: "active" | "archived" | "all";
+                sort?: "updated_at" | "created_at";
                 tag_id?: string | null;
                 query?: string | null;
                 limit?: number;

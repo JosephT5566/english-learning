@@ -2,6 +2,13 @@
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
+	import PlusIcon from '@lucide/svelte/icons/plus';
+	import EyeIcon from '@lucide/svelte/icons/eye';
+	import PencilIcon from '@lucide/svelte/icons/pencil';
+	import ArchiveIcon from '@lucide/svelte/icons/archive';
+	import ArrowDownIcon from '@lucide/svelte/icons/arrow-down';
+	import LoaderCircleIcon from '@lucide/svelte/icons/loader-circle';
+	import ArrowDownWideNarrowIcon from '@lucide/svelte/icons/arrow-down-wide-narrow';
 	import { getProfile } from '$lib/auth';
 	import {
 		ApiClientError,
@@ -15,10 +22,12 @@
 		ArchiveStatus,
 		CardCreate,
 		CardSummary,
+		CardSort,
 		Deck,
 		DeckCreate,
 		TargetLanguage,
 	} from '$lib/api/contracts';
+	import CardDialog from '$lib/components/CardDialog.svelte';
 	import CardForm from '$lib/components/CardForm.svelte';
 	import JsonCardForm from '$lib/components/JsonCardForm.svelte';
 	import { loadJsonQueue, type JsonCardQueue } from '$lib/management/json-cards';
@@ -43,6 +52,9 @@
 	let viewState: ViewState = $state('loading');
 	let language: TargetLanguage = $state('en');
 	let archiveStatus: ArchiveStatus = $state('active');
+	let cardSort: CardSort = $derived(
+		page.url.searchParams.get('sort') === 'created_at' ? 'created_at' : 'updated_at',
+	);
 	let deck: Deck | null = $state(null);
 	let cards: CardSummary[] = $state([]);
 	let nextCursor: string | null = $state(null);
@@ -84,7 +96,7 @@
 	}
 
 	function deckHref(targetLanguage: TargetLanguage, status = archiveStatus): string {
-		return `${resolve('/decks/[deckId]', { deckId })}?language=${targetLanguage}&status=${status}`;
+		return `${resolve('/decks/[deckId]', { deckId })}?language=${targetLanguage}&status=${status}&sort=${cardSort}`;
 	}
 
 	function listHref(targetLanguage = language): string {
@@ -95,10 +107,12 @@
 		const sequence = ++requestSequence;
 		viewState = 'loading';
 		error = null;
+		loadingMore = false;
+		nextCursor = null;
 		try {
 			const [deckResult, cardResult] = await Promise.all([
 				getDeck(deckId),
-				getCards(deckId, status),
+				getCards(deckId, status, 20, undefined, cardSort),
 			]);
 			if (sequence !== requestSequence) return;
 			if (deckResult.target_language !== targetLanguage) {
@@ -122,15 +136,18 @@
 	async function loadMore(): Promise<void> {
 		if (!nextCursor || loadingMore) return;
 		loadingMore = true;
+		const sequence = requestSequence;
 		try {
-			const result = await getCards(deckId, archiveStatus, 20, nextCursor);
+			const result = await getCards(deckId, archiveStatus, 20, nextCursor, cardSort);
+			if (sequence !== requestSequence) return;
 			cards = [...cards, ...result.items];
 			nextCursor = result.next_cursor;
 		} catch (cause) {
+			if (sequence !== requestSequence) return;
 			error = readErrorCopy(cause, 'cards');
 			viewState = 'error';
 		} finally {
-			loadingMore = false;
+			if (sequence === requestSequence) loadingMore = false;
 		}
 	}
 
@@ -269,14 +286,12 @@
 				jsonQueue.entries.some((entry) => entry.selected && entry.status !== 'confirmed')
 			) {
 				authoringTab = 'json';
-				cardCreateOpen = true;
 			}
 			if (
 				pending?.kind === 'card' &&
 				'deck_id' in pending.payload &&
 				pending.payload.deck_id === deckId
 			) {
-				cardCreateOpen = true;
 				mutationNotice = {
 					title: 'Card creation was not confirmed',
 					message: 'Your values are restored. Save again to retry the same request safely.',
@@ -317,8 +332,9 @@
 		<div class="resource-actions">
 			{#if !deck.archived_at && archiveStatus === 'active'}
 				<button
-					class="primary-button"
+					class="primary-button action-icon"
 					type="button"
+					aria-label="New card"
 					disabled={Boolean(
 						(jsonOutstanding && jsonQueue?.deckId !== deckId) ||
 							(pendingCreate &&
@@ -326,24 +342,28 @@
 									!('deck_id' in pendingCreate.payload) ||
 									pendingCreate.payload.deck_id !== deckId)),
 					)}
-					title={pendingCreate ? 'Finish the pending creation before starting another.' : undefined}
-					onclick={openCardCreate}>New card</button
+					title={pendingCreate ? 'Resume pending card creation' : 'New card'}
+					onclick={openCardCreate}><PlusIcon size={20} aria-hidden="true" /></button
 				>
 				<button
-					class="secondary-button"
+					class="secondary-button action-icon"
 					type="button"
+					aria-label="Edit deck"
+					title="Edit deck"
 					onclick={() => {
 						mutationNotice = null;
 						editOpen = true;
-					}}>Edit deck</button
+					}}><PencilIcon size={20} aria-hidden="true" /></button
 				>
 				<button
-					class="danger-button"
+					class="danger-button action-icon"
 					type="button"
+					aria-label="Archive deck"
+					title="Archive deck"
 					onclick={() => {
 						mutationNotice = null;
 						archiveConfirm = true;
-					}}>Archive deck</button
+					}}><ArchiveIcon size={20} aria-hidden="true" /></button
 				>
 			{/if}
 		</div>
@@ -378,6 +398,24 @@
 			>
 		</nav>
 
+		<label class="card-sort">
+			<span class="sort-icon" title="Sort by">
+				<ArrowDownWideNarrowIcon size={20} aria-hidden="true" />
+				<span class="visually-hidden">Sort by</span>
+			</span>
+			<select
+				value={cardSort}
+				onchange={(event) => {
+					const url = new URL(page.url);
+					url.searchParams.set('sort', event.currentTarget.value);
+					void goto(`${url.pathname}${url.search}`, { noScroll: true, keepFocus: true });
+				}}
+			>
+				<option value="updated_at">Recently updated</option>
+				<option value="created_at">Recently created</option>
+			</select>
+		</label>
+
 		{#if viewState === 'redirecting' || viewState === 'loading'}
 			<section class="read-state" aria-live="polite">Loading cards…</section>
 		{:else if viewState === 'error' && error}
@@ -403,17 +441,27 @@
 							<p>{card.meaning}</p>
 						</div>
 						<a
+							class="management-icon-link"
+							aria-label="View card"
+							title="View card"
 							href={`${resolve('/cards/[cardId]', { cardId: card.id })}?language=${card.deck.target_language}`}
-							>View card</a
+							><EyeIcon size={20} aria-hidden="true" /></a
 						>
 					</li>
 				{/each}
 			</ul>
 			{#if nextCursor}<button
-					class="load-more"
+					class="load-more action-icon"
 					type="button"
+					aria-label={loadingMore ? 'Loading…' : 'Load more cards'}
+					title={loadingMore ? 'Loading…' : 'Load more cards'}
+					aria-busy={loadingMore}
 					disabled={loadingMore}
-					onclick={loadMore}>{loadingMore ? 'Loading…' : 'Load more cards'}</button
+					onclick={loadMore}
+					>{#if loadingMore}<LoaderCircleIcon size={20} aria-hidden="true" />{:else}<ArrowDownIcon
+							size={20}
+							aria-hidden="true"
+						/>{/if}</button
 				>{/if}
 		{/if}
 	{/if}
@@ -439,9 +487,8 @@
 {/if}
 
 {#if cardCreateOpen && deck}
-	<Drawer
+	<CardDialog
 		title={`New ${languageName(language)} card`}
-		wide
 		dismissible={!mutationBusy}
 		onclose={() => !mutationBusy && (cardCreateOpen = false)}
 	>
@@ -502,7 +549,7 @@
 				}}
 			/>
 		</div>
-	</Drawer>
+	</CardDialog>
 {/if}
 
 {#if archiveConfirm && deck}
@@ -520,6 +567,46 @@
 {/if}
 
 <style>
+	.action-icon {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 2.75rem;
+		height: 2.75rem;
+		padding: 0;
+	}
+	.action-icon:focus-visible {
+		outline: 3px solid rgba(64, 117, 166, 0.5);
+		outline-offset: 3px;
+	}
+	.action-icon:disabled {
+		opacity: 0.6;
+	}
+	.load-more.action-icon {
+		display: flex;
+	}
+	.sort-icon {
+		display: inline-flex;
+		align-items: center;
+	}
+	.card-sort {
+		display: flex;
+		align-items: center;
+		gap: 0.75rem;
+		margin: 1rem 0;
+		color: #405c73;
+		font-weight: 700;
+		font-size: 0.875rem;
+	}
+	.card-sort select {
+		min-width: 0;
+		padding: 0.6rem 0.8rem;
+		border: 1px solid #cbd5e1;
+		border-radius: 0.65rem;
+		background: #f8fafc;
+		color: #20394e;
+	}
+
 	.authoring-tabs {
 		display: flex;
 		gap: 0.5rem;

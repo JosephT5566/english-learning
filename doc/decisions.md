@@ -278,3 +278,47 @@ Last updated: 2026-09-26
   selection. Exact retries preserve keys/content across reload, and response correlation must
   succeed before the UI confirms any card. Derived embeddings follow the response as best-effort
   in-process work, with the existing backfill as recovery. Manual creation and draft review remain.
+
+- 2026-10-07: Kept JSON authoring as a native textarea with explicit formatting and error navigation.
+  jsonc-parser supplies browser-independent syntax offsets and maps local schema errors to original
+  source ranges; missing fields point to their containing object. Comments and trailing commas
+  remain invalid. Formatting changes whitespace without rewriting number tokens or field values,
+  and does not validate with the server or create cards. Existing limits, debounce, editable draft
+  preview, and explicit confirmation remain in force.
+
+- 2026-10-07: Moved manual/JSON card creation and confirmed-card editing into a shared Bits UI
+  dialog, up to 60rem wide on desktop and full-screen on mobile. The header stays visible while
+  the form body scrolls, with safe-area padding and the existing single-column mobile fields.
+  Dismissal remains blocked during requests, and focus returns to the opening control. Deck
+  drawers, draft editing, validation, conflict recovery, and API contracts retain their behavior.
+
+- 2026-10-07: Bound optional CardForm disclosures to user-controlled open state so editing
+  inputs no longer resets manually opened or closed sections. Related-word inputs retain pending
+  text on blur; Enter, comma, or Add confirms tokens, while form submission includes pending text.
+  IME composition confirmation does not add a partial word. This applies to manual creation,
+  confirmed-card editing, and JSON draft editing through their shared CardForm.
+
+- 2026-10-07: Keep the shared Header mounted and hide its navigation while the existing
+  isSignedIn store is false. Visibility preserves the header's layout space to avoid content
+  shifting; hidden navigation is inert and excluded from accessibility navigation. Existing
+  layout-load redirects and API authentication checks remain unchanged.
+
+- 2026-10-08: Added deck-card sorting by recently updated (the existing default) or recently
+  created, both descending with an ID tie-breaker. The owned cards API validates the sort field
+  and binds pagination cursors to it; existing updated-date cursors remain compatible. The page
+  persists sorting in its URL, resets pagination on changes, and ignores stale load-more responses.
+  No response fields, keyword matching, or write contracts changed.
+
+- 2026-10-08: Restoring a pending manual card save or unfinished JSON queue on a deck page
+  keeps the creation dialog closed until the user chooses New card. Recovery still restores
+  the original draft and idempotency keys for an explicit, safe retry.
+
+- 2026-10-08: Use Lucide icons for deck detail create, edit, archive, pagination, and sorting
+  controls and the card dialog close button. Icon actions retain accessible names, tooltips,
+  and 44px touch targets; the sort selector retains its accessible label and descriptive options.
+  Deck-list Manage cards and card-list View card links also use Lucide icons with the same
+  accessible names, tooltips, and touch target sizes, retaining their base-aware navigation.
+  Header navigation uses Home, Review, Decks, and Search icons with accessible names and tooltips;
+  active-route styling and signed-out visibility behavior are preserved.
+  Search mode, submit, retry, and keyword fallback buttons use Lucide icons with accessible names,
+  tooltips, visible focus, and 44px minimum touch targets. Loading animation respects reduced motion.

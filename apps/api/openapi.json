@@ -2385,6 +2385,20 @@
           },
           {
             "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "default": "updated_at",
+              "enum": [
+                "updated_at",
+                "created_at"
+              ],
+              "title": "Sort",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
             "name": "tag_id",
             "required": false,
             "schema": {

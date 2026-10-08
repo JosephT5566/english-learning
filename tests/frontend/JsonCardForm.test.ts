@@ -51,15 +51,63 @@ beforeEach(() => {
 });
 
 describe('JSON card authoring', () => {
+	it('formats without changing content or sending a request, including large number tokens', async () => {
+		setup();
+		const input = screen.getByLabelText('Card JSON') as HTMLTextAreaElement;
+		await fireEvent.input(input, {
+			target: {
+				value: '{"cards":[{"term":"學習","meaning":"study","unknown":9007199254740993}]}',
+			},
+		});
+		await fireEvent.click(screen.getByRole('button', { name: 'Format JSON' }));
+		expect(input.value).toContain('\n  "cards": [\n    {');
+		expect(input.value).toContain('9007199254740993');
+		expect(input.value).toContain('學習');
+		expect(
+			await screen.findByText('Card 1 · unknown: Remove this unsupported field.'),
+		).toBeVisible();
+		expect(validateCardDrafts).not.toHaveBeenCalled();
+		expect(createCards).not.toHaveBeenCalled();
+	});
+	it('keeps malformed input and selects its syntax error, then clears stale locations on edit', async () => {
+		setup();
+		const input = screen.getByLabelText('Card JSON') as HTMLTextAreaElement;
+		const source = '{\n  "cards": @\n}';
+		await fireEvent.input(input, { target: { value: source } });
+		await fireEvent.click(screen.getByRole('button', { name: 'Format JSON' }));
+		expect(input.value).toBe(source);
+		expect(await screen.findByText('Error 1: Line 2, column 12.')).toBeVisible();
+		await fireEvent.click(screen.getByRole('button', { name: 'Jump to error 1' }));
+		expect(input).toHaveFocus();
+		expect(input.value.slice(input.selectionStart, input.selectionEnd)).toBe('@');
+		await fireEvent.input(input, {
+			target: { value: JSON.stringify({ cards: drafts }) },
+		});
+		expect(screen.queryByRole('button', { name: 'Jump to error 1' })).not.toBeInTheDocument();
+		expect(validateCardDrafts).not.toHaveBeenCalled();
+	});
+	it('locates schema errors in the original text before normalization', async () => {
+		setup();
+		const input = screen.getByLabelText('Card JSON') as HTMLTextAreaElement;
+		await fireEvent.input(input, {
+			target: { value: '{\n  "cards": [{"term":"  ","meaning":"study"}]\n}' },
+		});
+		await fireEvent.click(await screen.findByRole('button', { name: 'Jump to error 1' }));
+		expect(input.value.slice(input.selectionStart, input.selectionEnd)).toBe('"  "');
+	});
 	it('validates pasted card fields after a short delay without calling the backend', async () => {
 		setup();
 		const input = screen.getByLabelText('Card JSON');
-		await fireEvent.input(input, { target: { value: '{"cards":[{"term":"learn"}]}' } });
+		await fireEvent.input(input, {
+			target: { value: '{"cards":[{"term":"learn"}]}' },
+		});
 		expect(await screen.findByText('Card 1 · meaning: This field is required.')).toBeVisible();
 		expect(input).toHaveAttribute('aria-invalid', 'true');
 		expect(screen.getByRole('button', { name: 'Validate and preview' })).toBeDisabled();
 		expect(validateCardDrafts).not.toHaveBeenCalled();
-		await fireEvent.input(input, { target: { value: JSON.stringify({ cards: [drafts[0]] }) } });
+		await fireEvent.input(input, {
+			target: { value: JSON.stringify({ cards: [drafts[0]] }) },
+		});
 		expect(
 			await screen.findByText('JSON format looks valid. Preview to check it with your deck.'),
 		).toBeVisible();
@@ -71,7 +119,9 @@ describe('JSON card authoring', () => {
 		setup();
 		const input = screen.getByLabelText('Card JSON');
 		await fireEvent.input(input, { target: { value: '{"cards":[{}]}' } });
-		await fireEvent.input(input, { target: { value: JSON.stringify({ cards: [drafts[0]] }) } });
+		await fireEvent.input(input, {
+			target: { value: JSON.stringify({ cards: [drafts[0]] }) },
+		});
 		expect(
 			await screen.findByText('JSON format looks valid. Preview to check it with your deck.'),
 		).toBeVisible();
@@ -82,7 +132,9 @@ describe('JSON card authoring', () => {
 		setup();
 		await preview();
 		await fireEvent.click(screen.getByRole('button', { name: 'Edit card 1' }));
-		await fireEvent.input(screen.getByLabelText('Meaning'), { target: { value: '   ' } });
+		await fireEvent.input(screen.getByLabelText('Meaning'), {
+			target: { value: '   ' },
+		});
 		await fireEvent.click(screen.getByRole('button', { name: 'Apply draft edits' }));
 		await fireEvent.click(screen.getByRole('button', { name: 'Add selected cards (2)' }));
 		expect(await screen.findByRole('alert')).toHaveTextContent(
@@ -190,7 +242,13 @@ describe('JSON card authoring', () => {
 		};
 		vi.mocked(createCards).mockResolvedValueOnce([{ id: 'second' }] as never);
 		render(JsonCardForm, {
-			props: { deck, restored, onbusy: vi.fn(), onqueue: vi.fn(), oncreated: vi.fn() },
+			props: {
+				deck,
+				restored,
+				onbusy: vi.fn(),
+				onqueue: vi.fn(),
+				oncreated: vi.fn(),
+			},
 		});
 		await fireEvent.click(screen.getByRole('button', { name: 'Retry unchanged cards' }));
 		await waitFor(() => expect(createCards).toHaveBeenCalledOnce());
