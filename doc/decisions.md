@@ -302,3 +302,9 @@ Last updated: 2026-09-26
   isSignedIn store is false. Visibility preserves the header's layout space to avoid content
   shifting; hidden navigation is inert and excluded from accessibility navigation. Existing
   layout-load redirects and API authentication checks remain unchanged.
+
+- 2026-10-08: Added deck-card sorting by recently updated (the existing default) or recently
+  created, both descending with an ID tie-breaker. The owned cards API validates the sort field
+  and binds pagination cursors to it; existing updated-date cursors remain compatible. The page
+  persists sorting in its URL, resets pagination on changes, and ignores stale load-more responses.
+  No response fields, keyword matching, or write contracts changed.

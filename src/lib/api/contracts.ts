@@ -1,8 +1,11 @@
-import type { components } from './generated';
+import type { components, operations } from './generated';
 
 export type TargetLanguage = components['schemas']['Deck']['target_language'];
 export type ReviewDecision = components['schemas']['ReviewSubmissionItem']['decision'];
 export type ArchiveStatus = 'active' | 'archived';
+export type CardSort = NonNullable<
+	NonNullable<operations['list_cards_v1_cards_get']['parameters']['query']>['sort']
+>;
 
 export interface ApiErrorBody {
 	code: string;

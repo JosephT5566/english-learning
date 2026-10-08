@@ -15,6 +15,7 @@
 		ArchiveStatus,
 		CardCreate,
 		CardSummary,
+		CardSort,
 		Deck,
 		DeckCreate,
 		TargetLanguage,
@@ -44,6 +45,9 @@
 	let viewState: ViewState = $state('loading');
 	let language: TargetLanguage = $state('en');
 	let archiveStatus: ArchiveStatus = $state('active');
+	let cardSort: CardSort = $derived(
+		page.url.searchParams.get('sort') === 'created_at' ? 'created_at' : 'updated_at',
+	);
 	let deck: Deck | null = $state(null);
 	let cards: CardSummary[] = $state([]);
 	let nextCursor: string | null = $state(null);
@@ -85,7 +89,7 @@
 	}
 
 	function deckHref(targetLanguage: TargetLanguage, status = archiveStatus): string {
-		return `${resolve('/decks/[deckId]', { deckId })}?language=${targetLanguage}&status=${status}`;
+		return `${resolve('/decks/[deckId]', { deckId })}?language=${targetLanguage}&status=${status}&sort=${cardSort}`;
 	}
 
 	function listHref(targetLanguage = language): string {
@@ -96,10 +100,12 @@
 		const sequence = ++requestSequence;
 		viewState = 'loading';
 		error = null;
+		loadingMore = false;
+		nextCursor = null;
 		try {
 			const [deckResult, cardResult] = await Promise.all([
 				getDeck(deckId),
-				getCards(deckId, status),
+				getCards(deckId, status, 20, undefined, cardSort),
 			]);
 			if (sequence !== requestSequence) return;
 			if (deckResult.target_language !== targetLanguage) {
@@ -123,15 +129,18 @@
 	async function loadMore(): Promise<void> {
 		if (!nextCursor || loadingMore) return;
 		loadingMore = true;
+		const sequence = requestSequence;
 		try {
-			const result = await getCards(deckId, archiveStatus, 20, nextCursor);
+			const result = await getCards(deckId, archiveStatus, 20, nextCursor, cardSort);
+			if (sequence !== requestSequence) return;
 			cards = [...cards, ...result.items];
 			nextCursor = result.next_cursor;
 		} catch (cause) {
+			if (sequence !== requestSequence) return;
 			error = readErrorCopy(cause, 'cards');
 			viewState = 'error';
 		} finally {
-			loadingMore = false;
+			if (sequence === requestSequence) loadingMore = false;
 		}
 	}
 
@@ -379,6 +388,21 @@
 			>
 		</nav>
 
+		<label class="card-sort">
+			<span>Sort by</span>
+			<select
+				value={cardSort}
+				onchange={(event) => {
+					const url = new URL(page.url);
+					url.searchParams.set('sort', event.currentTarget.value);
+					void goto(`${url.pathname}${url.search}`, { noScroll: true, keepFocus: true });
+				}}
+			>
+				<option value="updated_at">Recently updated</option>
+				<option value="created_at">Recently created</option>
+			</select>
+		</label>
+
 		{#if viewState === 'redirecting' || viewState === 'loading'}
 			<section class="read-state" aria-live="polite">Loading cards…</section>
 		{:else if viewState === 'error' && error}
@@ -520,6 +544,24 @@
 {/if}
 
 <style>
+	.card-sort {
+		display: flex;
+		align-items: center;
+		gap: 0.75rem;
+		margin: 1rem 0;
+		color: #405c73;
+		font-weight: 700;
+		font-size: 0.875rem;
+	}
+	.card-sort select {
+		min-width: 0;
+		padding: 0.6rem 0.8rem;
+		border: 1px solid #cbd5e1;
+		border-radius: 0.65rem;
+		background: #f8fafc;
+		color: #20394e;
+	}
+
 	.authoring-tabs {
 		display: flex;
 		gap: 0.5rem;

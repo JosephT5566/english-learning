@@ -407,3 +407,67 @@ def test_response_timestamps_are_rfc3339(api_client: TestClient) -> None:
     response = api_client.get(f"/v1/cards/{ENGLISH_CARD_ID}")
 
     assert datetime.fromisoformat(response.json()["updated_at"]).tzinfo is not None
+
+
+@pytest.mark.parametrize("sort", ["updated_at", "created_at"])
+def test_card_sort_is_global_stable_and_bound_to_pagination(
+    api_client: TestClient, migrated_database_engine: Engine, sort: str
+) -> None:
+    third = "20000000-0000-0000-0000-000000000003"
+    fourth = "20000000-0000-0000-0000-000000000004"
+    with migrated_database_engine.begin() as connection:
+        connection.execute(
+            text(
+                "UPDATE learning_cards SET updated_at = '2026-09-10T00:00:00Z' WHERE id = :id"
+            ),
+            {"id": ENGLISH_CARD_ID},
+        )
+        connection.execute(
+            text("""
+            INSERT INTO learning_cards (id, deck_id, owner_id, term, meaning, created_at, updated_at)
+            SELECT fixture.id, c.deck_id, c.owner_id, fixture.term, 'common',
+                TIMESTAMPTZ '2026-09-02 00:00:00+00', fixture.updated_at
+            FROM learning_cards AS c
+            CROSS JOIN (VALUES
+                (UUID '20000000-0000-0000-0000-000000000003', 'third', TIMESTAMPTZ '2026-09-04 00:00:00+00'),
+                (UUID '20000000-0000-0000-0000-000000000004', 'fourth', TIMESTAMPTZ '2026-09-03 00:00:00+00')
+            ) AS fixture(id, term, updated_at)
+            WHERE c.id = :id
+        """),
+            {"id": ENGLISH_CARD_ID},
+        )
+    ids = []
+    params = {"deck_id": ENGLISH_DECK_ID, "sort": sort, "limit": 1}
+    while True:
+        response = api_client.get("/v1/cards", params=params)
+        assert response.status_code == 200
+        body = response.json()
+        ids.extend(item["id"] for item in body["items"])
+        cursor = body["next_cursor"]
+        if cursor is None:
+            break
+        changed = api_client.get(
+            "/v1/cards",
+            params={
+                **params,
+                "sort": "created_at" if sort == "updated_at" else "updated_at",
+                "cursor": cursor,
+            },
+        )
+        assert changed.status_code == 400
+        assert changed.json()["error"]["code"] == "invalid_cursor"
+        params["cursor"] = cursor
+    assert ids == (
+        [ENGLISH_CARD_ID, third, fourth]
+        if sort == "updated_at"
+        else [fourth, third, ENGLISH_CARD_ID]
+    )
+    assert len(ids) == len(set(ids))
+    default = api_client.get("/v1/cards", params={"deck_id": ENGLISH_DECK_ID}).json()
+    assert [item["id"] for item in default["items"]] == [ENGLISH_CARD_ID, third, fourth]
+
+
+def test_card_sort_rejects_unknown_columns(api_client: TestClient) -> None:
+    response = api_client.get("/v1/cards", params={"sort": "term"})
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "validation_failed"

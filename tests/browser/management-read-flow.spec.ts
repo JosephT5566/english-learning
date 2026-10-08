@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 
+const englishDeckId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 const japaneseDeckId = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
 const japaneseCardId = 'ffffffff-ffff-4fff-8fff-ffffffffffff';
 const englishCardId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
@@ -309,4 +310,57 @@ test('card edit dialog fits mobile and short viewports with a visible header and
 	await expect(dialog).toBeHidden();
 	await expect(opener).toBeFocused();
 	await expect(page.getByText('unsaved mobile edit', { exact: true })).toBeHidden();
+});
+
+test('deck sorting preserves URL and pagination while ignoring stale load-more responses', async ({
+	page,
+}) => {
+	await signIn(page);
+	let releaseOld: (() => void) | undefined;
+	const sorts: string[] = [];
+	await page.route('**/v1/cards?*', async (route) => {
+		const url = new URL(route.request().url());
+		const sort = url.searchParams.get('sort') ?? 'updated_at';
+		const cursor = url.searchParams.get('cursor');
+		sorts.push(sort);
+		const upstream = await route.fetch();
+		const template = (await upstream.json()).items[0];
+		if (sort === 'updated_at' && cursor)
+			await new Promise<void>((resolve) => {
+				releaseOld = resolve;
+			});
+		const index = cursor ? 2 : 1;
+		await route.fulfill({
+			json: {
+				items: [
+					{
+						...template,
+						id: `abababab-abab-4bab-8bab-${String(index).padStart(12, '0')}`,
+						term: `${sort}-${index}`,
+					},
+				],
+				next_cursor: cursor ? null : `${sort}-next`,
+			},
+		});
+	});
+	await page.goto(`/decks/${englishDeckId}?language=en`);
+	await expect(page.getByRole('heading', { name: 'updated_at-1' })).toBeVisible();
+	await page.getByRole('button', { name: 'Load more cards' }).click();
+	await expect.poll(() => Boolean(releaseOld)).toBe(true);
+	await page.getByLabel('Sort by').selectOption('created_at');
+	await expect(page).toHaveURL(/sort=created_at/);
+	await expect(page.getByRole('heading', { name: 'created_at-1' })).toBeVisible();
+	const oldResponse = page.waitForResponse((response) =>
+		response.url().includes('cursor=updated_at-next'),
+	);
+	releaseOld!();
+	await oldResponse;
+	await page.getByRole('button', { name: 'Load more cards' }).click();
+	await expect(page.getByRole('heading', { name: 'created_at-2' })).toBeVisible();
+	await expect(page.getByRole('heading', { name: 'updated_at-2' })).toBeHidden();
+	await expect(page.getByRole('button', { name: 'Load more cards' })).toBeHidden();
+	await page.reload();
+	await expect(page.getByLabel('Sort by')).toHaveValue('created_at');
+	await expect(page.getByRole('heading', { name: 'created_at-1' })).toBeVisible();
+	expect(sorts).toEqual(['updated_at', 'updated_at', 'created_at', 'created_at', 'created_at']);
 });
