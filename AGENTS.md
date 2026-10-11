@@ -2,9 +2,11 @@
 
 ## Repository context
 
-This repository is currently a SvelteKit English review app backed by Google Identity Services, Google Apps Script, and Google Sheets. It is evolving into a multilingual full-stack product with a Python FastAPI API and PostgreSQL.
+This repository is a multilingual learning app with a SvelteKit static frontend and a Python FastAPI API under `apps/api/`. Google Identity Services provides browser sign-in; the backend verifies identity and enforces ownership. PostgreSQL is the writable source of truth for English review and shared English/Japanese deck and card management.
 
-Preserve the existing English review flow during migration. English and Japanese should share a language-aware domain model and backend rather than becoming separate applications. AI-assisted authoring must create a validated, editable draft; it must not directly create a confirmed learning card.
+Google Apps Script and Google Sheets are legacy migration and rollback context. Normal review and management flows use FastAPI/PostgreSQL without an Apps Script fallback or dual writes.
+
+Preserve the existing English review flow. English and Japanese share a language-aware domain model and backend rather than separate applications. AI-assisted authoring must create a validated, editable draft; it must not directly create a confirmed learning card.
 
 ## Context routing
 
@@ -24,7 +26,7 @@ Training logs are historical archives, not startup context. Do not load them by 
 - Keep changes scoped to the requested behavior or active acceptance criteria. Do not rework unrelated Svelte starter code unless it blocks the task.
 - State important assumptions and preserve existing contracts unless the task explicitly changes them.
 - Prefer existing project patterns: Svelte 5 runes in newer components, Svelte stores for shared review/auth state, Tailwind utility classes for styling, and `$lib` imports.
-- Treat Google Identity Services and the Google Apps Script API as external contracts. Update `doc/architecture.md` and `doc/decisions.md` when changing auth, request payloads, or sheet field names.
+- Treat Google Identity Services and the FastAPI API as integration contracts. Update `doc/architecture.md` and `doc/decisions.md` when changing auth or API request/response contracts. Preserve legacy Apps Script and Sheet contracts when working on migration or rollback artifacts.
 - Preserve static deployment compatibility. This project uses `@sveltejs/adapter-static`, `paths.base`, and `$app/paths.resolve()` for GitHub Pages-style subpaths.
 - Enforce identity, ownership, validation, and state transitions on the backend. Use database constraints and explicit transactions for important invariants.
 - Avoid microservices, queues, caches, vector databases, or Kubernetes without a demonstrated requirement.
@@ -42,13 +44,13 @@ For the current frontend, use checks proportional to the change:
 - `npm run lint`
 - `npm run build`
 
-When the backend is added, follow its checked-in project configuration and documented commands. Prefer PostgreSQL integration tests for persistence, authorization, transaction, migration, and concurrency behavior.
+For the backend under `apps/api/`, follow its checked-in project configuration and the commands in `apps/api/README.md`. Prefer PostgreSQL integration tests for persistence, authorization, transaction, migration, and concurrency behavior.
 
 ## Project conventions
 
-- Source files live under `src/`; reusable UI lives in `src/lib/components`; API wrappers live in `src/lib/api`; shared state lives in `src/lib/stores`; shared app types live in `src/lib/types.ts`.
+- Frontend source files live under `src/`; reusable UI lives in `src/lib/components`; API wrappers live in `src/lib/api`; shared state lives in `src/lib/stores`; shared app types live in `src/lib/types.ts`. Backend application code lives in `apps/api/app/`, migrations in `apps/api/migrations/`, and tests in `apps/api/tests/`.
 - Review cards are swipe/flip based. Current UX expects the user to flip a card before swiping or using yes/no action buttons.
-- Review scheduling uses `reviewStage`, `easeFactor`, and `STAGE_INTERVALS`; keep related math centralized in `src/lib/utils.ts` and `src/lib/stores/review.ts`.
+- Review scheduling is backend-owned: keep `srs-v1` transition math and `STAGE_INTERVALS` centralized in `apps/api/app/reviews.py`. The frontend submits decisions and expected review-state versions; it does not calculate scheduling transitions. `src/lib/stores/review.ts` and the scheduling helpers in `src/lib/utils.ts` are legacy Sheet-era code.
 - The app mixes English UI copy and some Chinese comments/content labels. Match nearby language when editing.
 - Prefer ASCII for new docs/code unless preserving existing user-facing copy that already uses non-ASCII punctuation or Chinese text.
 
