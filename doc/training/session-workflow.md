@@ -63,7 +63,13 @@ and create a draft PR that closes #4.
 ## Automated `ai-ready` mode
 
 Adding the `ai-ready` label triggers `.github/workflows/ai-agent.yml`. It asks Codex to implement the
-entire issue, commit the result, push a branch, and open a pull request.
+entire issue, then the workflow guards the output, creates a local candidate commit, and runs the
+full verification gate before pushing a branch and opening a draft pull request. An empty diff
+creates no PR; failure or cancellation is recorded in the Actions summary without claiming issue
+completion. Human acceptance review and any pending PR workflow approval remain required.
+
+The environment, checks, and candidate-commit ordering are documented in
+[`../development.md`](../development.md#automated-issue-verification).
 
 Use `ai-ready` only when intentionally delegating a well-understood task or boilerplate. It is not
 the default training path because it reduces the design and implementation work Joseph performs.

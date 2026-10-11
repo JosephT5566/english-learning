@@ -145,6 +145,32 @@ Repository-wide `npm run lint` currently fails on existing formatting drift and 
 Clean that baseline in a separate task before making the full command a CI gate. Changed files
 must pass their checks now; unrelated baseline failures do not exempt newly changed files.
 
+## Automated Issue Verification
+
+The `AI Agent` workflow runs on an `ai-ready` issue label or a manual issue-number dispatch. It
+checks out the default branch and prepares Node 22, Python 3.12, locked npm/uv dependencies,
+Chrome, and disposable PostgreSQL 17 with pgvector. Public frontend values are placeholders;
+backend configuration uses test mode and local database credentials, with no production provider
+configuration. Browser/system dependencies are installed before Codex removes sudo access.
+
+Codex follows `AGENTS.md` and leaves changes for the workflow. It must not modify workflows or Git
+HEAD, publish, or deploy. The workflow guards those outputs, then creates a local candidate commit
+so `api:check` compares generated artifacts with the proposed version rather than the starting
+commit. It refreshes locked candidate dependencies and requires changed-file lint, contract drift,
+frontend types/tests/subpath build/browser flows, backend Ruff and full PostgreSQL tests, and API
+container verification. The verified commit and working tree must remain unchanged before push.
+
+Only a passing candidate is pushed and opened as a draft PR with a verification summary and run
+link. Failure or cancellation is reported in the Actions summary; an empty diff creates no PR and
+makes no completion claim. The job is bounded to 60 minutes, with 30 minutes for Codex itself.
+The workflow does not automatically retry failed verification or declare acceptance criteria met.
+
+Draft PRs require human acceptance review. PR workflows started by `GITHUB_TOKEN` may await a
+maintainer's approval; approve those checks in GitHub before merging. See
+[GitHub's workflow-triggering rules](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow).
+Changing the workflow requires local verification first; do not trigger an API-backed agent run
+merely to validate YAML or shell syntax.
+
 ## Style Notes
 
 - Svelte files in this repo may use Svelte 5 runes (`$state`, `$derived`, `$effect`, `$props`).
