@@ -17,6 +17,8 @@ Before making code changes, read the relevant repository memory:
 - `doc/development.md` for commands, environment variables, and local workflow.
 - `doc/decisions.md` for durable technical decisions and known follow-up areas.
 
+Use `doc/project-memory.md` as the current product-state index and `doc/training/project-memory.md` for the active training milestone, evidence limits, and next action. Keep detailed verification evidence in linked issue artifacts. Implementation and test results take precedence over stale documentation; distinguish repository-verified results, operator reports, and unverified claims.
+
 For training, coaching, roadmap, or milestone work, use `.agents/skills/full-stack-training-coach/SKILL.md`. Start with `doc/training/README.md` and `doc/training/project-memory.md`; the latter identifies the active milestone, issue, and next action. Read only the relevant roadmap section or issue artifact needed for the current task. Inactive product proposals live in `doc/product/`.
 
 Training logs are historical archives, not startup context. Do not load them by default. Search and read only the relevant log excerpt when the user asks to trace prior work, a retrospective needs the original reasoning, or current sources leave an important conflict unresolved. Do not load every training log or decision record for ordinary coding tasks.
