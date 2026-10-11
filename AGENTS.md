@@ -40,13 +40,22 @@ Training logs are historical archives, not startup context. Do not load them by 
 
 ## Verification
 
-For the current frontend, use checks proportional to the change:
+Choose checks proportional to the changed behavior. Run commands from the repository root unless noted otherwise:
 
-- `npm run check`
-- `npm run lint`
-- `npm run build`
+| Change                                                                  | Required verification                                                                                                                                                          |
+| ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Documentation only                                                      | Prettier check on changed Markdown files and `git diff --check`.                                                                                                               |
+| Frontend TypeScript, Svelte components, stores, or client behavior      | `npm run check`, relevant tests through `npm run test:frontend`, and formatting/lint checks on changed files.                                                                  |
+| Review/auth interactions or management/search user flows                | Relevant Playwright specs through `npm run test:browser -- tests/browser/<name>.spec.ts`, in addition to frontend checks.                                                      |
+| Routes, static deployment, environment handling, or build configuration | `npm run build`; verify subpath behavior when changing routing or `BASE_PATH`.                                                                                                 |
+| FastAPI request/response models                                         | `npm run api:generate`, commit the generated OpenAPI, TypeScript, and card-draft JSON Schema artifacts, then `npm run api:check` and relevant backend/frontend contract tests. |
+| Backend behavior                                                        | From `apps/api/`: `uv run ruff check .`, `uv run ruff format --check .`, and relevant `uv run pytest tests/unit -q` tests.                                                     |
+| Persistence, ownership, transactions, migrations, or concurrency        | From `apps/api/`: `RUN_POSTGRES_INTEGRATION_TESTS=1 uv run pytest tests/integration -q` against disposable PostgreSQL; never substitute SQLite.                                |
+| API image or runtime lifecycle                                          | `docker build --tag english-learning-api:verify apps/api` and `bash apps/api/scripts/verify_container.sh english-learning-api:verify`.                                         |
 
-For the backend under `apps/api/`, follow its checked-in project configuration and the commands in `apps/api/README.md`. Prefer PostgreSQL integration tests for persistence, authorization, transaction, migration, and concurrency behavior.
+Run `npm run lint:changed -- <base-ref>` for changed-file formatting and ESLint checks; the local default base is `HEAD`. CI compares against the PR base or the commit before a push. Generated API artifacts are checked by `npm run api:check` instead of reformatted by Prettier. Repository-wide `npm run lint` remains a separate baseline-cleanup check with existing failures.
+
+Use `doc/development.md` and `apps/api/README.md` for setup and command details. CI runs the full frontend and PostgreSQL-backed backend suites; targeted local tests do not replace those merge checks. Report checks actually run, failures, and any skipped checks with their reasons. An unavailable database or skipped integration suite does not establish that persistence behavior passed.
 
 ## Project conventions
 

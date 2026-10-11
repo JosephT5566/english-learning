@@ -1,6 +1,6 @@
 # Development Memory
 
-Last updated: 2026-09-20
+Last updated: 2026-10-11
 
 ## Commands
 
@@ -17,6 +17,8 @@ Last updated: 2026-09-20
 - Regenerate and fail if committed API artifacts drift: `npm run api:check`
 - Format all files: `npm run format`
 - Lint and formatting check: `npm run lint`
+- Check changed-file formatting and ESLint: `npm run lint:changed -- <base-ref>` (defaults to `HEAD`,
+  includes staged/unstaged changes and untracked files).
 
 ### API
 
@@ -128,11 +130,20 @@ and pooled Neon URLs from Secret Manager through their own runtime identities.
 
 ## Validation Expectations
 
-Run `npm run check` after changing TypeScript, Svelte components, stores, or API contracts. Run
-`npm run api:generate` after changing FastAPI request or response models, and commit the generated
-OpenAPI, TypeScript, and card-draft JSON Schema artifacts. Run `npm run build` when changing
-routing, static deployment configuration, environment behavior, or imports that may differ between
-dev and production.
+Use the change-to-check table in [`AGENTS.md`](../AGENTS.md#verification) for required local checks.
+CI runs frontend type, contract/component, browser, and static-build checks plus Ruff,
+PostgreSQL-backed backend tests, and container verification. Regenerate API artifacts with
+`npm run api:generate` when models change; `npm run api:check` enforces committed contract consistency.
+
+CI runs `npm run lint:changed` against the PR base commit or the commit before a push, with full Git
+history available. The command checks current file contents, including staged, unstaged, and
+untracked changes locally; deleted files are skipped. Prettier checks supported file types and
+ESLint checks files covered by its configuration. Generated OpenAPI, TypeScript, and card-draft JSON
+Schema artifacts retain generator formatting and are verified separately by `api:check`.
+
+Repository-wide `npm run lint` currently fails on existing formatting drift and ESLint errors.
+Clean that baseline in a separate task before making the full command a CI gate. Changed files
+must pass their checks now; unrelated baseline failures do not exempt newly changed files.
 
 ## Style Notes
 
