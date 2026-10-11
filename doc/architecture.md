@@ -1,6 +1,6 @@
 # Architecture Memory
 
-Last updated: 2026-09-26
+Last updated: 2026-10-11
 
 ## Stack
 
@@ -109,6 +109,9 @@ Last updated: 2026-09-26
 - `compose.yaml`: verified local `postgres:17-alpine` service with persistent development volume and
   health check, run through OrbStack's Docker-compatible engine.
 - `.github/workflows/ci.yml`: independent frontend and PostgreSQL-backed backend verification jobs.
+- `.github/workflows/ai-agent.yml`: issue-driven Codex implementation with disposable full-stack
+  test dependencies, workflow/HEAD guards, and mandatory candidate verification before draft PR
+  publication. See [`development.md`](development.md#automated-issue-verification) for the gate.
 - `.github/workflows/publish-api-image.yml`: protected manual WIF workflow that builds and publishes
   an immutable commit-tagged API image through an Artifact-Registry-only identity.
 - `.github/workflows/migrate-production.yml`: protected manual OIDC workflow that serializes Neon

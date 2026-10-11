@@ -1,6 +1,6 @@
 # English Learning Project Memory
 
-Last updated: 2026-09-27
+Last updated: 2026-10-11
 
 ## Purpose
 
@@ -11,22 +11,13 @@ professional production-service experience.
 Implementation and test results are authoritative. Repository documents may lag behind the code.
 Production statements must distinguish repository-verified evidence from operator reports.
 
-## Current system
+## Context ownership
 
-- One repository with a SvelteKit 2/Svelte 5 static frontend and a Python FastAPI API.
-- GitHub Pages hosts the frontend; Google Identity Services provides browser sign-in.
-- Cloud Run in Singapore and Neon PostgreSQL in AWS Singapore are the selected production services.
-- PostgreSQL is the sole writable source of truth for the deployed product.
-- The backend verifies Google identity, maps it to internal users, and enforces ownership.
-- English review and shared English/Japanese deck and card management use the FastAPI API.
-- Review writes are transactional and idempotent; scheduling is derived by the backend.
-- Legacy Apps Script/Sheet code remains only as rollback and migration evidence and is absent from
-  normal runtime traffic and frontend deployment configuration.
-- AI-assisted authoring is not an active product capability. Semantic search is implemented,
-  promoted on the API, and verified through the stable Cloud Run service URL and deployed search
-  page; its bounded provider-backed Top-K quality smoke passed.
-- Provider-free multilingual keyword search is implemented locally as the default search-page mode;
-  English-only semantic search remains available explicitly. Deployment is not yet verified.
+Use [`../project-memory.md`](../project-memory.md) for current product behavior and recorded
+deployment status. This file owns the active training milestone, completed milestone index,
+evidence limits, and next action. Detailed verification records remain in the linked issue
+artifacts. The release checkpoints below describe training evidence at the time recorded; they are
+not fresh live-service inspections or a second product-state summary.
 
 ## Active milestone
 
@@ -206,9 +197,9 @@ reported a successful migration cycle, runtime privilege checks, 597-card owner-
 zero hash mismatches, unchanged card/review counts, and an empty replay with no provider work.
 The operator subsequently reported the production migration, a dedicated Cloud Run Job backfill
 of all 597 cards, matching aggregate/hash checks, an empty replay, and a zero-traffic candidate
-environment smoke test using the runtime service identity. No production traffic promotion or
-real-card retrieval quality is established. Next action: promote and verify the candidate through
-the existing release process, then begin Issue #40's owner-safe retrieval API boundary.
+environment smoke test using the runtime service identity. Issue #39's checkpoint did not establish
+production traffic promotion or real-card retrieval quality; later release and retrieval evidence
+is recorded in Issues #40 and #41 above.
 
 Issue #27 still has the operational evidence gaps below; #38 does not close them.
 
