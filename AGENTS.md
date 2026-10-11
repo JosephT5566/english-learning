@@ -17,11 +17,13 @@ Before making code changes, read the relevant repository memory:
 - `doc/development.md` for commands, environment variables, and local workflow.
 - `doc/decisions.md` for durable technical decisions and known follow-up areas.
 
-Use `doc/project-memory.md` as the current product-state index and `doc/training/project-memory.md` for the active training milestone, evidence limits, and next action. Keep detailed verification evidence in linked issue artifacts. Implementation and test results take precedence over stale documentation; distinguish repository-verified results, operator reports, and unverified claims.
+Use `doc/project-memory.md` as the current product-state index. Keep detailed verification evidence in linked issue artifacts. Implementation and test results take precedence over stale documentation; distinguish repository-verified results, operator reports, and unverified claims.
 
-For training, coaching, roadmap, or milestone work, use `.agents/skills/full-stack-training-coach/SKILL.md`. Start with `doc/training/README.md` and `doc/training/project-memory.md`; the latter identifies the active milestone, issue, and next action. Read only the relevant roadmap section or issue artifact needed for the current task. Inactive product proposals live in `doc/product/`.
+For training, coaching, roadmap, milestone, retrospective, or project-evidence work, use `.agents/skills/full-stack-training-coach/SKILL.md`. It owns context loading, coaching modes, and task closure, including memory, checkpoint, evidence, and ADR updates. Start with `doc/training/README.md` and `doc/training/project-memory.md` for the active milestone, issue, evidence limits, and next action. Ordinary coding tasks do not require the training workflow. Inactive product proposals live in `doc/product/`.
 
-Training logs are historical archives, not startup context. Do not load them by default. Search and read only the relevant log excerpt when the user asks to trace prior work, a retrospective needs the original reasoning, or current sources leave an important conflict unresolved. Do not load every training log or decision record for ordinary coding tasks.
+Training logs are historical archives, not startup context. Read only relevant excerpts when historical reasoning or unresolved evidence conflicts require them; the training skill defines the detailed retrieval and append workflow.
+
+Keep repository-wide constraints and task routing here, reusable task methods in skills, and command/setup details in development documentation or scripts. See `doc/development.md#instruction-ownership` for the responsibility map. Directory-specific instructions belong in a local `AGENTS.md` when that directory needs additional rules.
 
 ## Working rules
 
@@ -53,7 +55,7 @@ Choose checks proportional to the changed behavior. Run commands from the reposi
 | Persistence, ownership, transactions, migrations, or concurrency        | From `apps/api/`: `RUN_POSTGRES_INTEGRATION_TESTS=1 uv run pytest tests/integration -q` against disposable PostgreSQL; never substitute SQLite.                                |
 | API image or runtime lifecycle                                          | `docker build --tag english-learning-api:verify apps/api` and `bash apps/api/scripts/verify_container.sh english-learning-api:verify`.                                         |
 
-Run `npm run lint:changed -- <base-ref>` for changed-file formatting and ESLint checks; the local default base is `HEAD`. CI compares against the PR base or the commit before a push. Generated API artifacts are checked by `npm run api:check` instead of reformatted by Prettier. Repository-wide `npm run lint` remains a separate baseline-cleanup check with existing failures.
+Run `npm run lint:changed -- <base-ref>` for changed-file formatting and ESLint checks; the local default base is `HEAD`. Generated API artifacts are checked by `npm run api:check` instead of reformatted by Prettier. See `doc/development.md#validation-expectations` for CI comparison behavior and the repository-wide lint baseline.
 
 Use `doc/development.md` and `apps/api/README.md` for setup and command details. CI runs the full frontend and PostgreSQL-backed backend suites; targeted local tests do not replace those merge checks. Report checks actually run, failures, and any skipped checks with their reasons. An unavailable database or skipped integration suite does not establish that persistence behavior passed.
 
@@ -64,7 +66,3 @@ Use `doc/development.md` and `apps/api/README.md` for setup and command details.
 - Review scheduling is backend-owned: keep `srs-v1` transition math and `STAGE_INTERVALS` centralized in `apps/api/app/reviews.py`. The frontend submits decisions and expected review-state versions; it does not calculate scheduling transitions. `src/lib/stores/review.ts` and the scheduling helpers in `src/lib/utils.ts` are legacy Sheet-era code.
 - The app mixes English UI copy and some Chinese comments/content labels. Match nearby language when editing.
 - Prefer ASCII for new docs/code unless preserving existing user-facing copy that already uses non-ASCII punctuation or Chinese text.
-
-## Training records
-
-After completing a material training milestone, update the training project memory and append a concise checkpoint to the current weekly log. Appending does not require reading the whole log: inspect only its tail and any directly relevant existing entry. Keep project memory bounded by summarizing completed milestones and linking to their issue artifacts instead of accumulating session history. Update the evidence ledger only when implementation and verification support the claim. Create an architecture decision record only for a consequential decision with real alternatives.

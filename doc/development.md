@@ -2,6 +2,32 @@
 
 Last updated: 2026-10-11
 
+## Instruction Ownership
+
+Maintain each instruction in its owning source and link to it from task entry points:
+
+| Concern                                                                                               | Owning source                                                                       |
+| ----------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| Repository-wide product constraints, trust boundaries, task routing, and change-to-check requirements | [`AGENTS.md`](../AGENTS.md)                                                         |
+| Current product behavior and recorded deployment status                                               | [`project-memory.md`](project-memory.md)                                            |
+| Source layout, data flow, and integration boundaries                                                  | [`architecture.md`](architecture.md)                                                |
+| Durable technical decisions and known follow-up areas                                                 | [`decisions.md`](decisions.md)                                                      |
+| Setup, environment variables, command usage, and CI behavior                                          | This file; [`apps/api/README.md`](../apps/api/README.md) for API command details    |
+| Training context loading, coaching modes, and task closure                                            | [`full-stack-training-coach`](../.agents/skills/full-stack-training-coach/SKILL.md) |
+| Active training milestone, evidence limits, and next action                                           | [`training/project-memory.md`](training/project-memory.md)                          |
+| Detailed verification evidence and historical checkpoints                                             | Linked training issue artifacts and relevant weekly-log excerpts                    |
+
+Root instructions apply across tasks. The training skill is loaded for training, coaching,
+roadmap, milestone, retrospective, or project-evidence work; ordinary coding does not require
+that workflow. Keep its detailed closure procedure in the skill rather than duplicating it
+in root instructions.
+
+Add a directory-local `AGENTS.md` when a source subtree needs additional conventions. Create a
+skill when a recurring task needs a reusable method and observed agent failures justify that
+guidance. Do not create skills merely to categorize frontend/backend files or list commands.
+Enforce mechanically checkable requirements through scripts and CI. When authoring or changing
+a skill, use baseline and guided scenarios as required by `superpowers:writing-skills`.
+
 ## Commands
 
 ### Frontend
