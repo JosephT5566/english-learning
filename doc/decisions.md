@@ -347,3 +347,11 @@ Last updated: 2026-10-22
   A delayed old-token `401` cannot sign out newer credentials; only a matching current request
   token triggers API sign-out. The guest marker controls presentation only; public/private backend
   boundaries are unchanged.
+
+- 2026-10-23: Limit explicit guest selection to a fixed 30-minute absolute deadline stored in
+  tab-scoped sessionStorage. Reload, navigation, grading and Practice again do not extend it.
+  Hydration, focus and the session watcher expire the choice to signed-out, discard the guest
+  batch, abort its requests and return home. Legacy or invalid markers require a new explicit
+  choice. Valid authentication takes priority; private pending-command reauthentication remains.
+  Hide primary navigation during initialization and while signed out, preserving header space
+  and the account avatar. Guest deadlines control browser presentation, not backend identity.

@@ -1,6 +1,6 @@
 # Architecture Memory
 
-Last updated: 2026-10-22
+Last updated: 2026-10-23
 
 ## Stack
 
@@ -449,8 +449,13 @@ Review update payload shape is:
 
 - The auth store models initializing, signed-out, guest and authenticated sessions. Root layout
   hydrates credentials before routing. Valid Google credentials take priority over a guest choice.
-- `enterGuestSession()` records only the explicit guest choice in tab-scoped `sessionStorage`;
-  storage failure keeps the user on home with a recoverable message. Guest has no time-based TTL.
+- `enterGuestSession()` stores an absolute deadline 30 minutes after explicit selection in
+  tab-scoped `sessionStorage`. Hydration, focus and the existing one-second watcher check it;
+  reload and activity never renew it. Expired, legacy or malformed markers are removed.
+  Storage failure keeps the user on home with a recoverable message. This is UI state only.
+- Guest expiry transitions to signed-out, unmounts guest review (aborting requests), and returns
+  home with base-aware navigation. Valid authentication takes priority. Primary navigation is
+  hidden while initializing or signed-out, retaining header space and the account avatar.
 - The account avatar opens an accessible sign-in/sign-out menu. Shared Google sign-in UI accepts
   the existing client-ID/verified-email/whitelist contract. Successful login clears the guest choice.
 - `getTokenIfValid()` rejects missing or near-expired tokens, clears stale credentials, and marks

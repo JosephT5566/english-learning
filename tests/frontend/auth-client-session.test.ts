@@ -67,7 +67,9 @@ describe("401 belongs to its requesting session with real auth state", () => {
         expect(localStorage.getItem("gid_id_token")).toBe(tokenBefore);
       }
       if (transition === "explicit-guest")
-        expect(sessionStorage.getItem("learning_guest_session")).toBe("1");
+        expect(
+          Number(sessionStorage.getItem("learning_guest_session")),
+        ).toBeGreaterThan(Date.now());
     },
   );
 });

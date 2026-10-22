@@ -34,7 +34,11 @@
 </script>
 
 <header>
-  <nav aria-label="Primary navigation">
+  <nav
+    aria-label="Primary navigation"
+    hidden={$authSession.kind !== "guest" &&
+      $authSession.kind !== "authenticated"}
+  >
     <ul>
       <li>
         <a
@@ -161,6 +165,10 @@
     border: 1px solid #4075a644;
     border-radius: 0.6rem;
   }
+  nav[hidden] {
+    visibility: hidden;
+  }
+
   nav {
     display: flex;
     justify-content: center;

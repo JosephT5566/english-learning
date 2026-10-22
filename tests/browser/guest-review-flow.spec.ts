@@ -339,6 +339,140 @@ test("corrupted stored credentials do not block explicit guest choice", async ({
     page.getByRole("button", { name: "Knew it", exact: true }),
   ).toBeDisabled();
   expect(
-    await page.evaluate(() => sessionStorage.getItem("learning_guest_session")),
-  ).toBe("1");
+    await page.evaluate(
+      () =>
+        Number(sessionStorage.getItem("learning_guest_session")) > Date.now(),
+    ),
+  ).toBe(true);
 });
+
+for (const width of [1280, 390]) {
+  test(`guest expires after 30 minutes without extending on activity at ${width}px`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 850 });
+    await seed(page);
+    await page.clock.install();
+    const requests: string[] = [];
+    page.on("request", (request) => {
+      if (request.url().includes("/v1/")) requests.push(request.url());
+    });
+    await enterGuest(page);
+    const deadline = await page.evaluate(() =>
+      sessionStorage.getItem("learning_guest_session"),
+    );
+    await answerBatch(page);
+    await page.getByRole("button", { name: "Practice again" }).click();
+    await expect(
+      page.getByRole("button", { name: "Knew it", exact: true }),
+    ).toBeVisible();
+    await page.clock.setSystemTime(Number(deadline) - 60_000);
+    await page.reload();
+    await expect(
+      page.getByRole("navigation", { name: "Primary navigation" }),
+    ).toBeVisible();
+    expect(
+      await page.evaluate(() =>
+        sessionStorage.getItem("learning_guest_session"),
+      ),
+    ).toBe(deadline);
+    await expect(
+      page.getByRole("button", { name: "Knew it", exact: true }),
+    ).toBeVisible();
+    const count = requests.length;
+    await page.clock.setSystemTime(Number(deadline));
+    await page.clock.runFor(1000);
+    await expect(page).toHaveURL(`http://127.0.0.1:4173${root}/`);
+    await expect(page.locator(".swipe--card")).toHaveCount(0);
+    await expect(
+      page.getByRole("navigation", { name: "Primary navigation" }),
+    ).toHaveCount(0);
+    await expect(
+      page.getByRole("button", { name: "Guest account menu" }),
+    ).toBeVisible();
+    expect(
+      await page.evaluate(() =>
+        sessionStorage.getItem("learning_guest_session"),
+      ),
+    ).toBeNull();
+    expect(
+      await page.evaluate(() => [
+        localStorage.getItem("pending_review_submission_v1"),
+        localStorage.getItem("isTestedToday"),
+      ]),
+    ).toEqual([pending, daily]);
+    await page.goto(guest);
+    await expect(page).toHaveURL(`http://127.0.0.1:4173${root}/`);
+    expect(requests.length).toBe(count);
+    await enterGuest(page);
+    await expect(
+      page.getByRole("navigation", { name: "Primary navigation" }),
+    ).toBeVisible();
+    expect(
+      await page.evaluate(() =>
+        Number(sessionStorage.getItem("learning_guest_session")),
+      ),
+    ).toBeGreaterThan(Number(deadline));
+  });
+}
+
+test("expired guest focus cancels an in-flight public request without another API call", async ({
+  page,
+}) => {
+  await seed(page);
+  await page.clock.install();
+  let calls = 0;
+  let cancelled = false;
+  page.on("requestfailed", (request) => {
+    if (request.url().includes("/v1/public/review-cards")) cancelled = true;
+  });
+  await page.route(publicPath, async (route) => {
+    calls++;
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    await route.fulfill({ json: { items: [] } }).catch(() => {});
+  });
+  await enterGuest(page);
+  await expect(page.getByText("Loading cards...")).toBeVisible();
+  const deadline = await page.evaluate(() =>
+    Number(sessionStorage.getItem("learning_guest_session")),
+  );
+  await page.clock.setSystemTime(deadline);
+  await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+  await expect(page).toHaveURL(`http://127.0.0.1:4173${root}/`);
+  await expect.poll(() => cancelled).toBe(true);
+  expect(calls).toBe(1);
+  await expect(page.getByText("No public cards available")).toHaveCount(0);
+});
+
+for (const marker of ["1", "bad-deadline", "expired"]) {
+  test(`invalid guest marker ${marker} cannot hydrate review`, async ({
+    page,
+  }) => {
+    await page.addInitScript(
+      (marker) =>
+        sessionStorage.setItem(
+          "learning_guest_session",
+          marker === "expired" ? String(Date.now() - 1) : marker,
+        ),
+      marker,
+    );
+    const requests: string[] = [];
+    page.on("request", (request) => {
+      if (request.url().includes("/v1/")) requests.push(request.url());
+    });
+    await page.goto(guest);
+    await expect(page).toHaveURL(`http://127.0.0.1:4173${root}/`);
+    await expect(
+      page.getByRole("navigation", { name: "Primary navigation" }),
+    ).toHaveCount(0);
+    await expect(
+      page.getByRole("button", { name: "Guest account menu" }),
+    ).toBeVisible();
+    expect(
+      await page.evaluate(() =>
+        sessionStorage.getItem("learning_guest_session"),
+      ),
+    ).toBeNull();
+    expect(requests).toEqual([]);
+  });
+}

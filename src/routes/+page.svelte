@@ -91,8 +91,8 @@
           {guestError}
         </p>{/if}
       <p>
-        Practice public cards. Progress is not saved. Guest access lasts until
-        you close this tab.
+        Practice public cards. Progress is not saved. Guest access lasts 30
+        minutes or until you close this tab.
       </p>
       <div class="sign-in-block">
         <p>Sign in to load your private decks and review history.</p>

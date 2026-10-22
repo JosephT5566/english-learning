@@ -84,6 +84,62 @@ describe("explicit tab guest session", () => {
     expect(get(authSession).kind).toBe("guest");
     expect(get(isSignedIn)).toBe(false);
   });
+  it("expires exactly 30 minutes after selection without renewing on hydration", () => {
+    vi.useFakeTimers();
+    const started = Date.now();
+    enterGuestSession();
+    const deadline = String(started + 30 * 60_000);
+    expect(sessionStorage.getItem("learning_guest_session")).toBe(deadline);
+    vi.setSystemTime(started + 30 * 60_000 - 1);
+    initializeSession();
+    expect(get(authSession).kind).toBe("guest");
+    expect(sessionStorage.getItem("learning_guest_session")).toBe(deadline);
+    vi.setSystemTime(started + 30 * 60_000);
+    initializeSession();
+    expect(get(authSession).kind).toBe("signed-out");
+    expect(sessionStorage.getItem("learning_guest_session")).toBeNull();
+    expect(enterGuestSession()).toEqual({ ok: true });
+    expect(get(authSession).kind).toBe("guest");
+  });
+  it.each(["1", "invalid", "NaN", "Infinity", "", "{}", "1.5", "-1"])(
+    "clears legacy or invalid deadline %s without granting guest access",
+    (value) => {
+      sessionStorage.setItem("learning_guest_session", value);
+      initializeSession();
+      expect(get(authSession).kind).toBe("signed-out");
+      expect(sessionStorage.getItem("learning_guest_session")).toBeNull();
+    },
+  );
+  it("expires on focus after suspended timers and preserves private storage", () => {
+    vi.useFakeTimers();
+    enterGuestSession();
+    const stop = watchSession();
+    localStorage.setItem("pending_review_submission_v1", "exact-command");
+    localStorage.setItem("isTestedToday", "daily-bytes");
+    vi.setSystemTime(Date.now() + 30 * 60_000);
+    window.dispatchEvent(new Event("focus"));
+    expect(get(authSession).kind).toBe("signed-out");
+    expect(localStorage.getItem("pending_review_submission_v1")).toBe(
+      "exact-command",
+    );
+    expect(localStorage.getItem("isTestedToday")).toBe("daily-bytes");
+    stop();
+  });
+  it("expires active guest through the session watcher", () => {
+    vi.useFakeTimers();
+    enterGuestSession();
+    const stop = watchSession();
+    vi.advanceTimersByTime(30 * 60_000);
+    expect(get(authSession).kind).toBe("signed-out");
+    stop();
+  });
+  it("keeps valid authentication when a guest deadline has elapsed", () => {
+    sessionStorage.setItem("learning_guest_session", String(Date.now() - 1));
+    storedLogin();
+    initializeSession();
+    expect(get(authSession).kind).toBe("authenticated");
+    expect(sessionStorage.getItem("learning_guest_session")).toBeNull();
+  });
   it("does not carry guest selection to a fresh session storage", () => {
     enterGuestSession();
     sessionStorage.clear();
@@ -96,6 +152,16 @@ describe("explicit tab guest session", () => {
       throw new Error("disabled");
     });
     expect(enterGuestSession().ok).toBe(false);
+    expect(get(authSession).kind).toBe("signed-out");
+  });
+  it("fails closed when session storage cannot be read or cleared", () => {
+    vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+      throw new Error("disabled");
+    });
+    vi.spyOn(Storage.prototype, "removeItem").mockImplementation(() => {
+      throw new Error("disabled");
+    });
+    expect(() => initializeSession()).not.toThrow();
     expect(get(authSession).kind).toBe("signed-out");
   });
   it("hydrates private identity before guest and clears the guest preference", () => {

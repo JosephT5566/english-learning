@@ -584,6 +584,10 @@ test("a delayed private 401 after explicit sign-out cannot remove the new guest 
     .getByRole("button", { name: "Continue as guest", exact: true })
     .click();
   await expect(page).toHaveTitle("Guest review - English Learning");
+  const guestDeadline = await page.evaluate(() =>
+    sessionStorage.getItem("learning_guest_session"),
+  );
+  expect(Number(guestDeadline)).toBeGreaterThan(Date.now());
   const activeCard = page.locator('.swipe--card[aria-hidden="false"]');
   await expect(
     page.getByRole("button", { name: "Knew it", exact: true }),
@@ -603,7 +607,7 @@ test("a delayed private 401 after explicit sign-out cannot remove the new guest 
   expect(publicReads).toBe(1);
   expect(
     await page.evaluate(() => sessionStorage.getItem("learning_guest_session")),
-  ).toBe("1");
+  ).toBe(guestDeadline);
   expect(
     await page.evaluate(() => localStorage.getItem("gid_id_token")),
   ).toBeNull();

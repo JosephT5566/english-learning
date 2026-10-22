@@ -21,7 +21,10 @@
     } else if (session.kind !== "owned") {
       if (auth.kind === "guest") {
         if (session.kind !== "guest") session = { kind: "guest" };
-      } else void goto(resolve("/"), { replaceState: true });
+      } else {
+        if (session.kind !== "waiting") session = { kind: "waiting" };
+        void goto(resolve("/"), { replaceState: true });
+      }
     }
   });
 </script>
@@ -30,6 +33,6 @@
   {#key session.subject}
     <OwnedReview ownerSubject={session.subject} />
   {/key}
-{:else if session.kind === "guest"}
+{:else if session.kind === "guest" && $authSession.kind === "guest"}
   <GuestReview />
 {/if}

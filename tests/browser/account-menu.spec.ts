@@ -40,6 +40,24 @@ for (const width of [320, 390, 1280]) {
     await page.setViewportSize({ width, height: 800 });
     await page.goto(`${root}/`);
     const account = page.getByRole("button", { name: "Guest account menu" });
+    await expect(
+      page.getByRole("navigation", { name: "Primary navigation" }),
+    ).toHaveCount(0);
+    await expect(account).toBeVisible();
+    await page
+      .locator('nav[aria-label="Primary navigation"] a')
+      .first()
+      .evaluate((link) => link.focus());
+    expect(
+      await page.evaluate(
+        () =>
+          document.activeElement?.closest(
+            'nav[aria-label="Primary navigation"]',
+          ) === null,
+      ),
+    ).toBe(true);
+    await account.focus();
+    await expect(account).toBeFocused();
     const box = await account.boundingBox();
     expect(box?.width).toBeGreaterThanOrEqual(44);
     expect(box?.height).toBeGreaterThanOrEqual(44);
@@ -87,6 +105,9 @@ test("explicit sign out returns home and requires a new guest selection", async 
     localStorage.setItem("gid_exp", String(exp));
   });
   await page.goto(`${root}/review`);
+  await expect(
+    page.getByRole("navigation", { name: "Primary navigation" }),
+  ).toBeVisible();
   const account = page.getByRole("button", { name: /Account menu for/ });
   await account.click();
   await expect(
@@ -94,6 +115,9 @@ test("explicit sign out returns home and requires a new guest selection", async 
   ).toHaveCount(0);
   await page.getByRole("menuitem", { name: "Sign out", exact: true }).click();
   await expect(page).toHaveURL(`${root}/`);
+  await expect(
+    page.getByRole("navigation", { name: "Primary navigation" }),
+  ).toHaveCount(0);
   await expect(
     page.getByRole("button", { name: "Continue as guest" }),
   ).toBeVisible();

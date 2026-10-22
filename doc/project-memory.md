@@ -12,8 +12,10 @@ a fresh inspection of the live services.
 
 Visitors explicitly choose Continue as guest on the signed-out homepage, then use the shared
 `/review` route to practice a random batch of up to ten published English/Japanese cards.
-The guest choice uses tab-scoped `sessionStorage`; reload retains the choice but starts a fresh
-batch, and closing the tab ends the choice. Guest answers remain in memory and are not saved.
+The guest choice stores a fixed 30-minute absolute deadline in tab-scoped `sessionStorage`.
+Reload retains that deadline but starts a fresh batch; activity never extends it. Expiry or tab
+closure ends the choice. Expiry clears the guest controller and returns to signed-out home.
+Guest answers remain in memory and are not saved.
 Flip-before-answer, grading buttons, swipes and keyboard controls share the private presentation.
 As of 2026-10-23, guest review omits the extra heading, progress notice and home/sign-in link;
 the shared header provides navigation and account actions.
@@ -21,7 +23,9 @@ Completion offers an explicit Practice again action. Guest activity never reads,
 private pending review commands or daily completion markers, and never submits answers.
 Authenticated users always receive private review at `/review`. The legacy `/review/guest`
 redirects to that shared entry and does not select guest mode. Fresh signed-out review entry
-without an explicit choice returns home. Decks, card details, search and authoring retain auth.
+without an explicit, unexpired choice returns home. Primary navigation is hidden during
+initialization and while signed out; the account avatar remains available. Guest and authenticated
+sessions show their existing navigation. Decks, card details, search and authoring retain auth.
 
 The top-right account avatar opens a sign-in/sign-out menu. Signing in discards the guest batch
 and initializes private review. Explicit sign-out clears the guest choice and returns home.

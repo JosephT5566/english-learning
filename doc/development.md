@@ -216,7 +216,11 @@ merely to validate YAML or shell syntax.
 ## Guest review development and release gate
 
 The shared entry is `/review`. Choose Continue as guest on home to set a tab-scoped guest choice;
-reload starts another temporary batch, and closing the tab ends the choice. Authenticated users
+the stored absolute deadline expires 30 minutes after selection, or when the tab session ends.
+Reload starts another temporary batch without renewing the deadline. The session watcher checks
+expiry on hydration, focus and its one-second interval, clears guest review and returns home.
+Signed-out and initializing sessions hide primary navigation while retaining the account avatar.
+Legacy `1` and malformed markers are removed without granting another guest session. Authenticated users
 always use private review. `/review/guest` is a base-aware redirect, not an opt-in. Guest content
 comes only from the FastAPI public read endpoint.
 No frontend environment variable or URL parameter chooses a deck. Server-only

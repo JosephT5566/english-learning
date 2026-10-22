@@ -18,6 +18,7 @@ const MAX_SKEW_SEC = 60; // 允許裝置時間偏差（保守）
 const renderedButtons = new WeakSet<HTMLElement>();
 const signInErrorListeners = new Set<(error: Error) => void>();
 const GUEST_SESSION = "learning_guest_session";
+const GUEST_DURATION_MS = 30 * 60_000;
 let gsiInitialized = false;
 
 // ======== 公用工具 ========
@@ -243,8 +244,9 @@ export function enterGuestSession():
   if (getIsSignedIn())
     return { ok: false, error: "Sign out before starting guest practice." };
   try {
-    sessionStorage.setItem(GUEST_SESSION, "1");
-    if (sessionStorage.getItem(GUEST_SESSION) !== "1")
+    const deadline = String(Date.now() + GUEST_DURATION_MS);
+    sessionStorage.setItem(GUEST_SESSION, deadline);
+    if (sessionStorage.getItem(GUEST_SESSION) !== deadline)
       throw new Error("Storage unavailable");
     authSession.set({ kind: "guest" });
     return { ok: true };
@@ -265,13 +267,16 @@ export function initializeSession() {
     return;
   }
   try {
-    if (sessionStorage.getItem(GUEST_SESSION) === "1") {
+    const stored = sessionStorage.getItem(GUEST_SESSION);
+    const deadline = Number(stored);
+    if (stored && Number.isSafeInteger(deadline) && deadline > Date.now()) {
       authSession.set({ kind: "guest" });
       return;
     }
   } catch {
     /* The homepage reports storage failure when guest is selected. */
   }
+  clearGuestSelection();
   setSignOut();
 }
 
