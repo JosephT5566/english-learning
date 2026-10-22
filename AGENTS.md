@@ -27,6 +27,12 @@ Keep repository-wide constraints and task routing here, reusable task methods in
 
 ## Working rules
 
+Repo-scoped Codex subagents live in `.codex/agents/`. See
+[`doc/codex-subagents.md`](doc/codex-subagents.md) for planner, worker, and reviewer usage.
+Browser automation defaults to the Chrome plugin `browser-client` runtime. The repository
+owner explicitly authorizes reviewer to use standalone Chrome DevTools MCP for browser
+verification. Other roles use it only when explicitly requested or the plugin is unavailable.
+
 - Keep changes scoped to the requested behavior or active acceptance criteria. Do not rework unrelated Svelte starter code unless it blocks the task.
 - State important assumptions and preserve existing contracts unless the task explicitly changes them.
 - Prefer existing project patterns: Svelte 5 runes in newer components, Svelte stores for shared review/auth state, Tailwind utility classes for styling, and `$lib` imports.
