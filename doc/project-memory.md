@@ -1,12 +1,37 @@
 # Project Memory
 
-Last updated: 2026-10-11
+Last updated: 2026-10-22
 
 This file is the current product-state index. Training milestones, evidence limits, and the next
 training action belong in [`training/project-memory.md`](training/project-memory.md); detailed
 verification records belong in the linked issue artifacts. Implementation and test results take
 precedence over stale documentation. Deployment statements below summarize recorded evidence, not
 a fresh inspection of the live services.
+
+## Guest review implementation (2026-10-22)
+
+Visitors explicitly choose Continue as guest on the signed-out homepage, then use the shared
+`/review` route to practice a random batch of up to ten published English/Japanese cards.
+The guest choice uses tab-scoped `sessionStorage`; reload retains the choice but starts a fresh
+batch, and closing the tab ends the choice. Guest answers remain in memory and are not saved.
+Flip-before-answer, grading buttons, swipes and keyboard controls share the private presentation.
+Completion offers an explicit Practice again action. Guest activity never reads, writes or clears
+private pending review commands or daily completion markers, and never submits answers.
+Authenticated users always receive private review at `/review`. The legacy `/review/guest`
+redirects to that shared entry and does not select guest mode. Fresh signed-out review entry
+without an explicit choice returns home. Decks, card details, search and authoring retain auth.
+
+The top-right account avatar opens a sign-in/sign-out menu. Signing in discards the guest batch
+and initializes private review. Explicit sign-out clears the guest choice and returns home.
+Private token expiry or API 401 retains the current private controller and exact pending command
+for same-account sign-in and retry, without silently entering guest mode. Account changes discard
+the old controller and reject stale responses. Browser guest state never grants backend access.
+
+Publication is disabled by default (`PUBLIC_REVIEW_DECK_IDS=[]`). An operator must inspect each
+selected deck's publishable fields and verify deployed trusted source identity before enabling
+it. Configuring an active deck publishes later active-card additions and edits too; removing it
+prevents future responses but cannot recall delivered content. Local implementation does not
+establish live publication, deployment or a production forwarding-chain verification.
 
 ## Product
 

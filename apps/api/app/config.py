@@ -2,6 +2,7 @@
 
 from enum import StrEnum
 from typing import Annotated
+from uuid import UUID
 
 from pydantic import (
     Field,
@@ -68,6 +69,14 @@ class Settings(BaseSettings):
         str, StringConstraints(strip_whitespace=True, min_length=1)
     ] = DEFAULT_GOOGLE_OAUTH_CLIENT_ID
     google_allowed_emails: str = ""
+    public_review_deck_ids: tuple[UUID, ...] = ()
+    public_review_requests_per_minute: Annotated[int, Field(gt=0, le=6000)] = 6
+    public_review_burst: Annotated[int, Field(gt=0, le=1000)] = 2
+    public_review_global_requests_per_minute: Annotated[int, Field(gt=0, le=60000)] = 60
+    public_review_global_burst: Annotated[int, Field(gt=0, le=10000)] = 10
+    public_review_max_in_flight: Annotated[int, Field(gt=0, le=20)] = 1
+    public_review_query_timeout_ms: Annotated[int, Field(gt=0, le=10000)] = 2000
+
     vertex_project_id: (
         Annotated[str, StringConstraints(pattern=r"^[a-z][a-z0-9-]{4,61}[a-z0-9]$")]
         | None
@@ -78,6 +87,13 @@ class Settings(BaseSettings):
     cors_allowed_origins: Annotated[tuple[str, ...], Field(min_length=1)] = (
         DEFAULT_CORS_ALLOWED_ORIGINS
     )
+
+    @field_validator("public_review_deck_ids")
+    @classmethod
+    def unique_public_decks(cls, value: tuple[UUID, ...]) -> tuple[UUID, ...]:
+        if len(value) != len(set(value)):
+            raise ValueError("must not contain duplicate deck IDs")
+        return value
 
     @field_validator("google_allowed_emails")
     @classmethod

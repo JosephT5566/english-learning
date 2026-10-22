@@ -1,6 +1,6 @@
 # Decisions And Known Issues
 
-Last updated: 2026-09-26
+Last updated: 2026-10-22
 
 ## Durable Decisions
 
@@ -322,3 +322,28 @@ Last updated: 2026-09-26
   active-route styling and signed-out visibility behavior are preserved.
   Search mode, submit, retry, and keyword fallback buttons use Lucide icons with accessible names,
   tooltips, visible focus, and 44px minimum touch targets. Loading animation respects reduced motion.
+
+- 2026-10-22: Add a dedicated anonymous `/review/guest` route and content-only public review
+  DTO rather than entering the authenticated due-review/pending-command lifecycle. Shared
+  presentation emits content answers; private review attaches the original expected versions.
+  Guest completion is temporary and never writes learning state, pending commands or daily
+  completion. Public fetches omit credentials and use explicit retries after server cooldowns.
+  Publication is operator-controlled through a server-only deck allowlist, empty by default.
+  Configured active decks publish current and later active-card content through an explicit
+  projection; revocation affects future fetches only. Per-process source/global token buckets,
+  a nonblocking database permit and transaction-local read-only/timeout settings protect this
+  boundary without adding a service, migration or publication UI. Keep publication disabled
+  until selected content and the deployed trusted forwarding chain pass operator verification.
+  Local tests do not establish production identity handling or live publication.
+
+- 2026-10-22: Replace the dedicated guest frontend entry with shared `/review` and separate
+  guest/private controllers. Require explicit Continue as guest, represented only by tab-scoped
+  `sessionStorage`; do not infer guest from missing credentials or persist answers. Reload retains
+  the choice and starts a new batch; tab closure ends it. Valid authentication always selects
+  private review. The legacy route redirects without opting into guest. Login discards the guest
+  batch; explicit avatar-menu sign-out clears the choice and returns home. Token expiry or API
+  401 preserves the active private controller and exact pending retry for same-account login,
+  without guest fallback. A subject change remounts private review and invalidates stale requests.
+  A delayed old-token `401` cannot sign out newer credentials; only a matching current request
+  token triggers API sign-out. The guest marker controls presentation only; public/private backend
+  boundaries are unchanged.

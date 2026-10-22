@@ -1,7 +1,8 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
-	import type { DueCard, ReviewDecision, ReviewSubmissionItem } from '$lib/api/contracts';
+	import type { ReviewDecision } from '$lib/api/contracts';
+	import type { CardAnswer, StudyCard } from '$lib/review/presentation';
 	import type { StudyDirection } from '$lib/types';
 	import { canAnswerCard } from '$lib/review/interaction';
 	import _clamp from 'lodash/clamp';
@@ -15,10 +16,12 @@
 		wordList = [],
 		studyDirection = 'EN_ZH',
 		onAnswer,
+		onComplete,
 	}: {
-		wordList?: DueCard[];
+		wordList?: readonly StudyCard[];
 		studyDirection?: StudyDirection;
-		onAnswer?: (answer: ReviewSubmissionItem) => void;
+		onAnswer?: (answer: CardAnswer) => void;
+		onComplete?: () => void;
 	} = $props();
 
 	let root: HTMLDivElement | undefined = $state(); // .swipe
@@ -50,6 +53,7 @@
 	let modalOpen = $state(false);
 	let modalContent = $state('');
 	let announcement = $state('');
+	let completionEmitted = false;
 	const timers = new SvelteSet<ReturnType<typeof setTimeout>>();
 
 	const answerOptions: {
@@ -59,7 +63,13 @@
 		isYes: boolean;
 		icon: string;
 	}[] = [
-		{ decision: 'no', label: 'Forgot', shortcut: '1', isYes: false, icon: 'solar:close-square-bold' },
+		{
+			decision: 'no',
+			label: 'Forgot',
+			shortcut: '1',
+			isYes: false,
+			icon: 'solar:close-square-bold',
+		},
 		{
 			decision: 'no_a_bit',
 			label: 'Hard',
@@ -74,7 +84,13 @@
 			isYes: true,
 			icon: 'solar:check-square-outline',
 		},
-		{ decision: 'yes', label: 'Knew it', shortcut: '4', isYes: true, icon: 'solar:check-square-bold' },
+		{
+			decision: 'yes',
+			label: 'Knew it',
+			shortcut: '4',
+			isYes: true,
+			icon: 'solar:check-square-bold',
+		},
 	];
 
 	const THRESHOLD = 200; // fly-out decision
@@ -403,14 +419,15 @@
 			return; // safety guard
 		}
 		const answeredCard = currentWord;
-		onAnswer?.({
-			card_id: currentWord.id,
-			decision,
-			expected_version: currentWord.review_state.version,
-		});
-		const label = answerOptions.find((option) => option.decision === decision)?.label ?? decision;
+		currentWordIndex += 1;
+		onAnswer?.({ cardId: answeredCard.id, decision });
+		const label =
+			answerOptions.find((option) => option.decision === decision)?.label ?? decision;
 		announcement = `${label}. ${answeredCard.term} completed.`;
-		currentWordIndex += 1; // move to next card
+		if (currentWordIndex === wordList.length && !completionEmitted) {
+			completionEmitted = true;
+			onComplete?.();
+		}
 	}
 
 	type FrontFace = {
@@ -431,55 +448,67 @@
 		supplementary?: string;
 	};
 
-	function displayedPartOfSpeech(c: DueCard): string | null {
+	function displayedPartOfSpeech(c: StudyCard): string | null {
 		return c.part_of_speech === 'other' && c.part_of_speech_detail
 			? c.part_of_speech_detail
 			: c.part_of_speech;
 	}
 
 	// Compute what to show on each face from a Card + direction + mode
-	function faceFront(c: DueCard, dir: StudyDirection): FrontFace {
+	function faceFront(c: StudyCard, dir: StudyDirection): FrontFace {
 		const partOfSpeech = displayedPartOfSpeech(c);
 		if (dir === 'EN_ZH') {
 			return {
 				title: c.term,
-				lessonDate: c.learned_on ? new Date(c.learned_on).toLocaleDateString('zh-TW') : null,
-				chips: [partOfSpeech, ...(c.note?.split(/,\s*/g) ?? [])].filter(Boolean) as string[],
-				tags: c.tags.map((tag) => tag.display_name),
+				lessonDate: c.privateContext?.learned_on
+					? new Date(c.privateContext?.learned_on).toLocaleDateString('zh-TW')
+					: null,
+				chips: [partOfSpeech, ...(c.privateContext?.note?.split(/,\s*/g) ?? [])].filter(
+					(value): value is string => Boolean(value)
+				),
+				tags: (c.privateContext?.tags ?? []).map((tag) => tag.display_name),
 				phonics: c.pronunciation ?? c.reading ?? c.romanization ?? undefined,
 			};
 		} else {
 			return {
 				title: c.meaning || '—',
-				lessonDate: c.learned_on ? new Date(c.learned_on).toLocaleDateString('zh-TW') : null,
-				chips: [partOfSpeech, ...(c.note?.split(/,\s*/g) ?? [])].filter(Boolean) as string[],
-				tags: c.tags.map((tag) => tag.display_name),
+				lessonDate: c.privateContext?.learned_on
+					? new Date(c.privateContext?.learned_on).toLocaleDateString('zh-TW')
+					: null,
+				chips: [partOfSpeech, ...(c.privateContext?.note?.split(/,\s*/g) ?? [])].filter(
+					(value): value is string => Boolean(value)
+				),
+				tags: (c.privateContext?.tags ?? []).map((tag) => tag.display_name),
 				phonics: undefined,
 			};
 		}
 	}
 
-	function faceBack(c: DueCard, dir: StudyDirection): BackFace {
+	function faceBack(c: StudyCard, dir: StudyDirection): BackFace {
 		if (dir === 'EN_ZH') {
 			return {
 				title: c.meaning || '—',
 				subtitle: c.target_language_definition ?? undefined,
-				lessonDate: c.learned_on ? new Date(c.learned_on).toLocaleDateString('zh-TW') : null,
+				lessonDate: c.privateContext?.learned_on
+					? new Date(c.privateContext?.learned_on).toLocaleDateString('zh-TW')
+					: null,
 				example: c.example_sentence,
 				syns: c.synonyms,
 				ants: c.antonyms,
-				supplementary: c.supplementary_note ?? undefined,
+				supplementary: c.privateContext?.supplementary_note ?? undefined,
 			};
 		} else {
 			return {
 				title: c.term,
 				subtitle: c.target_language_definition ?? undefined,
 				head: c.pronunciation ?? c.reading ?? c.romanization ?? undefined,
-				lessonDate: c.learned_on ? new Date(c.learned_on).toLocaleDateString('zh-TW') : null,
+				lessonDate: c.privateContext?.learned_on
+					? new Date(c.privateContext?.learned_on).toLocaleDateString('zh-TW')
+					: null,
 				example: c.example_sentence,
 				syns: c.synonyms,
 				ants: c.antonyms,
-				supplementary: c.supplementary_note ?? undefined,
+				supplementary: c.privateContext?.supplementary_note ?? undefined,
 			};
 		}
 	}
@@ -519,33 +548,45 @@
 <div class="swipe" bind:this={root}>
 	<p class="sr-only" aria-live="polite" aria-atomic="true">{announcement}</p>
 	{#if !hasCards}
-		<div class="flex flex-col items-center gap-3 mt-10">
-			<Icon icon="solar:cat-bold-duotone" width="120px" height="120px" class="text-slate-400" />
-			<span class="ml-2 font-[Contrail_One] text-3xl text-center text-slate-500">
+		<div class="mt-10 flex flex-col items-center gap-3">
+			<Icon
+				icon="solar:cat-bold-duotone"
+				width="120px"
+				height="120px"
+				class="text-slate-400"
+			/>
+			<span class="ml-2 text-center font-[Contrail_One] text-3xl text-slate-500">
 				We don't have any cards for you today.
 			</span>
 		</div>
 	{:else if isEnded}
-		<div class="flex flex-col items-center gap-3 mt-10">
+		<div class="mt-10 flex flex-col items-center gap-3">
 			<Icon
 				icon="solar:confetti-bold-duotone"
 				width="120px"
 				height="120px"
 				class="text-slate-400"
 			/>
-			<span class="ml-2 font-[Contrail_One] text-3xl text-center text-slate-500">
-				Your answers are ready to submit.
+			<span class="ml-2 text-center font-[Contrail_One] text-3xl text-slate-500">
+				You have reviewed all cards.
 			</span>
 		</div>
 	{:else}
 		<div class="review-guidance" id="review-guidance">
-			<p>{isTopCardBack ? 'Choose how well you remembered it.' : 'Flip the card to reveal the answer.'}</p>
+			<p>
+				{isTopCardBack
+					? 'Choose how well you remembered it.'
+					: 'Flip the card to reveal the answer.'}
+			</p>
 			<span>{isTopCardBack ? 'Swipe or press 1–4' : 'Click, tap, or press Enter'}</span>
 		</div>
 
 		<div class="swipe--status">
 			<span class="icon no" style="opacity:{noOpacity}">
-				<Icon icon="solar:close-square-outline" class={noOpacity === 1 ? 'text-rose-500' : ''} />
+				<Icon
+					icon="solar:close-square-outline"
+					class={noOpacity === 1 ? 'text-rose-500' : ''}
+				/>
 			</span>
 			<span class="icon yes" style="opacity:{yesOpacity}">
 				<Icon
@@ -573,11 +614,12 @@
 					<!-- 3D flip container -->
 					<div class="card-inner">
 						<!-- FRONT -->
-						<div class="card-face card-front p-2 pb-10 bg-white">
+						<div class="card-face card-front bg-white p-2 pb-10">
 							{#if f.chips?.length}
 								<div class="chips">
 									{#each f.chips as chip, idx (idx)}
-										<span class={classNames('chip', idx === 0 ? 'bg-orange-200' : 'bg-gray-100')}
+										<span
+											class={classNames('chip', idx === 0 ? 'bg-orange-200' : 'bg-gray-100')}
 											>{chip}</span
 										>
 									{/each}
@@ -598,7 +640,7 @@
 						</div>
 
 						<!-- BACK -->
-						<div class="card-face card-back py-10 px-4 bg-slate-300">
+						<div class="card-face card-back bg-slate-300 px-4 py-10">
 							{#if b.supplementary}
 								<button
 									class={classNames(
@@ -682,7 +724,7 @@
 
 <Modal open={modalOpen} title="More Info" handleClose={() => (modalOpen = false)}>
 	{#snippet ModalBody()}
-		<div class="whitespace-pre-wrap text-sm leading-relaxed">
+		<div class="text-sm leading-relaxed whitespace-pre-wrap">
 			{modalContent}
 		</div>
 	{/snippet}
@@ -774,7 +816,9 @@
 		outline: none;
 	}
 	.swipe--card:focus-visible {
-		box-shadow: 0 0 0 4px #dbeafe, 0 0 0 7px #2563eb;
+		box-shadow:
+			0 0 0 4px #dbeafe,
+			0 0 0 7px #2563eb;
 	}
 	/* 3D flip scaffolding */
 	.swipe--card .card-inner {
@@ -926,7 +970,10 @@
 		flex-wrap: wrap;
 		font-size: 0.8rem;
 		font-weight: 700;
-		transition: transform 150ms ease, background-color 150ms ease, border-color 150ms ease;
+		transition:
+			transform 150ms ease,
+			background-color 150ms ease,
+			border-color 150ms ease;
 	}
 	.swipe--buttons button.positive {
 		border-color: #a7f3d0;

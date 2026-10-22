@@ -48,17 +48,17 @@ before new application instances receive traffic.
 Local development works with safe disposable defaults. To override them, create an optional `.env`
 file beside `pyproject.toml`; use `.env.example` as the field reference.
 
-| Variable | Default | Constraint |
-| --- | --- | --- |
-| `APP_ENV` | `local` | `local`, `test`, or `production` |
-| `LOG_LEVEL` | `INFO` | `DEBUG`, `INFO`, `WARNING`, `ERROR`, or `CRITICAL` |
-| `DATABASE_URL` | Local disposable PostgreSQL URL | Must use the `postgresql+psycopg` driver; production also requires verified TLS or required TLS channel binding |
-| `DATABASE_CONNECT_TIMEOUT_SECONDS` | `2` | Integer from 1 through 10 |
-| `GOOGLE_OAUTH_CLIENT_ID` | Local placeholder | Google web OAuth client ID used as the accepted token audience |
-| `GOOGLE_ALLOWED_EMAILS` | Empty locally | Comma-separated verified Google email allowlist; required in production |
-| `VERTEX_PROJECT_ID` | Unset | Google Cloud project that enables provider-backed embeddings and semantic search when configured |
-| `VERTEX_LOCATION` | `us-central1` | Vertex AI region used for embedding requests |
-| `CORS_ALLOWED_ORIGINS` | Local Vite origins | JSON array of exact browser origins allowed to call the API |
+| Variable                           | Default                         | Constraint                                                                                                      |
+| ---------------------------------- | ------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `APP_ENV`                          | `local`                         | `local`, `test`, or `production`                                                                                |
+| `LOG_LEVEL`                        | `INFO`                          | `DEBUG`, `INFO`, `WARNING`, `ERROR`, or `CRITICAL`                                                              |
+| `DATABASE_URL`                     | Local disposable PostgreSQL URL | Must use the `postgresql+psycopg` driver; production also requires verified TLS or required TLS channel binding |
+| `DATABASE_CONNECT_TIMEOUT_SECONDS` | `2`                             | Integer from 1 through 10                                                                                       |
+| `GOOGLE_OAUTH_CLIENT_ID`           | Local placeholder               | Google web OAuth client ID used as the accepted token audience                                                  |
+| `GOOGLE_ALLOWED_EMAILS`            | Empty locally                   | Comma-separated verified Google email allowlist; required in production                                         |
+| `VERTEX_PROJECT_ID`                | Unset                           | Google Cloud project that enables provider-backed embeddings and semantic search when configured                |
+| `VERTEX_LOCATION`                  | `us-central1`                   | Vertex AI region used for embedding requests                                                                    |
+| `CORS_ALLOWED_ORIGINS`             | Local Vite origins              | JSON array of exact browser origins allowed to call the API                                                     |
 
 Production must explicitly override `DATABASE_URL`, `GOOGLE_OAUTH_CLIENT_ID`, and
 `GOOGLE_ALLOWED_EMAILS`; their local defaults
@@ -235,7 +235,7 @@ curl -i http://127.0.0.1:8000/health/live
 The expected response body is:
 
 ```json
-{"status":"ok"}
+{ "status": "ok" }
 ```
 
 Liveness reports whether the API process can handle requests. It intentionally does not query
@@ -252,13 +252,13 @@ curl -i http://127.0.0.1:8000/health/ready
 Available PostgreSQL returns `200`:
 
 ```json
-{"status":"ready","checks":{"database":"ok"}}
+{ "status": "ready", "checks": { "database": "ok" } }
 ```
 
 Unavailable PostgreSQL returns `503` without connection details:
 
 ```json
-{"status":"not_ready","checks":{"database":"unavailable"}}
+{ "status": "not_ready", "checks": { "database": "unavailable" } }
 ```
 
 ## Tests and checks
@@ -348,3 +348,57 @@ Safe code-specific `details` may also be present. Clients branch on `code`, not 
 request receives a new UUID in `X-Request-ID`; error responses repeat it in the envelope. Validation
 and unexpected-error handlers do not return rejected inputs, exception text, stack traces, SQL,
 credentials, or connection details.
+
+## Anonymous public review
+
+`GET /v1/public/review-cards` returns up to ten randomly sampled, distinct content-only
+cards. It accepts no query keys, bearer token, pagination, or caller-selected decks.
+All responses on this path, including errors and preflight, have `Cache-Control: no-store`.
+Publication is controlled only by `PUBLIC_REVIEW_DECK_IDS`, a JSON UUID array defaulting
+to `[]`. Duplicate or malformed values fail startup through sanitized errors. Configuring
+an active deck publishes the approved fields of all its active cards, including later
+additions and edits. Owners do not affect deliberately configured publication. Removing
+a deck stops future responses, but cannot recall content already delivered.
+
+The API never joins users, tags, review states, or embeddings for this read. Each admitted
+operation starts with `SET TRANSACTION READ ONLY`, sets transaction-local statement timeout,
+selects the explicit public fields, then commits or rolls back and closes the session.
+No guest answers or sessions are persisted. The timeout covers each SQL statement, not
+pool acquisition or the entire HTTP request. Existing connection and platform timeouts remain.
+
+Process-local token buckets default to 6 requests/minute and burst 2 per normalized source,
+plus 60/minute and burst 10 globally. `PUBLIC_REVIEW_MAX_IN_FLIGHT=1` rejects concurrent
+public DB work without queueing. `PUBLIC_REVIEW_QUERY_TIMEOUT_MS=2000` bounds SQL execution.
+Sources use salted opaque keys in a map limited to 4096 entries. Only idle, fully refilled
+buckets expire after 600 seconds. Token exhaustion returns retryable `429 rate_limited`
+with computed integer `Retry-After`; busy work or map capacity returns retryable
+`503 public_review_busy` with `Retry-After: 1`. Neither rejection opens a database session.
+Cancellation holds the permit until synchronous SQL and session cleanup actually finish.
+CORS exposes `Retry-After` without enabling cookies or broadening origins.
+
+`serve.py` explicitly disables Uvicorn forwarded-header processing. The limiter uses only
+the normalized ASGI socket peer; it never reads `X-Forwarded-For` or `Forwarded`.
+Invalid or absent peers share one restrictive fallback bucket. IPv4-mapped IPv6 is
+normalized to IPv4. This conservative setup can group Cloud Run visitors behind one proxy
+peer and must not be represented as verified end-user attribution. It also means forwarded
+schemes are ignored by Uvicorn. Private API routes have no scheme-dependent ownership or
+authentication policy; redirects use the socket scheme until proxy trust is deliberately
+established. Do not enable blanket proxy trust to fix a local test.
+
+Before setting a nonempty production allowlist, the operator must audit the real forwarding
+chain and validate a deployed disposable smoke. Forged forwarding prefixes must not mint
+limiter identities, while genuinely distinct sources must be recognized as intended.
+If socket peers do not satisfy that gate, publication remains disabled until narrowly trusted
+proxy processing has been established and independently verified. Local header tests do not
+establish this release condition. Inspect every published field and later edits for public
+suitability before configuring a real deck. Run `EXPLAIN (ANALYZE, BUFFERS)` on representative
+disposable data and record candidate count, rows scanned, buffers, and execution time before
+publication. Random ordering scans eligible candidates, not merely ten returned rows.
+
+Buckets reset at process restart and are independent across instances, revisions, and
+workers. They are neither a service-wide quota nor a daily/cost cap. Cloud Run concurrency
+and instance bounds do not replace admission, and this feature provides no claim of DDoS
+protection. External load balancer/Cloud Armor work is outside this implementation.
+The candidate workflow supplies the protected `PUBLIC_REVIEW_DECK_IDS` variable, defaulting
+to the empty allowlist, and all admission defaults;
+real publication values belong in protected runtime configuration, never public Svelte vars.

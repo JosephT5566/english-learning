@@ -214,6 +214,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/public/review-cards": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Public Review Cards */
+        get: operations["get_public_review_cards_v1_public_review_cards_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/reviews": {
         parameters: {
             query?: never;
@@ -647,6 +664,34 @@ export interface components {
             /** Version */
             version: number;
         };
+        /**
+         * ErrorBody
+         * @description Machine-readable error data returned to API clients.
+         */
+        ErrorBody: {
+            /** Code */
+            code: string;
+            /** Details */
+            details?: {
+                [key: string]: unknown;
+            } | null;
+            /** Message */
+            message: string;
+            /**
+             * Request Id
+             * Format: uuid
+             */
+            request_id: string;
+            /** Retryable */
+            retryable: boolean;
+        };
+        /**
+         * ErrorResponse
+         * @description Top-level envelope shared by API failures.
+         */
+        ErrorResponse: {
+            error: components["schemas"]["ErrorBody"];
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -684,6 +729,48 @@ export interface components {
             items: components["schemas"]["DueCard"][];
             /** Next Cursor */
             next_cursor: string | null;
+        };
+        /** PublicReviewCard */
+        PublicReviewCard: {
+            /** Antonyms */
+            antonyms: string[];
+            /** Example Sentence */
+            example_sentence: string | null;
+            /** Example Translation */
+            example_translation: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Meaning */
+            meaning: string;
+            /** Part Of Speech */
+            part_of_speech: string | null;
+            /** Part Of Speech Detail */
+            part_of_speech_detail: string | null;
+            /** Pronunciation */
+            pronunciation: string | null;
+            /** Reading */
+            reading: string | null;
+            /** Romanization */
+            romanization: string | null;
+            /** Synonyms */
+            synonyms: string[];
+            /**
+             * Target Language
+             * @enum {string}
+             */
+            target_language: "en" | "ja";
+            /** Target Language Definition */
+            target_language_definition: string | null;
+            /** Term */
+            term: string;
+        };
+        /** PublicReviewCards */
+        PublicReviewCards: {
+            /** Items */
+            items: components["schemas"]["PublicReviewCard"][];
         };
         /**
          * ReadinessChecks
@@ -1385,6 +1472,53 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+        };
+    };
+    get_public_review_cards_v1_public_review_cards_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicReviewCards"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
