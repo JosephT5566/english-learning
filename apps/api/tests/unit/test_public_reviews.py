@@ -9,7 +9,7 @@ from starlette.requests import Request
 
 from app.config import Settings
 from app.main import create_app
-from app.public_admission import PublicAdmission, PublicPermit
+from app.public_admission import AdmissionRejection, PublicAdmission, PublicPermit
 from app.public_reviews import PUBLIC_REVIEW_PATH, PublicReviewCards, public_batch
 
 
@@ -126,14 +126,29 @@ def test_cancellation_does_not_release_until_sync_operation_finishes(
     monkeypatch.setattr("app.public_reviews._read_batch", blocking_read)
 
     async def run() -> None:
-        async with anyio.create_task_group() as group:
-            group.start_soon(public_batch, request)
-            await anyio.to_thread.run_sync(entered.wait)
-            group.cancel_scope.cancel()
-            assert admission._in_flight == 1
-            assert not isinstance(admission.try_acquire("other"), PublicPermit)
-            finish.set()
-        assert admission._in_flight == 0
+        async def run_request(*, task_status=anyio.TASK_STATUS_IGNORED) -> None:
+            with anyio.CancelScope() as request_scope:
+                task_status.started(request_scope)
+                await public_batch(request)
+
+        with anyio.fail_after(5):
+            async with anyio.create_task_group() as group:
+                request_scope = await group.start(run_request)
+                try:
+                    assert await anyio.to_thread.run_sync(entered.wait, 5)
+                    request_scope.cancel()
+                    await anyio.wait_all_tasks_blocked()
+                    assert not finish.is_set()
+                    rejected = admission.try_acquire("other")
+                    if isinstance(rejected, PublicPermit):
+                        rejected.release()
+                    assert isinstance(rejected, AdmissionRejection)
+                    assert rejected.reason == "busy"
+                finally:
+                    finish.set()
+            permit = admission.try_acquire("other")
+            assert isinstance(permit, PublicPermit)
+            permit.release()
 
     anyio.run(run)
 

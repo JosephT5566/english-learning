@@ -3,6 +3,45 @@ vi.mock("$env/dynamic/public", () => ({
   env: { PUBLIC_API_BASE_URL: "https://public.test" },
 }));
 import { getPublicReviewCards } from "$lib/api/public-review";
+import type { PublicReviewCard } from "$lib/api/contracts";
+
+const publicCard = {
+  id: "00000000-0000-4000-8000-000000000001",
+  target_language: "en",
+  term: "remember",
+  meaning: "keep in memory",
+  pronunciation: "/rɪˈmembər/",
+  reading: null,
+  romanization: null,
+  part_of_speech: "verb",
+  part_of_speech_detail: null,
+  target_language_definition: "to keep information in your mind",
+  example_sentence: "I remember the answer.",
+  example_translation: null,
+  synonyms: ["recall"],
+  antonyms: ["forget"],
+} satisfies PublicReviewCard;
+
+const japaneseCard = {
+  ...publicCard,
+  id: "00000000-0000-4000-8000-000000000002",
+  target_language: "ja",
+  term: "覚える",
+  meaning: "memorize",
+  pronunciation: null,
+  reading: "おぼえる",
+  romanization: "oboeru",
+  example_sentence: "単語を覚える。",
+  example_translation: "Memorize a word.",
+  target_language_definition: null,
+  synonyms: [],
+  antonyms: [],
+} satisfies PublicReviewCard;
+
+const tenCards = Array.from({ length: 10 }, (_, index) => ({
+  ...(index % 2 === 0 ? publicCard : japaneseCard),
+  id: `00000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`,
+}));
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -68,10 +107,44 @@ describe("public transport", () => {
     await expect(getPublicReviewCards()).rejects.toMatchObject({ status: 401 });
     expect(localStorage.getItem("gid_id_token")).toBe("keep");
   });
-  it("rejects malformed and duplicate batches", async () => {
+  it("rejects malformed cards", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue(new Response('{"items":[{"id":"a"}]}')),
+    );
+    await expect(getPublicReviewCards()).rejects.toThrow("invalid");
+  });
+  for (const [label, items] of [
+    ["a single valid card", [publicCard]],
+    ["ten distinct valid English and Japanese cards", tenCards],
+  ] satisfies [string, PublicReviewCard[]][]) {
+    it(`accepts ${label}`, async () => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue(new Response(JSON.stringify({ items }))),
+      );
+      await expect(getPublicReviewCards()).resolves.toEqual({ items });
+    });
+  }
+  it("rejects two valid cards with the same ID", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValue(
+          new Response(JSON.stringify({ items: [publicCard, publicCard] })),
+        ),
+    );
+    await expect(getPublicReviewCards()).rejects.toThrow("invalid");
+  });
+  it("rejects eleven distinct valid cards", async () => {
+    const items = [
+      ...tenCards,
+      { ...publicCard, id: "00000000-0000-4000-8000-000000000011" },
+    ];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(new Response(JSON.stringify({ items }))),
     );
     await expect(getPublicReviewCards()).rejects.toThrow("invalid");
   });

@@ -14,7 +14,7 @@ from app.config import Settings
 from app.database import create_database_session_factory
 from app.main import create_app
 from app.public_admission import PublicAdmission
-from app.public_reviews import PUBLIC_CARDS_QUERY, PUBLIC_REVIEW_PATH, PublicReviewCard
+from app.public_reviews import PUBLIC_CARDS_QUERY, PUBLIC_REVIEW_PATH
 from tests.integration.test_multilingual_domain_fixture import load_multilingual_fixture
 
 pytestmark = [
@@ -65,7 +65,11 @@ def test_public_exact_fields_archive_policy_dynamic_membership_and_no_writes(
 ) -> None:
     engine = migrated_database_engine
     load_multilingual_fixture(engine)
+    private_note = "private-note-must-never-be-published"
     with engine.begin() as connection:
+        connection.execute(
+            text("UPDATE learning_cards SET note = :note"), {"note": private_note}
+        )
         connection.execute(
             text(
                 "INSERT INTO users (google_subject, normalized_email) VALUES ('other', 'other@example.test')"
@@ -91,7 +95,24 @@ def test_public_exact_fields_archive_policy_dynamic_membership_and_no_writes(
         items = response.json()["items"]
         assert len(items) == 3
         assert {item["target_language"] for item in items} == {"en", "ja"}
-        assert all(set(item) == set(PublicReviewCard.model_fields) for item in items)
+        for item in items:
+            assert set(item) == {
+                "id",
+                "target_language",
+                "term",
+                "meaning",
+                "pronunciation",
+                "reading",
+                "romanization",
+                "part_of_speech",
+                "part_of_speech_detail",
+                "target_language_definition",
+                "example_sentence",
+                "example_translation",
+                "synonyms",
+                "antonyms",
+            }
+        assert private_note not in response.text
         assert snapshot(engine) == before
         verifier.verify.assert_not_called()
         assert "review_submission_completed" not in capsys.readouterr().out
