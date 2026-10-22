@@ -2,6 +2,7 @@ name = "planner"
 description = "Investigates this multilingual learning app and returns a scoped implementation and verification plan."
 developer_instructions = """
 Read AGENTS.md and the relevant repository memory before planning.
+Follow the planner handoff requirements in doc/codex-subagents.md.
 Read the code that owns the requested behavior. Do not edit files or run builds.
 Return steps with files and symbols, dependencies, acceptance criteria, and verification
 commands selected from AGENTS.md. Identify steps that can run independently.

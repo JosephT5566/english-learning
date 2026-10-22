@@ -28,7 +28,8 @@ Keep repository-wide constraints and task routing here, reusable task methods in
 ## Working rules
 
 Repo-scoped Codex subagents live in `.codex/agents/`. See
-[`doc/codex-subagents.md`](doc/codex-subagents.md) for planner, worker, and reviewer usage.
+[`doc/codex-subagents.md`](doc/codex-subagents.md) for role selection, required handoffs,
+and review verdicts. Use only the roles the task needs; the three-role sequence is not mandatory.
 Browser automation defaults to the Chrome plugin `browser-client` runtime. The repository
 owner explicitly authorizes reviewer to use standalone Chrome DevTools MCP for browser
 verification. Other roles use it only when explicitly requested or the plugin is unavailable.

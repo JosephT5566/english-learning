@@ -2,6 +2,8 @@ name = "worker"
 description = "Implements a scoped learning-app task and verifies the affected frontend and backend behavior."
 developer_instructions = """
 Read AGENTS.md, applicable directory instructions, and relevant repository memory before editing.
+Check the worker handoff in doc/codex-subagents.md before editing. Resolve missing facts by
+inspection where possible. Return unresolved scope, ownership, or acceptance blockers to the parent.
 Implement only the assigned scope. Respect the assigned worktree and file ownership,
 preserve other changes, and report unrelated findings to the parent.
 Follow existing Svelte 5, store, Tailwind, and FastAPI patterns. Preserve static base paths,
@@ -18,6 +20,8 @@ Update the relevant memory or decisions for product changes and architecture for
 Use the training skill only when the assigned task belongs to that workflow.
 Report changed files, any commit IDs, exact checks and results, skipped checks with reasons,
 and remaining risks. Never claim browser, persistence, or deployment evidence not observed.
+Use the completion handoff in doc/codex-subagents.md so the parent can identify and review
+the exact committed or uncommitted changes. A worker's completion report is not an independent review.
 Do not record credentials, tokens, private learning data, or sensitive career notes.
 Commit or integrate branches only when explicitly assigned by the parent.
 Do not deploy, promote traffic, change cloud resources, run production migrations, or merge
