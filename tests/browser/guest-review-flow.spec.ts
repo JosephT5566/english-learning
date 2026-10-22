@@ -82,7 +82,7 @@ for (const width of [1280, 390]) {
     await enterGuest(page);
     await expect(
       page.getByText("Progress is not saved.", { exact: false }),
-    ).toBeVisible();
+    ).toHaveCount(0);
     await expect(
       page.getByRole("link", { name: "Guest review", exact: true }),
     ).toBeVisible();
@@ -249,7 +249,7 @@ test("navigating away cancels the pending guest session", async ({ page }) => {
   });
   await enterGuest(page);
   await expect(page.getByText("Loading cards...")).toBeVisible();
-  await page.getByRole("link", { name: "Home / sign in" }).click();
+  await page.getByRole("link", { name: "Home", exact: true }).click();
   await expect(
     page.getByRole("button", { name: "Continue as guest", exact: true }),
   ).toBeVisible();
@@ -334,9 +334,7 @@ test("corrupted stored credentials do not block explicit guest choice", async ({
     );
   });
   await enterGuest(page);
-  await expect(
-    page.getByRole("heading", { name: "Guest review", exact: true }),
-  ).toBeVisible();
+  await expect(page).toHaveTitle("Guest review - English Learning");
   await expect(
     page.getByRole("button", { name: "Knew it", exact: true }),
   ).toBeDisabled();

@@ -1,6 +1,6 @@
 # Project Memory
 
-Last updated: 2026-10-22
+Last updated: 2026-10-23
 
 This file is the current product-state index. Training milestones, evidence limits, and the next
 training action belong in [`training/project-memory.md`](training/project-memory.md); detailed
@@ -15,6 +15,8 @@ Visitors explicitly choose Continue as guest on the signed-out homepage, then us
 The guest choice uses tab-scoped `sessionStorage`; reload retains the choice but starts a fresh
 batch, and closing the tab ends the choice. Guest answers remain in memory and are not saved.
 Flip-before-answer, grading buttons, swipes and keyboard controls share the private presentation.
+As of 2026-10-23, guest review omits the extra heading, progress notice and home/sign-in link;
+the shared header provides navigation and account actions.
 Completion offers an explicit Practice again action. Guest activity never reads, writes or clears
 private pending review commands or daily completion markers, and never submits answers.
 Authenticated users always receive private review at `/review`. The legacy `/review/guest`

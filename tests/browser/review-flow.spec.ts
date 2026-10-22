@@ -322,13 +322,9 @@ test("guest login replaces its batch with owned review and sends no guest answer
   await page
     .getByRole("button", { name: "Continue as guest", exact: true })
     .click();
-  await expect(
-    page.getByRole("heading", { name: "Guest review", exact: true }),
-  ).toBeVisible();
+  await expect(page).toHaveTitle("Guest review - English Learning");
   await signInFromMenu(page);
-  await expect(
-    page.getByRole("heading", { name: "Guest review", exact: true }),
-  ).toHaveCount(0);
+  await expect(page).toHaveTitle("Daily English review");
   await expect(page.getByText("resilient", { exact: true })).toBeVisible();
   expect(writes).toEqual([]);
   expect(
@@ -587,9 +583,7 @@ test("a delayed private 401 after explicit sign-out cannot remove the new guest 
   await page
     .getByRole("button", { name: "Continue as guest", exact: true })
     .click();
-  await expect(
-    page.getByRole("heading", { name: "Guest review", exact: true }),
-  ).toBeVisible();
+  await expect(page).toHaveTitle("Guest review - English Learning");
   const activeCard = page.locator('.swipe--card[aria-hidden="false"]');
   await expect(
     page.getByRole("button", { name: "Knew it", exact: true }),
@@ -603,9 +597,7 @@ test("a delayed private 401 after explicit sign-out cannot remove the new guest 
   release();
   await (await staleResponse).finished();
   await page.waitForTimeout(250);
-  await expect(
-    page.getByRole("heading", { name: "Guest review", exact: true }),
-  ).toBeVisible();
+  await expect(page).toHaveTitle("Guest review - English Learning");
   await expect(page).toHaveURL(`${root}/review`);
   await expect(activeCard).toHaveAttribute("aria-expanded", "true");
   expect(publicReads).toBe(1);

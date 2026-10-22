@@ -1,6 +1,5 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { resolve } from "$app/paths";
   import SwipeCards from "$lib/components/SwipeCards.svelte";
   import {
     getPublicReviewCards,
@@ -68,16 +67,6 @@
 
 <svelte:head><title>Guest review - English Learning</title></svelte:head>
 <section class="mx-auto flex w-full max-w-3xl flex-1 flex-col px-4 pb-6">
-  <div class="mb-3 text-center">
-    <h1 class="text-2xl font-bold text-slate-800">Guest review</h1>
-    <p class="text-sm text-slate-600">
-      Progress is not saved. Practice a random batch of public cards.
-    </p>
-    <a
-      class="inline-flex min-h-11 items-center text-sm underline"
-      href={resolve("/")}>Home / sign in</a
-    >
-  </div>
   {#if session.kind === "loading"}
     <p role="status" class="py-12 text-center">Loading cards...</p>
   {:else if session.kind === "error"}
