@@ -1,6 +1,6 @@
 # Architecture Memory
 
-Last updated: 2026-10-11
+Last updated: 2026-10-23
 
 ## Stack
 
@@ -19,7 +19,7 @@ Last updated: 2026-10-11
 
 - `src/routes/+layout.svelte`: imports global CSS and wraps route content.
 - `src/routes/+page.svelte`: home/sign-in/start page.
-- `src/routes/review/+page.svelte`: review page; fetches due cards from FastAPI and passes them to
+- `src/routes/review/+page.svelte`: guest/private session controller; `OwnedReview.svelte` fetches due cards from FastAPI and passes them to
   the existing card UI.
 - `src/routes/decks/+page.svelte`: shared language-aware deck list with active/archive filtering.
 - `src/routes/decks/[deckId]/+page.svelte`: owned deck detail and card list.
@@ -354,7 +354,7 @@ Review update payload shape is:
 
 ## Data Flow
 
-1. `src/routes/review/+page.svelte` asks the typed client for up to ten English due cards.
+1. `/review` selects `OwnedReview.svelte` for an authenticated subject. That component asks the typed client for up to ten English due cards.
 2. The client sends `GET /v1/reviews/due` with the current ID token only in `Authorization` and
    validates the successful page contract before returning it.
 3. The page shuffles the due cards and `SwipeCards.svelte` retains the flip/swipe presentation.
@@ -447,13 +447,27 @@ Review update payload shape is:
 
 ## Auth Flow
 
-- `src/routes/+page.svelte` initializes Google Identity Services on mount if the user is not signed in.
-- `initGsiOnce()` configures the client ID and whitelist from public env vars.
-- On successful credential callback, `auth.ts` decodes the JWT, validates verified/whitelisted email, stores token and expiration, and sets `isSignedIn`.
-- `getTokenIfValid()` rejects missing or near-expired tokens using a safety buffer and skew allowance,
-  clears stale credentials, and synchronizes `isSignedIn` to false.
-- A server `401` invokes the same sign-out boundary. An unconfirmed pending review is retained for
-  the same Google subject; signing in as another subject deletes it before any review data is shown.
+- The auth store models initializing, signed-out, guest and authenticated sessions. Root layout
+  hydrates credentials before routing. Valid Google credentials take priority over a guest choice.
+- `enterGuestSession()` stores an absolute deadline 30 minutes after explicit selection in
+  tab-scoped `sessionStorage`. Hydration, focus and the existing one-second watcher check it;
+  reload and activity never renew it. Expired, legacy or malformed markers are removed.
+  Storage failure keeps the user on home with a recoverable message. This is UI state only.
+- Guest expiry transitions to signed-out, unmounts guest review (aborting requests), and returns
+  home with base-aware navigation. Valid authentication takes priority. Primary navigation is
+  hidden while initializing or signed-out, retaining header space and the account avatar.
+- The account avatar opens an accessible sign-in/sign-out menu. Shared Google sign-in UI accepts
+  the existing client-ID/verified-email/whitelist contract. Successful login clears the guest choice.
+- `getTokenIfValid()` rejects missing or near-expired tokens, clears stale credentials, and marks
+  the auth session signed-out. Cross-tab credential changes synchronize the current session.
+- API `401` signs out only when the request token is still the current token. A delayed old-token
+  `401` cannot remove a newer account's credentials. Current-token sign-out does not navigate or
+  remove a pending review. Explicit menu sign-out
+  additionally removes the guest choice and returns home. Same-subject login can retry an exact
+  pending command; another subject retires it before private review is initialized.
+- `/review` owns fresh-entry protection. Once private review starts, signed-out state preserves
+  its controller for reauthentication. Subject changes remount it; stale requests cannot update
+  the new account's UI or clear its pending command. Backend identity/ownership remain authoritative.
 
 ## Static Hosting Notes
 
@@ -468,3 +482,43 @@ Review update payload shape is:
   now requires a caller to inject an Apps Script endpoint explicitly; no normal runtime module does.
 - FastAPI's `CORS_ALLOWED_ORIGINS` is an explicit JSON array of frontend origins. Local defaults
   cover `localhost:5173` and `127.0.0.1:5173`; production must provide its real static origin.
+
+## Anonymous guest review boundary
+
+`/review` hosts separate `GuestReview.svelte` and `OwnedReview.svelte` controllers. A valid
+signed-in subject always selects owned review. Signed-out users must explicitly enter guest on
+home; its tab-scoped choice survives reload but answers and batches do not. Direct entry without
+that choice returns home. `/review/guest` redirects with `resolve('/review')` and does not select
+guest. Decks, card details and search remain authenticated. Static prerendering fetches no content.
+The mounted guest controller sends only GET `/v1/public/review-cards` with `credentials: 'omit'`,
+no bearer header and no auth-state changes on failure. Generated DTO aliases and runtime guards
+validate untrusted network JSON. Login unmounts guest and aborts its active request.
+
+`src/lib/review/presentation.ts` owns content-only `StudyCard` and `CardAnswer`. Private review
+adds its original due-card state version when constructing authenticated submission commands.
+Only the owned adapter supplies private notes, tags and learned dates. The guest adapter selects
+public content and supplies no private display context. `SwipeCards` advances locally and emits
+completion once for a nonempty batch. The guest page owns an in-memory loading/error/empty/ready
+session and remounts the stack only after an explicit new batch request. It imports neither
+pending-command storage nor scheduling or submission logic.
+
+The anonymous API explicitly projects card ID, language, term/meaning, pronunciation, reading,
+romanization, part of speech/detail, target-language definition, example sentence/translation,
+synonyms and antonyms. It excludes owner/deck metadata, tags, notes, source, dates, versions and
+all review state. The SQL joins same-owner cards/decks, rechecks configured deck IDs and active
+archive predicates, randomly orders eligible rows and limits the batch to ten distinct cards.
+It never calls the identity dependency, providers or review submissions. The admitted request
+owns a transaction-local read-only session and statement timeout; normal private sessions retain
+their existing lifecycle. Public errors and successes use `Cache-Control: no-store`.
+
+Process-local public admission precedes database checkout and uses source/global token buckets
+plus a nonblocking query permit retained through database/session cleanup. Its memory is bounded,
+resets on process restart and is not shared between instances or revisions. Unusable source
+identity shares a fallback allowance. Do not treat this as a per-person or service-wide quota.
+The exact CORS origin policy and cookie prohibition remain; Retry-After is exposed for public
+429/503 cooldowns. The browser shows a countdown and enables manual retry without polling,
+automatic retry or prefetch. Cancellation aborts the browser request on leaving the guest page.
+
+Live publication remains gated on inspection of selected content and the deployed proxy chain,
+including a disposable forged-forwarding-prefix smoke. Local mocks cannot prove trusted client
+identity in Cloud Run. Statement timeout bounds SQL execution, not connection-pool wait time.

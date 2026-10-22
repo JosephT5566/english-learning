@@ -1,6 +1,6 @@
 # Development Memory
 
-Last updated: 2026-10-11
+Last updated: 2026-10-22
 
 ## Instruction Ownership
 
@@ -212,3 +212,42 @@ merely to validate YAML or shell syntax.
 - The legacy Sheet wrapper still documents the Apps Script `{ ok, result/error }` shape, but it has
   no ambient endpoint configuration and is not part of normal review or management navigation.
 - Auth state is currently initialized from local token helpers only where components call them; verify sign-in persistence when changing auth flow.
+
+## Guest review development and release gate
+
+The shared entry is `/review`. Choose Continue as guest on home to set a tab-scoped guest choice;
+the stored absolute deadline expires 30 minutes after selection, or when the tab session ends.
+Reload starts another temporary batch without renewing the deadline. The session watcher checks
+expiry on hydration, focus and its one-second interval, clears guest review and returns home.
+Signed-out and initializing sessions hide primary navigation while retaining the account avatar.
+Legacy `1` and malformed markers are removed without granting another guest session. Authenticated users
+always use private review. `/review/guest` is a base-aware redirect, not an opt-in. Guest content
+comes only from the FastAPI public read endpoint.
+No frontend environment variable or URL parameter chooses a deck. Server-only
+`PUBLIC_REVIEW_DECK_IDS` is a JSON UUID array and defaults to `[]`. A missing configured deck
+matches nothing. Both active decks and active cards are required on every fetch. Selected deck
+content becomes publicly readable, including future active-card additions and edits. Published
+fields and excluded private metadata are listed in [architecture.md](architecture.md#anonymous-guest-review-boundary).
+
+Optional API admission settings default to six requests/minute and burst two per source,
+sixty/minute and burst ten globally per process, one in-flight public query and a 2000ms
+transaction-local statement timeout. The bounded source map retains at most 4096 source keys
+and expires idle fully refilled entries after 600 seconds. See the API README for environment
+validation and startup configuration. Private endpoints and OPTIONS do not consume public
+allowances. Public 429 and busy 503 responses expose integer Retry-After seconds. The guest
+browser counts down, then requires manual retry; network errors also offer manual recovery.
+The existing single-instance cap does not establish a global quota or hard billing limit.
+
+Run the guest spec with `npm run test:browser -- tests/browser/guest-review-flow.spec.ts`.
+The fixture build uses synthetic public Google settings, a mock API and disposable browser
+storage. It never configures real published decks. For static subpath verification, run
+`BASE_PATH=/guest-check npm run test:browser -- tests/browser/guest-review-flow.spec.ts`.
+The guest spec derives paths from the configured base and exercises home/direct entry,
+refetch/cooldown, tab lifetime, legacy redirects and protected-route redirects at that base. Private review regressions remain
+`tests/browser/review-flow.spec.ts`, `review-layout.spec.ts` and `management-read-flow.spec.ts`.
+
+Keep the allowlist empty until an operator inspects the publishable content and proves trusted
+client-source handling on the actual deployed forwarding chain. A deployed disposable smoke
+must show forged prefixes cannot mint limiter identities and real distinct sources are handled
+as intended. Do not expand proxy trust to satisfy a local fixture. This work does not authorize
+production configuration, cloud-resource changes, migrations, traffic promotion or deployment.

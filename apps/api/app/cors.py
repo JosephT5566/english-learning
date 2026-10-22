@@ -48,11 +48,27 @@ class ConfiguredCORSMiddleware:
                 allow_methods=["GET", "POST", "PATCH", "DELETE"],
                 allow_headers=["Authorization", "Content-Type", "Idempotency-Key"],
                 # Let the frontend include the correlation ID in support diagnostics.
-                expose_headers=["X-Request-ID"],
+                expose_headers=["X-Request-ID", "Retry-After"],
                 # Browsers may cache a successful preflight for ten minutes.
                 max_age=600,
             )
 
         # CORSMiddleware answers valid OPTIONS preflights itself and delegates ordinary
         # requests to the request-ID middleware and router registered inside it.
-        await self.configured_app(scope, receive, send)
+        async def public_no_store(message: dict[str, Any]) -> None:
+            if (
+                scope.get("path") == "/v1/public/review-cards"
+                and message["type"] == "http.response.start"
+            ):
+                headers = [
+                    (name, value)
+                    for name, value in message.get("headers", [])
+                    if name.lower() != b"cache-control"
+                ]
+                message = {
+                    **message,
+                    "headers": [*headers, (b"cache-control", b"no-store")],
+                }
+            await send(message)
+
+        await self.configured_app(scope, receive, public_no_store)

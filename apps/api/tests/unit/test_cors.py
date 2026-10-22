@@ -101,5 +101,7 @@ def test_actual_error_response_exposes_request_id_to_allowed_origin() -> None:
 
     assert response.status_code == 401
     assert response.headers["access-control-allow-origin"] == LOCAL_ORIGIN
-    assert response.headers["access-control-expose-headers"] == "X-Request-ID"
+    assert (
+        response.headers["access-control-expose-headers"] == "X-Request-ID, Retry-After"
+    )
     assert response.headers["X-Request-ID"]
