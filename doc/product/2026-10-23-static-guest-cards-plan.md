@@ -125,7 +125,11 @@ distinct content cards. Preserve cancellation, empty/error/retry, login and dead
       applies if runtime contents/lifecycle change. Record actual results and blockers.
 - [x] Return the worker handoff with files, support release ref, exact verification commands,
       failures/skips, remaining setup and current checkout status. Pause source edits for review.
-- [ ] Parent dispatches the independent `reviewer` against the full base-to-working-tree change,
+- [x] Parent dispatches the independent `reviewer` against the full base-to-working-tree change,
       including untracked assigned files and root/subpath desktop/mobile browser behavior.
-- [ ] Parent routes accepted defects to worker, obtains reviewer re-verification where needed,
+- [x] Parent routes accepted defects to worker, obtains reviewer re-verification where needed,
       and reports completion without claiming deployment or unobserved persistence/browser evidence.
+
+Independent reviewer returned PASS on 2026-10-23 against implementation `1884a0e`, with no
+actionable defects or blocked local verification. No correction round was required. See the
+[verification report](2026-10-23-static-guest-cards-verification.md) for evidence and live setup limits.

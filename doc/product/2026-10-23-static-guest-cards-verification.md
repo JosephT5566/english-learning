@@ -1,8 +1,11 @@
 # Static guest cards verification
 
-Date: 2026-10-23 (Asia/Taipei). Worker evidence only; independent reviewer verdict is pending.
+Date: 2026-10-23 (Asia/Taipei). Worker verification and independent reviewer PASS.
 Checkout: `/Users/joseph/Documents/Git/english-learning`, branch `codex/static-guest-cards`.
 Review base: `80b57736ba3ba950d77f2cb9da02d077278ab853`.
+Final local implementation commit: `1884a0e6772ce54800fa2426ea98ba5cb8a5a11d`.
+The reviewer included the worker's documentation-only evidence follow-up in its review.
+The parent added the final verdict below after source review; no application code changed.
 
 ## Implemented behavior
 
@@ -24,25 +27,27 @@ Review base: `80b57736ba3ba950d77f2cb9da02d077278ab853`.
 
 ## Observed checks
 
-| Command                                                                                                                         | Observed result                                                                                     |
-| ------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| `apps/api/.venv/bin/python -m pytest apps/api/tests/unit/test_guest_export.py -q` before implementation                         | Initial settings/auth feature tests failed as expected                                              |
-| `node --test tests/frontend/export-guest-cards.test.mjs`                                                                        | 19 passed, including two cancellation tests observed failing before the cleanup fix                 |
-| `npm run check`                                                                                                                 | 0 errors, 0 warnings                                                                                |
-| `npm run test:frontend`                                                                                                         | 42 Node tests and 116 Vitest tests passed                                                           |
-| From `apps/api`, `.venv/bin/ruff check .` and `.venv/bin/ruff format --check .`                                                 | Passed                                                                                              |
-| From `apps/api`, `.venv/bin/python -m pytest tests/unit -q`                                                                     | Final 181 passed                                                                                    |
-| From `apps/api`, `RUN_POSTGRES_INTEGRATION_TESTS=1 .venv/bin/python -m pytest tests/integration -q`                             | Supporting release 187 passed; final route-removal target 184 passed                                |
-| From `apps/api`, `RUN_POSTGRES_INTEGRATION_TESTS=1 .venv/bin/python -m pytest tests/integration/test_guest_export.py -q`        | 2 passed after adding valid maximum-length multibyte payload coverage                               |
-| `npm run test:browser -- tests/browser/guest-review-flow.spec.ts tests/browser/review-flow.spec.ts`                             | Root-hosted 36 passed                                                                               |
-| `BASE_PATH=/english-learning npm run test:browser -- tests/browser/guest-review-flow.spec.ts tests/browser/review-flow.spec.ts` | Subpath-hosted 36 passed                                                                            |
-| Root/subpath `npm run build` inside Playwright webServer startup                                                                | Both static builds passed using synthetic fixtures                                                  |
-| `docker build --tag english-learning-api:verify apps/api`                                                                       | Passed                                                                                              |
-| `bash apps/api/scripts/verify_container.sh english-learning-api:verify`                                                         | Passed; minimal non-root runtime, meaningful probes and graceful SIGTERM exit                       |
-| `npm run lint:changed -- 80b57736ba3ba950d77f2cb9da02d077278ab853`                                                              | Passed                                                                                              |
-| `git diff --check`                                                                                                              | Passed                                                                                              |
-| `bash -n deploy/cloud-run/release.sh`                                                                                           | Passed                                                                                              |
-| `UV_CACHE_DIR=/tmp/english-learning-uv-cache npm run api:generate`                                                              | Generated OpenAPI, TypeScript and snapshot schema; final `api:check` follows the final local commit |
+| Command                                                                                                                         | Observed result                                                                                                   |
+| ------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `apps/api/.venv/bin/python -m pytest apps/api/tests/unit/test_guest_export.py -q` before implementation                         | Initial settings/auth feature tests failed as expected                                                            |
+| `node --test tests/frontend/export-guest-cards.test.mjs`                                                                        | 19 passed, including two cancellation tests observed failing before the cleanup fix                               |
+| `npm run check`                                                                                                                 | 0 errors, 0 warnings                                                                                              |
+| `npm run test:frontend`                                                                                                         | 42 Node tests and 116 Vitest tests passed                                                                         |
+| From `apps/api`, `.venv/bin/ruff check .` and `.venv/bin/ruff format --check .`                                                 | Passed                                                                                                            |
+| From `apps/api`, `.venv/bin/python -m pytest tests/unit -q`                                                                     | Final 181 passed                                                                                                  |
+| From `apps/api`, `RUN_POSTGRES_INTEGRATION_TESTS=1 .venv/bin/python -m pytest tests/integration -q`                             | Supporting release 187 passed; final route-removal target 184 passed                                              |
+| From `apps/api`, `RUN_POSTGRES_INTEGRATION_TESTS=1 .venv/bin/python -m pytest tests/integration/test_guest_export.py -q`        | 2 passed after adding valid maximum-length multibyte payload coverage                                             |
+| `npm run test:browser -- tests/browser/guest-review-flow.spec.ts tests/browser/review-flow.spec.ts`                             | Root-hosted 36 passed                                                                                             |
+| `BASE_PATH=/english-learning npm run test:browser -- tests/browser/guest-review-flow.spec.ts tests/browser/review-flow.spec.ts` | Subpath-hosted 36 passed                                                                                          |
+| `npm run test:browser -- tests/browser/guest-review-flow.spec.ts` after resource-cleanup fix                                    | Root-hosted 17 passed                                                                                             |
+| `BASE_PATH=/english-learning npm run test:browser -- tests/browser/guest-review-flow.spec.ts` after resource-cleanup fix        | Subpath-hosted 17 passed                                                                                          |
+| Root/subpath `npm run build` inside Playwright webServer startup                                                                | Both static builds passed using synthetic fixtures                                                                |
+| `docker build --tag english-learning-api:verify apps/api`                                                                       | Passed                                                                                                            |
+| `bash apps/api/scripts/verify_container.sh english-learning-api:verify`                                                         | Passed; minimal non-root runtime, meaningful probes and graceful SIGTERM exit                                     |
+| `npm run lint:changed -- 80b57736ba3ba950d77f2cb9da02d077278ab853`                                                              | Passed                                                                                                            |
+| `git diff --check`                                                                                                              | Passed                                                                                                            |
+| `bash -n deploy/cloud-run/release.sh`                                                                                           | Passed                                                                                                            |
+| `UV_CACHE_DIR=/tmp/english-learning-uv-cache npm run api:check`                                                                 | Passed after final local commit; regeneration produced no OpenAPI, TypeScript, card-draft or snapshot-schema diff |
 
 The integration fixture creates and drops isolated `api_test_*` PostgreSQL databases with
 pgvector. The first sandboxed TCP attempt was denied; the escalated local run succeeded.
@@ -70,5 +75,36 @@ The local support ref was created before anonymous-route retirement and has not 
 
 Interactive reviewer startup and root/subpath URLs are in
 [development.md](../development.md#local-verification-and-reviewer-setup). Worker Playwright checks
-cover actual Chrome desktop/mobile flows. Independent DevTools inspection is assigned to reviewer.
+cover actual Chrome desktop/mobile flows. Independent DevTools inspection is recorded below.
 The unrelated untracked `2026-10-21-guest-review-plan.md` was preserved.
+
+## Independent reviewer verdict
+
+PASS on 2026-10-23. Reviewed base `80b57736ba3ba950d77f2cb9da02d077278ab853` through
+implementation `1884a0e6772ce54800fa2426ea98ba5cb8a5a11d`, including the assigned evidence
+follow-up and excluding the unrelated proposal. No actionable defects or blocked local checks
+remain. The comments and suppression review found no correctness-hiding suppression or
+actionable comment finding. No source correction round was needed.
+
+The reviewer independently reproduced the following results:
+
+- `npm run check`: zero errors and warnings.
+- `npm run test:frontend`: 42 Node tests and 116 Vitest tests passed.
+- API Ruff check and formatting: passed. API unit suite: 181 passed.
+- Full disposable PostgreSQL integration suite: 184 passed.
+- Guest and private Playwright suites: 36 passed at root and 36 at `/english-learning`.
+- Root and subpath static builds, `npm run api:check`, changed-file lint, `git diff --check`,
+  release shell syntax, Docker build and container runtime verification: passed.
+
+DevTools used a dedicated local page at `http://127.0.0.1:4173/english-learning/review`, with
+desktop 1280 by 850 and mobile 390 by 850 viewports. Guest flip-before-answer, grading,
+completion and Practice again worked. Each mount produced one static JSON download and zero
+`/v1/` calls. Neither viewport had horizontal overflow. Synthetic private review fetched owned
+cards and submitted successfully. There were no application console errors; Google emitted
+the expected invalid-client-ID error for the synthetic sign-in configuration.
+
+Reviewer logs remain local at `/tmp/reviewer-postgres.log`, `/tmp/reviewer-browser-root.log`,
+`/tmp/reviewer-browser-subpath.log`, and `/tmp/reviewer-container.log`. Fixture servers were
+stopped. The review did not change source, history, cloud resources, or production data.
+Live WIF, IAM, environment restrictions, actual card export and publication remain unverified
+operational prerequisites, as described above.
