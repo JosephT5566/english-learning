@@ -21,6 +21,7 @@ const generated = new Set([
   "apps/api/openapi.json",
   "src/lib/api/generated.ts",
   "src/lib/api/card-drafts.schema.json",
+  "src/lib/api/guest-snapshot.schema.json",
 ]);
 const files = [
   ...new Set([

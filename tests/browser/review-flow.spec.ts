@@ -186,7 +186,7 @@ test("logout during private review requires sign-in without guest fallback", asy
 }) => {
   let publicFetches = 0;
   page.on("request", (request) => {
-    if (request.url().includes("/v1/public/")) publicFetches++;
+    if (request.url().includes("/guest/cards.json")) publicFetches++;
   });
   await page.goto("/__test__/auth/retryable");
   await expect(page.getByText("resilient", { exact: true })).toBeVisible();
@@ -211,7 +211,7 @@ test("changing accounts retires an uncertain private command without guest fallb
 }) => {
   let publicFetches = 0;
   page.on("request", (request) => {
-    if (request.url().includes("/v1/public/")) publicFetches++;
+    if (request.url().includes("/guest/cards.json")) publicFetches++;
   });
   await page.route("**/v1/reviews", (route) =>
     route.fulfill({
@@ -558,7 +558,7 @@ test("a delayed private 401 after explicit sign-out cannot remove the new guest 
   let started = false;
   let publicReads = 0;
   page.on("request", (request) => {
-    if (request.url().includes("/v1/public/review-cards")) publicReads++;
+    if (request.url().includes("/guest/cards.json")) publicReads++;
   });
   await page.route("**/v1/reviews/due?*", async (route) => {
     started = true;

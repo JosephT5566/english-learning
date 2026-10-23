@@ -12,7 +12,7 @@
     "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
     "api:schema": "uv run --project apps/api python apps/api/scripts/export_openapi.py",
     "api:generate": "npm run api:schema && openapi-typescript apps/api/openapi.json -o src/lib/api/generated.ts",
-    "api:check": "npm run api:generate && git diff --exit-code -- apps/api/openapi.json src/lib/api/generated.ts src/lib/api/card-drafts.schema.json",
+    "api:check": "npm run api:generate && git diff --exit-code -- apps/api/openapi.json src/lib/api/generated.ts src/lib/api/card-drafts.schema.json src/lib/api/guest-snapshot.schema.json",
     "test:frontend": "node --test --experimental-strip-types tests/frontend/*.test.mjs && vitest run",
     "test:browser": "playwright test",
     "format": "prettier --write .",

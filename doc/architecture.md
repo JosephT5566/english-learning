@@ -483,42 +483,41 @@ Review update payload shape is:
 - FastAPI's `CORS_ALLOWED_ORIGINS` is an explicit JSON array of frontend origins. Local defaults
   cover `localhost:5173` and `127.0.0.1:5173`; production must provide its real static origin.
 
-## Anonymous guest review boundary
+## Static guest review boundary
 
-`/review` hosts separate `GuestReview.svelte` and `OwnedReview.svelte` controllers. A valid
-signed-in subject always selects owned review. Signed-out users must explicitly enter guest on
-home; its tab-scoped choice survives reload but answers and batches do not. Direct entry without
-that choice returns home. `/review/guest` redirects with `resolve('/review')` and does not select
-guest. Decks, card details and search remain authenticated. Static prerendering fetches no content.
-The mounted guest controller sends only GET `/v1/public/review-cards` with `credentials: 'omit'`,
-no bearer header and no auth-state changes on failure. Generated DTO aliases and runtime guards
-validate untrusted network JSON. Login unmounts guest and aborts its active request.
+`/review` hosts separate `GuestReview.svelte` and `OwnedReview.svelte` controllers.
+Authenticated identity always selects owned review. Guests explicitly choose entry on home;
+the tab-scoped 30-minute deadline survives reload, while answers and card pools do not.
+Login, expiry and navigation unmount the guest controller and abort pending reads.
 
-`src/lib/review/presentation.ts` owns content-only `StudyCard` and `CardAnswer`. Private review
-adds its original due-card state version when constructing authenticated submission commands.
-Only the owned adapter supplies private notes, tags and learned dates. The guest adapter selects
-public content and supplies no private display context. `SwipeCards` advances locally and emits
-completion once for a nonempty batch. The guest page owns an in-memory loading/error/empty/ready
-session and remounts the stack only after an explicit new batch request. It imports neither
-pending-command storage nor scheduling or submission logic.
+Guest downloads the base-aware same-origin `/guest/cards.json` once per mounted controller,
+with credentials omitted, redirects rejected, a 15-second timeout and a 512 KiB streaming cap.
+The generated snapshot schema rejects extra fields and non-English content. Duplicate IDs
+also fail validation. The pool has at most 50 cards; rounds shuffle a copy and take at most ten.
+Practice again samples in memory without a network request. Errors require explicit retry.
+There is no backend fallback, automatic retry, persisted answer, or scheduling logic.
 
-The anonymous API explicitly projects card ID, language, term/meaning, pronunciation, reading,
-romanization, part of speech/detail, target-language definition, example sentence/translation,
-synonyms and antonyms. It excludes owner/deck metadata, tags, notes, source, dates, versions and
-all review state. The SQL joins same-owner cards/decks, rechecks configured deck IDs and active
-archive predicates, randomly orders eligible rows and limits the batch to ten distinct cards.
-It never calls the identity dependency, providers or review submissions. The admitted request
-owns a transaction-local read-only session and statement timeout; normal private sessions retain
-their existing lifecycle. Public errors and successes use `Cache-Control: no-store`.
+The shared presentation keeps flip-before-answer, grading, swipes and keyboard controls.
+Only owned cards supply private context and review-state versions for authenticated submissions.
+Guest interaction does not read or mutate private pending submissions or completion markers.
+The anonymous API, source buckets and API-specific cooldowns are retired in the final release.
 
-Process-local public admission precedes database checkout and uses source/global token buckets
-plus a nonblocking query permit retained through database/session cleanup. Its memory is bounded,
-resets on process restart and is not shared between instances or revisions. Unusable source
-identity shares a fallback allowance. Do not treat this as a per-person or service-wide quota.
-The exact CORS origin policy and cookie prohibition remain; Retry-After is exposed for public
-429/503 cooldowns. The browser shows a countdown and enables manual retry without polling,
-automatic retry or prefetch. Cancellation aborts the browser request on leaving the guest page.
+### Static guest publication exporter (2026-10-23)
 
-Live publication remains gated on inspection of selected content and the deployed proxy chain,
-including a disposable forged-forwarding-prefix smoke. Local mocks cannot prove trusted client
-identity in Cloud Run. Statement timeout bounds SQL execution, not connection-pool wait time.
+`GET /v1/internal/guest-cards/export` is separate from browser authentication. It verifies
+Google's signature/issuer/expiry and a dedicated export audience, exact service-account
+subject, exact email and `email_verified=true` before database checkout. It never resolves
+or upserts an application user. All four `GUEST_EXPORT_*` identity/deck settings must be
+configured together; otherwise export is disabled or startup rejects partial settings.
+The content-only projection is shared in `app/public_content.py`. A read-only transaction,
+statement timeout and one nonblocking export permit bound the database work. The response
+contains `schema_version=1`, `generated_at`, and up to 50 distinct active English cards,
+with a 512 KiB encoded size limit. Missing/wrong-language decks fail; archived decks and
+empty active decks export an intentional empty pool.
+
+The supporting backend release is local commit `34c7560`, which retains the anonymous route.
+The final release removes it only after static Pages publication succeeds. `.github/workflows/deploy.yml`
+is manual-only and restricts export to main. A protected `guest-cards-export` job uses dedicated
+WIF impersonation, transfers only validated JSON, and gives the build job no Google credentials.
+The protected `github-pages` deployment consumes the same-run build. Live IAM and deployment
+are not verified by repository tests.

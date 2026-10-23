@@ -146,34 +146,6 @@ const server = http.createServer((request, response) => {
     return;
   }
 
-  if (request.method === "GET" && request.url === "/v1/public/review-cards") {
-    const items = ["en", "ja"].map((language) => {
-      const source = card(language, true);
-      const fields = [
-        "id",
-        "term",
-        "meaning",
-        "pronunciation",
-        "reading",
-        "romanization",
-        "part_of_speech",
-        "part_of_speech_detail",
-        "target_language_definition",
-        "example_sentence",
-        "example_translation",
-        "synonyms",
-        "antonyms",
-      ];
-      return {
-        ...Object.fromEntries(fields.map((key) => [key, source[key]])),
-        target_language: language,
-      };
-    });
-    response.setHeader("Cache-Control", "no-store");
-    json(response, 200, { items });
-    return;
-  }
-
   if (!request.headers.authorization?.startsWith("Bearer ")) {
     error(
       response,

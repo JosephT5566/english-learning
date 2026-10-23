@@ -55,9 +55,9 @@ class ConfiguredCORSMiddleware:
 
         # CORSMiddleware answers valid OPTIONS preflights itself and delegates ordinary
         # requests to the request-ID middleware and router registered inside it.
-        async def public_no_store(message: dict[str, Any]) -> None:
+        async def export_no_store(message: dict[str, Any]) -> None:
             if (
-                scope.get("path") == "/v1/public/review-cards"
+                scope.get("path") == "/v1/internal/guest-cards/export"
                 and message["type"] == "http.response.start"
             ):
                 headers = [
@@ -71,4 +71,4 @@ class ConfiguredCORSMiddleware:
                 }
             await send(message)
 
-        await self.configured_app(scope, receive, public_no_store)
+        await self.configured_app(scope, receive, export_no_store)

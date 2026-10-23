@@ -3,7 +3,7 @@
   import SwipeCards from "$lib/components/SwipeCards.svelte";
   import {
     getPublicReviewCards,
-    PublicReviewError,
+    sampleGuestCards,
   } from "$lib/api/public-review";
   import { toPublicStudyCard, type StudyCard } from "$lib/review/presentation";
 
@@ -13,27 +13,24 @@
     | { kind: "empty" }
     | { kind: "ready"; cards: StudyCard[]; batch: number; complete: boolean };
   let session: Session = $state({ kind: "loading" });
-  let cooldown = $state(0);
+  let pool: import("$lib/api/contracts").PublicReviewCard[] | undefined;
   let batch = 0;
   let request: AbortController | undefined;
-  let timer: ReturnType<typeof setInterval> | undefined;
 
   async function loadBatch() {
-    if (request || cooldown > 0) return;
+    if (request) return;
+    if (pool !== undefined) {
+      startRound();
+      return;
+    }
     const controller = new AbortController();
     request = controller;
     session = { kind: "loading" };
     try {
       const data = await getPublicReviewCards(controller.signal);
       if (controller.signal.aborted) return;
-      session = data.items.length
-        ? {
-            kind: "ready",
-            cards: data.items.map(toPublicStudyCard),
-            batch: ++batch,
-            complete: false,
-          }
-        : { kind: "empty" };
+      pool = data.items;
+      startRound();
     } catch (error) {
       if (controller.signal.aborted) return;
       session = {
@@ -43,24 +40,28 @@
             ? error.message
             : "Card review is unavailable.",
       };
-      if (error instanceof PublicReviewError && error.retryAfterSeconds > 0) {
-        const until = Date.now() + error.retryAfterSeconds * 1000;
-        cooldown = error.retryAfterSeconds;
-        timer = setInterval(() => {
-          cooldown = Math.max(0, Math.ceil((until - Date.now()) / 1000));
-          if (!cooldown) clearInterval(timer);
-        }, 250);
-      }
     } finally {
       if (request === controller) request = undefined;
     }
+  }
+
+  function startRound() {
+    const cards = sampleGuestCards(pool ?? []);
+    session = cards.length
+      ? {
+          kind: "ready",
+          cards: cards.map(toPublicStudyCard),
+          batch: ++batch,
+          complete: false,
+        }
+      : { kind: "empty" };
   }
 
   onMount(() => {
     void loadBatch();
     return () => {
       request?.abort();
-      clearInterval(timer);
+      pool = undefined;
     };
   });
 </script>
@@ -75,9 +76,7 @@
       <p role="alert" class="my-3">{session.message}</p>
       <button
         class="min-h-11 rounded-lg bg-slate-800 px-5 text-white disabled:opacity-50"
-        disabled={cooldown > 0}
-        onclick={() => void loadBatch()}
-        >{cooldown > 0 ? `Try again in ${cooldown}s` : "Try again"}</button
+        onclick={() => void loadBatch()}>Try again</button
       >
     </div>
   {:else if session.kind === "empty"}

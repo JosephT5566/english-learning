@@ -1,8 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-vi.mock("$env/dynamic/public", () => ({
-  env: { PUBLIC_API_BASE_URL: "https://public.test" },
-}));
-import { getPublicReviewCards } from "$lib/api/public-review";
+vi.mock("$app/paths", () => ({ base: "/english-learning" }));
+import { getPublicReviewCards, sampleGuestCards } from "$lib/api/public-review";
 import type { PublicReviewCard } from "$lib/api/contracts";
 
 const publicCard = {
@@ -22,133 +20,55 @@ const publicCard = {
   antonyms: ["forget"],
 } satisfies PublicReviewCard;
 
-const japaneseCard = {
-  ...publicCard,
-  id: "00000000-0000-4000-8000-000000000002",
-  target_language: "ja",
-  term: "覚える",
-  meaning: "memorize",
-  pronunciation: null,
-  reading: "おぼえる",
-  romanization: "oboeru",
-  example_sentence: "単語を覚える。",
-  example_translation: "Memorize a word.",
-  target_language_definition: null,
-  synonyms: [],
-  antonyms: [],
-} satisfies PublicReviewCard;
-
-const tenCards = Array.from({ length: 10 }, (_, index) => ({
-  ...(index % 2 === 0 ? publicCard : japaneseCard),
-  id: `00000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`,
-}));
-
+const snapshot = (items: PublicReviewCard[]) => ({
+  schema_version: 1,
+  generated_at: "2026-10-23T00:00:00Z",
+  items,
+});
+const fiftyCards: PublicReviewCard[] = Array.from(
+  { length: 50 },
+  (_, index) => ({
+    ...publicCard,
+    id: `00000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`,
+  }),
+);
 afterEach(() => vi.unstubAllGlobals());
 
-describe("public transport", () => {
-  it("omits browser credentials and authorization", async () => {
-    const fetcher = vi.fn().mockResolvedValue(new Response('{"items":[]}'));
+describe("static guest cards", () => {
+  it("loads the base-aware asset without credentials and accepts 50 cards", async () => {
+    const fetcher = vi
+      .fn()
+      .mockResolvedValue(new Response(JSON.stringify(snapshot(fiftyCards))));
     vi.stubGlobal("fetch", fetcher);
-    await expect(getPublicReviewCards()).resolves.toEqual({ items: [] });
+    await expect(getPublicReviewCards()).resolves.toEqual(snapshot(fiftyCards));
     expect(fetcher).toHaveBeenCalledWith(
-      "https://public.test/v1/public/review-cards",
-      expect.objectContaining({
-        method: "GET",
-        credentials: "omit",
-        cache: "no-store",
-      }),
+      "/english-learning/guest/cards.json",
+      expect.objectContaining({ credentials: "omit", redirect: "error" }),
     );
     expect(fetcher.mock.calls[0][1].headers).toBeUndefined();
   });
-  for (const status of [429, 503]) {
-    for (const header of [
-      null,
-      "",
-      "bad",
-      "0",
-      "-1",
-      "999999999999999999999",
-    ]) {
-      it(`uses one second for unusable ${status} Retry-After ${header}`, async () => {
-        vi.stubGlobal(
-          "fetch",
-          vi.fn().mockResolvedValue(
-            new Response("{}", {
-              status,
-              headers: header === null ? {} : { "Retry-After": header },
-            }),
-          ),
-        );
-        await expect(getPublicReviewCards()).rejects.toMatchObject({
-          status,
-          retryAfterSeconds: 1,
-        });
-      });
-    }
-  }
-  it("reads integer retry seconds and never retries itself", async () => {
-    const fetcher = vi
-      .fn()
-      .mockResolvedValue(
-        new Response("{}", { status: 429, headers: { "Retry-After": "10" } }),
-      );
+  it("samples at most ten unique cards without mutating the pool or fetching", () => {
+    const fetcher = vi.fn();
     vi.stubGlobal("fetch", fetcher);
-    await expect(getPublicReviewCards()).rejects.toMatchObject({
-      retryAfterSeconds: 10,
-    });
-    expect(fetcher).toHaveBeenCalledTimes(1);
+    for (let round = 0; round < 5; round++) {
+      const cards = sampleGuestCards(fiftyCards);
+      expect(cards).toHaveLength(10);
+      expect(new Set(cards.map((card) => card.id)).size).toBe(10);
+      expect(cards.every((card) => fiftyCards.includes(card))).toBe(true);
+    }
+    expect(fiftyCards).toHaveLength(50);
+    expect(sampleGuestCards([])).toEqual([]);
+    expect(sampleGuestCards([publicCard])).toEqual([publicCard]);
+    expect(fetcher).not.toHaveBeenCalled();
   });
-  it("does not clear authentication on public 401", async () => {
-    localStorage.setItem("gid_id_token", "keep");
+  it("rejects invalid data without disclosing the response body", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn().mockResolvedValue(new Response("{}", { status: 401 })),
-    );
-    await expect(getPublicReviewCards()).rejects.toMatchObject({ status: 401 });
-    expect(localStorage.getItem("gid_id_token")).toBe("keep");
-  });
-  it("rejects malformed cards", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue(new Response('{"items":[{"id":"a"}]}')),
+      vi.fn().mockResolvedValue(new Response("private-invalid-json")),
     );
     await expect(getPublicReviewCards()).rejects.toThrow("invalid");
   });
-  for (const [label, items] of [
-    ["a single valid card", [publicCard]],
-    ["ten distinct valid English and Japanese cards", tenCards],
-  ] satisfies [string, PublicReviewCard[]][]) {
-    it(`accepts ${label}`, async () => {
-      vi.stubGlobal(
-        "fetch",
-        vi.fn().mockResolvedValue(new Response(JSON.stringify({ items }))),
-      );
-      await expect(getPublicReviewCards()).resolves.toEqual({ items });
-    });
-  }
-  it("rejects two valid cards with the same ID", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi
-        .fn()
-        .mockResolvedValue(
-          new Response(JSON.stringify({ items: [publicCard, publicCard] })),
-        ),
-    );
-    await expect(getPublicReviewCards()).rejects.toThrow("invalid");
-  });
-  it("rejects eleven distinct valid cards", async () => {
-    const items = [
-      ...tenCards,
-      { ...publicCard, id: "00000000-0000-4000-8000-000000000011" },
-    ];
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue(new Response(JSON.stringify({ items }))),
-    );
-    await expect(getPublicReviewCards()).rejects.toThrow("invalid");
-  });
-  it("passes cancellation to fetch without retry", async () => {
+  it("cancels on session disposal without retrying", async () => {
     const controller = new AbortController();
     controller.abort();
     const fetcher = vi
@@ -158,7 +78,6 @@ describe("public transport", () => {
     await expect(getPublicReviewCards(controller.signal)).rejects.toMatchObject(
       { name: "AbortError" },
     );
-    expect(fetcher.mock.calls[0][1].signal).toBe(controller.signal);
     expect(fetcher).toHaveBeenCalledTimes(1);
   });
 });

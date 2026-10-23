@@ -12,7 +12,7 @@ export default defineConfig({
   },
   webServer: [
     {
-      command: `PUBLIC_GOOGLE_AUTH_CLIENT_ID=browser-contract-test PUBLIC_EMAIL_WHITE_LIST=browser-test@example.com PUBLIC_API_BASE_URL=http://127.0.0.1:8001 BASE_PATH=${process.env.BASE_PATH ?? ""} npm run build && BASE_PATH=${process.env.BASE_PATH ?? ""} node tests/browser/static-test-server.mjs`,
+      command: `node tests/browser/prepare-guest-fixture.mjs && PUBLIC_GOOGLE_AUTH_CLIENT_ID=browser-contract-test PUBLIC_EMAIL_WHITE_LIST=browser-test@example.com PUBLIC_API_BASE_URL=http://127.0.0.1:8001 BASE_PATH=${process.env.BASE_PATH ?? ""} npm run build && BASE_PATH=${process.env.BASE_PATH ?? ""} node tests/browser/static-test-server.mjs`,
       url: "http://127.0.0.1:4173",
       reuseExistingServer: false,
     },

@@ -349,56 +349,36 @@ request receives a new UUID in `X-Request-ID`; error responses repeat it in the 
 and unexpected-error handlers do not return rejected inputs, exception text, stack traces, SQL,
 credentials, or connection details.
 
-## Anonymous public review
+## Machine-only guest publication
 
-`GET /v1/public/review-cards` returns up to ten randomly sampled, distinct content-only
-cards. It accepts no query keys, bearer token, pagination, or caller-selected decks.
-All responses on this path, including errors and preflight, have `Cache-Control: no-store`.
-Publication is controlled only by `PUBLIC_REVIEW_DECK_IDS`, a JSON UUID array defaulting
-to `[]`. Duplicate or malformed values fail startup through sanitized errors. Configuring
-an active deck publishes the approved fields of all its active cards, including later
-additions and edits. Owners do not affect deliberately configured publication. Removing
-a deck stops future responses, but cannot recall content already delivered.
+The final API has no anonymous `/v1/public/review-cards` route. Guests read a static Pages
+snapshot. `GET /v1/internal/guest-cards/export` is only for the dedicated publication identity.
+It accepts no query filters or caller-selected deck/limit. Signature, issuer, expiry, dedicated
+audience, exact service-account subject/email and verified email are checked before database
+checkout. It never calls `current_user` or creates users. Browser OAuth remains unchanged.
 
-The API never joins users, tags, review states, or embeddings for this read. Each admitted
-operation starts with `SET TRANSACTION READ ONLY`, sets transaction-local statement timeout,
-selects the explicit public fields, then commits or rolls back and closes the session.
-No guest answers or sessions are persisted. The timeout covers each SQL statement, not
-pool acquisition or the entire HTTP request. Existing connection and platform timeouts remain.
+Set `GUEST_EXPORT_DECK_ID`, `GUEST_EXPORT_AUDIENCE`, `GUEST_EXPORT_SUBJECT` and
+`GUEST_EXPORT_EMAIL` together. All absent disables export; partial configuration rejects startup.
+The audience must be HTTPS and differ from the browser client ID. The numeric service-account
+subject and `.iam.gserviceaccount.com` email identify the dedicated export account.
+`GUEST_EXPORT_QUERY_TIMEOUT_MS` defaults to 2000 and is bounded to 1..10000ms.
 
-Process-local token buckets default to 6 requests/minute and burst 2 per normalized source,
-plus 60/minute and burst 10 globally. `PUBLIC_REVIEW_MAX_IN_FLIGHT=1` rejects concurrent
-public DB work without queueing. `PUBLIC_REVIEW_QUERY_TIMEOUT_MS=2000` bounds SQL execution.
-Sources use salted opaque keys in a map limited to 4096 entries. Only idle, fully refilled
-buckets expire after 600 seconds. Token exhaustion returns retryable `429 rate_limited`
-with computed integer `Retry-After`; busy work or map capacity returns retryable
-`503 public_review_busy` with `Retry-After: 1`. Neither rejection opens a database session.
-Cancellation holds the permit until synchronous SQL and session cleanup actually finish.
-CORS exposes `Retry-After` without enabling cookies or broadening origins.
+The response has exactly `schema_version=1`, timezone-aware `generated_at`, and `items` with
+0..50 distinct active English cards. Missing/wrong-language decks fail; archived decks return
+empty success. The explicit projection contains ID, language, term/meaning, pronunciation,
+reading/romanization, part of speech/detail, target-language definition, example/translation,
+synonyms and antonyms. It never fetches notes, tags, owner metadata or review state. A read-only
+transaction, statement timeout and a nonblocking process-local permit bound queries. Concurrent
+export gets retryable 503 with `Retry-After: 1`. Cancellation retains the permit until synchronous
+query/session cleanup finishes. The encoded response is capped at 512 KiB, never truncated.
+Database/identity errors remain sanitized; responses use `Cache-Control: no-store`.
 
-`serve.py` explicitly disables Uvicorn forwarded-header processing. The limiter uses only
-the normalized ASGI socket peer; it never reads `X-Forwarded-For` or `Forwarded`.
-Invalid or absent peers share one restrictive fallback bucket. IPv4-mapped IPv6 is
-normalized to IPv4. This conservative setup can group Cloud Run visitors behind one proxy
-peer and must not be represented as verified end-user attribution. It also means forwarded
-schemes are ignored by Uvicorn. Private API routes have no scheme-dependent ownership or
-authentication policy; redirects use the socket scheme until proxy trust is deliberately
-established. Do not enable blanket proxy trust to fix a local test.
+The timeout covers each SQL statement, not pool acquisition or the whole request. The permit is
+per process and is not a service-wide cost cap. Authentication rejects untrusted exports, but
+HTTP traffic still reaches the service. This feature does not claim DDoS protection.
 
-Before setting a nonempty production allowlist, the operator must audit the real forwarding
-chain and validate a deployed disposable smoke. Forged forwarding prefixes must not mint
-limiter identities, while genuinely distinct sources must be recognized as intended.
-If socket peers do not satisfy that gate, publication remains disabled until narrowly trusted
-proxy processing has been established and independently verified. Local header tests do not
-establish this release condition. Inspect every published field and later edits for public
-suitability before configuring a real deck. Run `EXPLAIN (ANALYZE, BUFFERS)` on representative
-disposable data and record candidate count, rows scanned, buffers, and execution time before
-publication. Random ordering scans eligible candidates, not merely ten returned rows.
-
-Buckets reset at process restart and are independent across instances, revisions, and
-workers. They are neither a service-wide quota nor a daily/cost cap. Cloud Run concurrency
-and instance bounds do not replace admission, and this feature provides no claim of DDoS
-protection. External load balancer/Cloud Armor work is outside this implementation.
-The candidate workflow supplies the protected `PUBLIC_REVIEW_DECK_IDS` variable, defaulting
-to the empty allowlist, and all admission defaults;
-real publication values belong in protected runtime configuration, never public Svelte vars.
+See [development setup](../../doc/development.md#manual-pages-setup-operational-prerequisites-not-yet-verified)
+for manual-only Actions, protected WIF trust and settings. The supporting backend release is
+commit `34c7560`; deploy it first, publish/verify static Pages second, deploy anonymous-route
+removal last. Restore compatible backend support before rolling back to the old frontend.
+Live IAM setup, real-card export and deployment are not established by local test results.

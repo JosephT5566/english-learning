@@ -1720,6 +1720,36 @@
         "title": "ErrorResponse",
         "type": "object"
       },
+      "GuestSnapshot": {
+        "additionalProperties": false,
+        "properties": {
+          "generated_at": {
+            "format": "date-time",
+            "title": "Generated At",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PublicReviewCard"
+            },
+            "maxItems": 50,
+            "title": "Items",
+            "type": "array"
+          },
+          "schema_version": {
+            "const": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "schema_version",
+          "generated_at",
+          "items"
+        ],
+        "title": "GuestSnapshot",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -1831,6 +1861,7 @@
         "type": "object"
       },
       "PublicReviewCard": {
+        "additionalProperties": false,
         "properties": {
           "antonyms": {
             "items": {
@@ -1973,22 +2004,6 @@
           "antonyms"
         ],
         "title": "PublicReviewCard",
-        "type": "object"
-      },
-      "PublicReviewCards": {
-        "properties": {
-          "items": {
-            "items": {
-              "$ref": "#/components/schemas/PublicReviewCard"
-            },
-            "title": "Items",
-            "type": "array"
-          }
-        },
-        "required": [
-          "items"
-        ],
-        "title": "PublicReviewCards",
         "type": "object"
       },
       "ReadinessChecks": {
@@ -3348,6 +3363,69 @@
         "summary": "Create Cards"
       }
     },
+    "/v1/internal/guest-cards/export": {
+      "get": {
+        "operationId": "export_guest_cards_v1_internal_guest_cards_export_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GuestSnapshot"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Export Guest Cards"
+      }
+    },
     "/v1/me": {
       "get": {
         "description": "Return the authenticated internal identity without exposing Google subject.",
@@ -3372,54 +3450,6 @@
           }
         ],
         "summary": "Get Me"
-      }
-    },
-    "/v1/public/review-cards": {
-      "get": {
-        "operationId": "get_public_review_cards_v1_public_review_cards_get",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicReviewCards"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Bad Request"
-          },
-          "429": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Too Many Requests"
-          },
-          "503": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Service Unavailable"
-          }
-        },
-        "summary": "Get Public Review Cards"
       }
     },
     "/v1/reviews": {
