@@ -108,3 +108,18 @@ Reviewer logs remain local at `/tmp/reviewer-postgres.log`, `/tmp/reviewer-brows
 stopped. The review did not change source, history, cloud resources, or production data.
 Live WIF, IAM, environment restrictions, actual card export and publication remain unverified
 operational prerequisites, as described above.
+
+## CI collection correction
+
+The first PR run exposed a collection failure missed by running the unit and integration
+suites in separate processes. Both new modules were named `test_guest_export.py`, so pytest's
+default import mode loaded the integration module under the unit module's expected basename.
+Running `.venv/bin/python -m pytest --collect-only -q` reproduced the CI import mismatch locally.
+
+Rename the integration module to `tests/integration/test_guest_export_transactions.py`.
+Keep its unit-helper import and the existing pytest configuration unchanged. Combined collection
+then found all 365 tests without errors. With the CI test environment and disposable PostgreSQL,
+`uv run pytest -q` passed all 365 tests in one process. Ruff check, Ruff format check, and
+`git diff --check` also passed. The existing Starlette/httpx deprecation warning is unrelated.
+Full local output is retained at `/tmp/english-learning-ci-backend.log`; this correction changes
+test discovery only, with no application or API behavior change.
