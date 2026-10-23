@@ -4,7 +4,7 @@ Date: 2026-10-23. Checkout: `/Users/joseph/Documents/Git/english-learning`.
 Branch: `codex/separate-guest-card-export`.
 Review base: `f0d9d5c23acf6a065c90d12579fa0a361b3f7e37` (merged PR #58).
 Scope: [approved follow-up plan](2026-10-23-separate-guest-export-plan.md).
-This is the worker's verification record, not an independent review verdict.
+Worker verification and independent reviewer results are recorded below.
 
 ## Implemented behavior
 
@@ -72,4 +72,21 @@ creation before the first export. Automation-created PR CI may need maintainer a
 cards remain in Git history after publication. The empty bootstrap deliberately has no guest cards.
 
 The unrelated untracked `doc/product/2026-10-21-guest-review-plan.md` is preserved and excluded from
-this implementation. The parent will arrange independent reviewer verification of the frozen target.
+this implementation.
+
+## Independent review
+
+Reviewer returned **PASS** for frozen implementation commit
+`7bbb35f89c6af8f69624ecbad0242088cd6ed4ef` against the base above, with no actionable defects.
+Only this record and the plan were updated afterward to close verification.
+
+The reviewer independently reproduced 55 Node and 116 Vitest passes, zero type-check errors or
+warnings, changed-file lint, API artifact drift checking, 36 root and 36 subpath guest/private
+browser passes, and clean root/subpath production builds. Each clean build emitted a byte-identical
+83-byte empty tracked snapshot. Workflow YAML parsing and manual-trigger inspection also passed,
+including separate identity/write permissions and the exact JSON proposal path.
+
+Browser checks covered desktop/mobile, flip-before-answer, one static download through repeated
+rounds, zero guest API or Apps Script calls, recovery and private-review regressions. No tracked
+files were changed by review and no local servers remain. The operational and backend verification
+limits above apply to this independent review as well.
