@@ -13,7 +13,6 @@ from app.config import Settings
 from app.database import create_database_session_factory
 from app.main import create_app
 from tests.integration.test_multilingual_domain_fixture import load_multilingual_fixture
-from tests.integration.test_public_reviews import snapshot
 from tests.unit.test_guest_export import CONFIG, PATH, claims
 
 pytestmark = [
@@ -25,6 +24,27 @@ pytestmark = [
 ]
 EN = UUID("10000000-0000-0000-0000-000000000001")
 JA = UUID("10000000-0000-0000-0000-000000000002")
+
+
+def snapshot(engine):
+    with engine.connect() as connection:
+        return {
+            table: connection.execute(
+                text(f"SELECT to_jsonb(t) FROM {table} AS t ORDER BY to_jsonb(t)::text")
+            )
+            .scalars()
+            .all()
+            for table in [
+                "users",
+                "learning_decks",
+                "learning_cards",
+                "tags",
+                "learning_card_tags",
+                "review_states",
+                "review_batches",
+                "review_events",
+            ]
+        }
 
 
 def test_export_scope_archive_and_unchanged_tables(
@@ -85,6 +105,19 @@ def test_export_scope_archive_and_unchanged_tables(
                 {"id": EN},
             )
         assert client.get(PATH, headers=headers).json()["items"] == []
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    "UPDATE learning_cards SET archived_at = NULL, meaning = repeat(chr(30028), 2000), target_language_definition = repeat(chr(30028), 2000) WHERE deck_id = :id"
+                ),
+                {"id": EN},
+            )
+        oversized_before = snapshot(engine)
+        oversized = client.get(PATH, headers=headers)
+        assert oversized.status_code == 422
+        assert oversized.json()["error"]["code"] == "export_too_large"
+        assert len(oversized.content) < 1024
+        assert snapshot(engine) == oversized_before
 
 
 def test_export_readonly_timeout_and_permit_cleanup(

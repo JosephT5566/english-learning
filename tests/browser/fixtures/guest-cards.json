@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-10-23T00:00:00Z",
+  "items": [
+    {
+      "id": "00000000-0000-4000-8000-000000000001",
+      "target_language": "en",
+      "term": "synthetic guest one",
+      "meaning": "Synthetic browser fixture",
+      "pronunciation": null,
+      "reading": null,
+      "romanization": null,
+      "part_of_speech": "noun",
+      "part_of_speech_detail": null,
+      "target_language_definition": null,
+      "example_sentence": "This is synthetic test content.",
+      "example_translation": null,
+      "synonyms": [],
+      "antonyms": []
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000002",
+      "target_language": "en",
+      "term": "synthetic guest two",
+      "meaning": "Synthetic browser fixture",
+      "pronunciation": null,
+      "reading": null,
+      "romanization": null,
+      "part_of_speech": "noun",
+      "part_of_speech_detail": null,
+      "target_language_definition": null,
+      "example_sentence": "This is synthetic test content.",
+      "example_translation": null,
+      "synonyms": [],
+      "antonyms": []
+    }
+  ]
+}

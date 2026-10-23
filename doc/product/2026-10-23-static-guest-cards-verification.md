@@ -1,0 +1,74 @@
+# Static guest cards verification
+
+Date: 2026-10-23 (Asia/Taipei). Worker evidence only; independent reviewer verdict is pending.
+Checkout: `/Users/joseph/Documents/Git/english-learning`, branch `codex/static-guest-cards`.
+Review base: `80b57736ba3ba950d77f2cb9da02d077278ab853`.
+
+## Implemented behavior
+
+- Supporting backend release `34c7560` retains the old anonymous route while adding the protected
+  exporter. The final target removes the anonymous route, settings and source admission code.
+- Export verifies a dedicated Google service-account identity before database checkout and uses
+  an explicit content projection, read-only transaction, statement timeout and one nonblocking permit.
+  Missing/wrong-language decks fail; archived/empty decks produce intentional empty snapshots.
+- Snapshots have version 1, an aware generation timestamp, at most 50 distinct English cards,
+  and a 512 KiB limit. Generated schema and shared runtime validation reject private/extra fields.
+- Downloader rejects non-HTTPS origins, redirects, bad/oversized data and timed-out streams;
+  rejected bodies are cancelled, request cleanup aborts transport, and output replacement is atomic.
+  Logs contain only counts/bytes or fixed safe errors. Tokens use environment input only.
+- Pages/export workflow has only manual dispatch, trusted-main gating, protected environments,
+  dedicated WIF impersonation and sanitized same-run artifact transfer. Build gets no Google token.
+- Guest downloads the base-aware static asset once per mount and samples at most ten cards locally.
+  Repeated rounds do not call the API. Existing guest deadline, private recovery and flip-first
+  interactions remain covered by browser checks. No real card content is committed.
+
+## Observed checks
+
+| Command                                                                                                                         | Observed result                                                                                     |
+| ------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| `apps/api/.venv/bin/python -m pytest apps/api/tests/unit/test_guest_export.py -q` before implementation                         | Initial settings/auth feature tests failed as expected                                              |
+| `node --test tests/frontend/export-guest-cards.test.mjs`                                                                        | 19 passed, including two cancellation tests observed failing before the cleanup fix                 |
+| `npm run check`                                                                                                                 | 0 errors, 0 warnings                                                                                |
+| `npm run test:frontend`                                                                                                         | 42 Node tests and 116 Vitest tests passed                                                           |
+| From `apps/api`, `.venv/bin/ruff check .` and `.venv/bin/ruff format --check .`                                                 | Passed                                                                                              |
+| From `apps/api`, `.venv/bin/python -m pytest tests/unit -q`                                                                     | Final 181 passed                                                                                    |
+| From `apps/api`, `RUN_POSTGRES_INTEGRATION_TESTS=1 .venv/bin/python -m pytest tests/integration -q`                             | Supporting release 187 passed; final route-removal target 184 passed                                |
+| From `apps/api`, `RUN_POSTGRES_INTEGRATION_TESTS=1 .venv/bin/python -m pytest tests/integration/test_guest_export.py -q`        | 2 passed after adding valid maximum-length multibyte payload coverage                               |
+| `npm run test:browser -- tests/browser/guest-review-flow.spec.ts tests/browser/review-flow.spec.ts`                             | Root-hosted 36 passed                                                                               |
+| `BASE_PATH=/english-learning npm run test:browser -- tests/browser/guest-review-flow.spec.ts tests/browser/review-flow.spec.ts` | Subpath-hosted 36 passed                                                                            |
+| Root/subpath `npm run build` inside Playwright webServer startup                                                                | Both static builds passed using synthetic fixtures                                                  |
+| `docker build --tag english-learning-api:verify apps/api`                                                                       | Passed                                                                                              |
+| `bash apps/api/scripts/verify_container.sh english-learning-api:verify`                                                         | Passed; minimal non-root runtime, meaningful probes and graceful SIGTERM exit                       |
+| `npm run lint:changed -- 80b57736ba3ba950d77f2cb9da02d077278ab853`                                                              | Passed                                                                                              |
+| `git diff --check`                                                                                                              | Passed                                                                                              |
+| `bash -n deploy/cloud-run/release.sh`                                                                                           | Passed                                                                                              |
+| `UV_CACHE_DIR=/tmp/english-learning-uv-cache npm run api:generate`                                                              | Generated OpenAPI, TypeScript and snapshot schema; final `api:check` follows the final local commit |
+
+The integration fixture creates and drops isolated `api_test_*` PostgreSQL databases with
+pgvector. The first sandboxed TCP attempt was denied; the escalated local run succeeded.
+Initial root browser verification found one assertion still watching the removed anonymous
+URL; after migrating it to the static URL, all 36 tests passed. The first extra size fixture
+exceeded a database meaning-length constraint; valid multibyte fields replaced it, and the
+actual oversized export then returned a safe 422 without changing learning tables.
+
+Existing test-tool warnings were Starlette's httpx deprecation and Playwright's color environment
+warning. Ruff initially run from the repository root selected a different import configuration;
+the required checks were rerun from `apps/api` and passed. No unrelated baseline files were changed.
+
+## Evidence limits and rollout prerequisites
+
+No live API export, real content inspection, IAM binding, cloud-resource modification, workflow
+dispatch, publication, promotion, production migration, push or merge occurred. WIF claims,
+protected-environment approvals/branch restrictions and actual service-account configuration must
+be set and verified operationally before the first run. Local tests use mocked identity verification
+at Google's external boundary; they do not prove live WIF token minting.
+
+Deploy support `34c7560` first, manually publish/verify static Pages second, and deploy final
+anonymous-route removal last. Failure retains previous deployed content. Old public snapshots
+cannot be recalled from downloaders; edits/archive only affect the next successful publication.
+The local support ref was created before anonymous-route retirement and has not been pushed.
+
+Interactive reviewer startup and root/subpath URLs are in
+[development.md](../development.md#local-verification-and-reviewer-setup). Worker Playwright checks
+cover actual Chrome desktop/mobile flows. Independent DevTools inspection is assigned to reviewer.
+The unrelated untracked `2026-10-21-guest-review-plan.md` was preserved.

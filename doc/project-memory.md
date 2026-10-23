@@ -11,7 +11,7 @@ a fresh inspection of the live services.
 ## Guest review implementation (2026-10-22)
 
 Visitors explicitly choose Continue as guest on the signed-out homepage, then use the shared
-`/review` route to practice a random batch of up to ten published English/Japanese cards.
+`/review` route to practice a random batch of up to ten published English cards.
 The guest choice stores a fixed 30-minute absolute deadline in tab-scoped `sessionStorage`.
 Reload retains that deadline but starts a fresh batch; activity never extends it. Expiry or tab
 closure ends the choice. Expiry clears the guest controller and returns to signed-out home.
@@ -33,11 +33,18 @@ Private token expiry or API 401 retains the current private controller and exact
 for same-account sign-in and retry, without silently entering guest mode. Account changes discard
 the old controller and reject stale responses. Browser guest state never grants backend access.
 
-Publication is disabled by default (`PUBLIC_REVIEW_DECK_IDS=[]`). An operator must inspect each
-selected deck's publishable fields and verify deployed trusted source identity before enabling
-it. Configuring an active deck publishes later active-card additions and edits too; removing it
-prevents future responses but cannot recall delivered content. Local implementation does not
-establish live publication, deployment or a production forwarding-chain verification.
+As of 2026-10-23, the implemented guest controller loads a static snapshot once and samples
+Practice again locally. It never calls the backend. A manual-only Pages Action exports up to
+50 distinct English cards from approved deck `e3fa16a8-698b-445f-af1f-920c6758b377` through a
+separate machine-authenticated exporter. No real learning content is committed. Export failure
+retains the deployed snapshot; edits/archive take effect only after successful publication.
+
+Supporting backend commit `34c7560` retains the legacy anonymous route. Deploy that support,
+publish static Pages and verify zero guest API calls, then deploy the final removal version.
+Production WIF/IAM, protected environment setup and publication remain unverified and were
+not performed. See the [design](product/2026-10-23-static-guest-cards-design.md),
+[verification](product/2026-10-23-static-guest-cards-verification.md), and
+[development setup](development.md#guest-review-development-and-release-gate).
 
 ## Product
 

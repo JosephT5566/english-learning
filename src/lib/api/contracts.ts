@@ -30,7 +30,7 @@ export type CardSummary = components["schemas"]["CardSummary"];
 export type CardDetail = components["schemas"]["CardDetail"];
 export type DueCard = components["schemas"]["DueCard"];
 export type PublicReviewCard = components["schemas"]["PublicReviewCard"];
-export type PublicReviewCards = components["schemas"]["PublicReviewCards"];
+export type GuestSnapshot = components["schemas"]["GuestSnapshot"];
 export type DeckCreate = components["schemas"]["DeckCreate"];
 export type DeckUpdate = components["schemas"]["DeckUpdate"];
 export type CardCreate = components["schemas"]["CardCreate"];
@@ -248,39 +248,5 @@ export function isSemanticSearchResponse(
         typeof item.score === "number" &&
         Number.isFinite(item.score),
     )
-  );
-}
-
-export function isPublicReviewCard(value: unknown): value is PublicReviewCard {
-  if (!isRecord(value)) return false;
-  return (
-    typeof value.id === "string" &&
-    (value.target_language === "en" || value.target_language === "ja") &&
-    typeof value.term === "string" &&
-    typeof value.meaning === "string" &&
-    [
-      "pronunciation",
-      "reading",
-      "romanization",
-      "part_of_speech",
-      "part_of_speech_detail",
-      "target_language_definition",
-      "example_sentence",
-      "example_translation",
-    ].every((key) => isNullableString(value[key])) &&
-    isStringArray(value.synonyms) &&
-    isStringArray(value.antonyms)
-  );
-}
-
-export function isPublicReviewCards(
-  value: unknown,
-): value is PublicReviewCards {
-  return (
-    isRecord(value) &&
-    Array.isArray(value.items) &&
-    value.items.length <= 10 &&
-    value.items.every(isPublicReviewCard) &&
-    new Set(value.items.map((card) => card.id)).size === value.items.length
   );
 }

@@ -2006,22 +2006,6 @@
         "title": "PublicReviewCard",
         "type": "object"
       },
-      "PublicReviewCards": {
-        "properties": {
-          "items": {
-            "items": {
-              "$ref": "#/components/schemas/PublicReviewCard"
-            },
-            "title": "Items",
-            "type": "array"
-          }
-        },
-        "required": [
-          "items"
-        ],
-        "title": "PublicReviewCards",
-        "type": "object"
-      },
       "ReadinessChecks": {
         "description": "Public dependency states included in a readiness response.",
         "properties": {
@@ -3466,54 +3450,6 @@
           }
         ],
         "summary": "Get Me"
-      }
-    },
-    "/v1/public/review-cards": {
-      "get": {
-        "operationId": "get_public_review_cards_v1_public_review_cards_get",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicReviewCards"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Bad Request"
-          },
-          "429": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Too Many Requests"
-          },
-          "503": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Service Unavailable"
-          }
-        },
-        "summary": "Get Public Review Cards"
       }
     },
     "/v1/reviews": {

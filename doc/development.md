@@ -215,39 +215,80 @@ merely to validate YAML or shell syntax.
 
 ## Guest review development and release gate
 
-The shared entry is `/review`. Choose Continue as guest on home to set a tab-scoped guest choice;
-the stored absolute deadline expires 30 minutes after selection, or when the tab session ends.
-Reload starts another temporary batch without renewing the deadline. The session watcher checks
-expiry on hydration, focus and its one-second interval, clears guest review and returns home.
-Signed-out and initializing sessions hide primary navigation while retaining the account avatar.
-Legacy `1` and malformed markers are removed without granting another guest session. Authenticated users
-always use private review. `/review/guest` is a base-aware redirect, not an opt-in. Guest content
-comes only from the FastAPI public read endpoint.
-No frontend environment variable or URL parameter chooses a deck. Server-only
-`PUBLIC_REVIEW_DECK_IDS` is a JSON UUID array and defaults to `[]`. A missing configured deck
-matches nothing. Both active decks and active cards are required on every fetch. Selected deck
-content becomes publicly readable, including future active-card additions and edits. Published
-fields and excluded private metadata are listed in [architecture.md](architecture.md#anonymous-guest-review-boundary).
+The shared entry remains `/review`. Continue as guest sets a tab-scoped absolute 30-minute
+deadline; reload does not renew it. Authenticated users always use private review. Guest card
+reads use `${base}/guest/cards.json` with no backend fallback. Each mount downloads once;
+Practice again samples at most ten distinct cards locally from a pool of at most 50.
 
-Optional API admission settings default to six requests/minute and burst two per source,
-sixty/minute and burst ten globally per process, one in-flight public query and a 2000ms
-transaction-local statement timeout. The bounded source map retains at most 4096 source keys
-and expires idle fully refilled entries after 600 seconds. See the API README for environment
-validation and startup configuration. Private endpoints and OPTIONS do not consume public
-allowances. Public 429 and busy 503 responses expose integer Retry-After seconds. The guest
-browser counts down, then requires manual retry; network errors also offer manual recovery.
-The existing single-instance cap does not establish a global quota or hard billing limit.
+The reusable command is `node scripts/export-guest-cards.mjs <output-path>`. Supply
+`GUEST_EXPORT_API_ORIGIN` (HTTPS origin only) and `GUEST_EXPORT_TOKEN` (short-lived Google
+service-account ID token) through the process environment. Never put tokens in arguments,
+files, GitHub variables, logs or artifacts. The script rejects redirects, invalid snapshots,
+responses over 512 KiB and requests/streams exceeding 30 seconds. It replaces output atomically
+only after validation. Empty success intentionally withdraws cards; failure preserves output.
+Real snapshots are ignored at `static/guest/cards.json` and are never committed.
 
-Run the guest spec with `npm run test:browser -- tests/browser/guest-review-flow.spec.ts`.
-The fixture build uses synthetic public Google settings, a mock API and disposable browser
-storage. It never configures real published decks. For static subpath verification, run
-`BASE_PATH=/guest-check npm run test:browser -- tests/browser/guest-review-flow.spec.ts`.
-The guest spec derives paths from the configured base and exercises home/direct entry,
-refetch/cooldown, tab lifetime, legacy redirects and protected-route redirects at that base. Private review regressions remain
-`tests/browser/review-flow.spec.ts`, `review-layout.spec.ts` and `management-read-flow.spec.ts`.
+### Manual Pages setup (operational prerequisites, not yet verified)
 
-Keep the allowlist empty until an operator inspects the publishable content and proves trusted
-client-source handling on the actual deployed forwarding chain. A deployed disposable smoke
-must show forged prefixes cannot mint limiter identities and real distinct sources are handled
-as intended. Do not expand proxy trust to satisfy a local fixture. This work does not authorize
-production configuration, cloud-resource changes, migrations, traffic promotion or deployment.
+The Pages workflow has only `workflow_dispatch`, runs privileged export only from main, and
+serializes complete publications. It uses the protected `guest-cards-export` environment
+before the separate protected `github-pages` deployment. Retain required reviewers and restrict
+both environments to trusted main. The build receives only the same-run sanitized `guest-cards`
+artifact, never Google tokens or credentials files. A failed export/build/deployment retains
+the currently deployed site, which can contain older public content.
+
+Configure these `guest-cards-export` environment variables:
+
+| Variable                         | Value                                                           |
+| -------------------------------- | --------------------------------------------------------------- |
+| `GCP_WORKLOAD_IDENTITY_PROVIDER` | Existing or dedicated narrowly scoped WIF provider resource     |
+| `GUEST_EXPORT_EMAIL`             | Dedicated export service-account email                          |
+| `GUEST_EXPORT_AUDIENCE`          | Dedicated HTTPS audience, distinct from browser OAuth client ID |
+| `GUEST_EXPORT_API_ORIGIN`        | HTTPS origin of the supporting API                              |
+
+The protected API `production` environment supplies `GUEST_EXPORT_DECK_ID` with
+`e3fa16a8-698b-445f-af1f-920c6758b377`, the same `GUEST_EXPORT_AUDIENCE` and
+`GUEST_EXPORT_EMAIL`, and `GUEST_EXPORT_SUBJECT` with the service account's numeric unique ID.
+All four API settings must be supplied together. They are separate from browser OAuth settings.
+The optional `GUEST_EXPORT_QUERY_TIMEOUT_MS` defaults to 2000. No database secret goes to the
+export or frontend build runner.
+
+Grant only `roles/iam.workloadIdentityUser` impersonation on the dedicated export service
+account to the exact trusted WIF principal. Restrict provider mappings/conditions and that
+binding to the numeric repository/owner IDs, `ref=refs/heads/main`, this exact
+`.github/workflows/deploy.yml@refs/heads/main` workflow and the `guest-cards-export` environment
+subject. Environment subjects alone do not prove main. Reuse a provider only if its existing
+conditions support these restrictions without broadening deployment trust; otherwise provision
+a separate provider. The export account needs no database, Secret Manager, deployment or
+project-wide role. Do not use the deployment service account, service-account keys or user tokens.
+The token must contain the exact verified service-account email, numeric subject and audience.
+Actual IAM changes require separate operational authorization.
+
+### Release and rollback order
+
+1. Deploy/configure supporting backend commit `34c7560`, which includes export and retains the
+   anonymous route for the old frontend. Keep its legacy allowlist empty.
+2. Put the final frontend workflow/source on trusted main and manually dispatch Pages.
+   Verify guest entry, answering and Practice again make no `/v1/` requests.
+3. Only after step 2 succeeds, deploy the final backend version that removes the anonymous route.
+
+If Pages fails, retain the supporting backend and previous Pages site, then retry. After removal,
+rolling Pages back to the old API-dependent frontend also requires restoring the supporting
+backend first. Archiving/removing cards cannot recall downloaded snapshots; the next successful
+publication replaces them. No cloud setup, deployment, promotion or real export was run locally.
+
+### Local verification and reviewer setup
+
+`npm run test:browser -- tests/browser/guest-review-flow.spec.ts tests/browser/review-flow.spec.ts`
+builds with a clearly synthetic two-card snapshot and a mock API for private review only. The
+fixture preparer writes the ignored `static/guest/cards.json`; it is never a production fallback.
+For subpaths, prefix that command with `BASE_PATH=/english-learning`.
+
+For interactive review, after Playwright stops, run `node tests/browser/prepare-guest-fixture.mjs`,
+then `PUBLIC_GOOGLE_AUTH_CLIENT_ID=browser-contract-test PUBLIC_EMAIL_WHITE_LIST=browser-test@example.com PUBLIC_API_BASE_URL=http://127.0.0.1:8001 BASE_PATH=/english-learning npm run build`.
+Start `BASE_PATH=/english-learning node tests/browser/static-test-server.mjs` and separately
+`MOCK_REVIEW_MODE=by-subject MOCK_REVIEW_PORT=8001 node tests/browser/mock-review-api.mjs`.
+Open `http://127.0.0.1:4173/english-learning/` and choose Continue as guest. Use desktop and
+390px widths. Inspect one static download and zero `/v1/` requests through repeated rounds.
+Private fixture sign-in is `http://127.0.0.1:4173/__test__/auth/success`. Repeat with empty
+`BASE_PATH` for root hosting. Do not run simultaneous builds or share review tabs with Playwright.

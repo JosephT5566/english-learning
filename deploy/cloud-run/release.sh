@@ -40,9 +40,20 @@ if [[ ! "${release_id}" =~ ^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$ ]]; then
 fi
 
 readonly image="${ARTIFACT_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/${ARTIFACT_REPOSITORY}/${API_IMAGE_NAME}:${release_id}"
-readonly environment_variables="^|^APP_ENV=production|LOG_LEVEL=INFO|DATABASE_CONNECT_TIMEOUT_SECONDS=5|GOOGLE_OAUTH_CLIENT_ID=${GOOGLE_OAUTH_CLIENT_ID}|GOOGLE_ALLOWED_EMAILS=${GOOGLE_ALLOWED_EMAILS}|CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS}"
+environment_variables="^|^APP_ENV=production|LOG_LEVEL=INFO|DATABASE_CONNECT_TIMEOUT_SECONDS=5|GOOGLE_OAUTH_CLIENT_ID=${GOOGLE_OAUTH_CLIENT_ID}|GOOGLE_ALLOWED_EMAILS=${GOOGLE_ALLOWED_EMAILS}|CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS}"
 
 echo "Building immutable release image ${image}."
+if [[ -n "${GUEST_EXPORT_DECK_ID:-}${GUEST_EXPORT_AUDIENCE:-}${GUEST_EXPORT_SUBJECT:-}${GUEST_EXPORT_EMAIL:-}" ]]; then
+  for variable_name in GUEST_EXPORT_DECK_ID GUEST_EXPORT_AUDIENCE GUEST_EXPORT_SUBJECT GUEST_EXPORT_EMAIL; do
+    if [[ -z "${!variable_name:-}" ]]; then
+      echo "Guest export requires all four GUEST_EXPORT identity/deck settings." >&2
+      exit 1
+    fi
+  done
+  environment_variables+="|GUEST_EXPORT_DECK_ID=${GUEST_EXPORT_DECK_ID}|GUEST_EXPORT_AUDIENCE=${GUEST_EXPORT_AUDIENCE}|GUEST_EXPORT_SUBJECT=${GUEST_EXPORT_SUBJECT}|GUEST_EXPORT_EMAIL=${GUEST_EXPORT_EMAIL}"
+fi
+readonly environment_variables
+
 gcloud builds submit apps/api \
 	--project "${GCP_PROJECT_ID}" \
 	--tag "${image}"

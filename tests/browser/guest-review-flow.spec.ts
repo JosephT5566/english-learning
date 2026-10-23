@@ -13,7 +13,12 @@ test.beforeEach(({ page, baseURL }, testInfo) => {
 });
 const pending = '{"sentinel":"private pending bytes"}';
 const daily = "private-daily-sentinel";
-const publicPath = "**/v1/public/review-cards";
+const publicPath = "**/guest/cards.json";
+const emptySnapshot = {
+  schema_version: 1,
+  generated_at: "2026-10-23T00:00:00Z",
+  items: [],
+};
 
 async function seed(page: Page, signedIn = false) {
   await page.addInitScript(
@@ -59,7 +64,7 @@ async function answerBatch(page: Page) {
 }
 
 for (const width of [1280, 390]) {
-  test(`guest temporary batch preserves private state and uses public GET only at ${width}px`, async ({
+  test(`guest temporary batch preserves private state and uses a single static GET at ${width}px`, async ({
     page,
   }) => {
     await page.setViewportSize({ width, height: 850 });
@@ -72,6 +77,11 @@ for (const width of [1280, 390]) {
       },
     ]);
     const requests: import("@playwright/test").Request[] = [];
+    const downloads: string[] = [];
+    page.on("request", (request) => {
+      if (request.url().includes("/guest/cards.json"))
+        downloads.push(request.url());
+    });
     page.on("request", (request) => {
       if (
         request.url().includes("/v1/") ||
@@ -91,19 +101,14 @@ for (const width of [1280, 390]) {
     ).toHaveCount(0);
     await answerBatch(page);
     await page.waitForTimeout(1100);
-    expect(requests).toHaveLength(1);
+    expect(requests).toHaveLength(0);
     await page.getByRole("button", { name: "Practice again" }).dblclick();
     await expect(
       page.getByRole("button", { name: "Knew it", exact: true }),
     ).toBeVisible();
-    expect(requests).toHaveLength(2);
-    for (const request of requests) {
-      expect(new URL(request.url()).pathname).toBe("/v1/public/review-cards");
-      expect(request.method()).toBe("GET");
-      const headers = await request.allHeaders();
-      expect(headers.authorization).toBeUndefined();
-      expect(headers.cookie).toBeUndefined();
-    }
+    expect(requests).toHaveLength(0);
+    expect(downloads).toHaveLength(1);
+    expect(new URL(downloads[0]).pathname).toBe(`${root}/guest/cards.json`);
     expect(
       await page.evaluate(() => [
         localStorage.getItem("pending_review_submission_v1"),
@@ -118,39 +123,23 @@ for (const width of [1280, 390]) {
   });
 }
 
-for (const status of [429, 503]) {
-  test(`${status} counts down then requires a manual retry`, async ({
-    page,
-  }) => {
-    let calls = 0;
-    await page.route(publicPath, (route) => {
-      calls++;
-      return route.fulfill({
-        status,
-        headers: { "Retry-After": "1" },
-        json: {
-          error: {
-            code: status === 429 ? "rate_limited" : "public_review_busy",
-            message: "Please wait.",
-            retryable: true,
-            request_id: "test",
-          },
-        },
-      });
-    });
-    await enterGuest(page);
-    await expect(
-      page.getByRole("button", { name: "Try again in 1s" }),
-    ).toBeDisabled();
-    await expect(
-      page.getByRole("button", { name: "Try again", exact: true }),
-    ).toBeEnabled();
-    await page.waitForTimeout(300);
-    expect(calls).toBe(1);
-    await page.getByRole("button", { name: "Try again", exact: true }).click();
-    expect(calls).toBe(2);
+test("failed download requires explicit retry and never falls back to API", async ({
+  page,
+}) => {
+  let calls = 0;
+  await page.route(publicPath, (route) => {
+    calls++;
+    return route.fulfill({ status: 503, body: "unavailable" });
   });
-}
+  await enterGuest(page);
+  await expect(
+    page.getByRole("button", { name: "Try again", exact: true }),
+  ).toBeEnabled();
+  await page.waitForTimeout(300);
+  expect(calls).toBe(1);
+  await page.getByRole("button", { name: "Try again", exact: true }).click();
+  await expect.poll(() => calls).toBe(2);
+});
 
 test("empty and network errors have distinct manual recovery", async ({
   page,
@@ -162,7 +151,7 @@ test("empty and network errors have distinct manual recovery", async ({
   ).toBeVisible();
   await page.unroute(publicPath);
   await page.route(publicPath, (route) =>
-    route.fulfill({ json: { items: [] } }),
+    route.fulfill({ json: emptySnapshot }),
   );
   await page.getByRole("button", { name: "Try again", exact: true }).click();
   await expect(
@@ -178,7 +167,8 @@ test("legacy guest route requires explicit choice and signed-in users get privat
   await seed(page, true);
   const publicCalls: string[] = [];
   page.on("request", (request) => {
-    if (request.url().includes("/v1/public/")) publicCalls.push(request.url());
+    if (request.url().includes("/guest/cards.json"))
+      publicCalls.push(request.url());
   });
   await page.goto(`${root}/review/guest`);
   await expect(page).toHaveURL(`http://127.0.0.1:4173${root}/review`);
@@ -245,7 +235,7 @@ test("navigating away cancels the pending guest session", async ({ page }) => {
   await page.route(publicPath, async (route) => {
     calls++;
     await new Promise((resolve) => setTimeout(resolve, 400));
-    await route.fulfill({ json: { items: [] } }).catch(() => {});
+    await route.fulfill({ json: emptySnapshot }).catch(() => {});
   });
   await enterGuest(page);
   await expect(page.getByText("Loading cards...")).toBeVisible();
@@ -424,12 +414,12 @@ test("expired guest focus cancels an in-flight public request without another AP
   let calls = 0;
   let cancelled = false;
   page.on("requestfailed", (request) => {
-    if (request.url().includes("/v1/public/review-cards")) cancelled = true;
+    if (request.url().includes("/guest/cards.json")) cancelled = true;
   });
   await page.route(publicPath, async (route) => {
     calls++;
     await new Promise((resolve) => setTimeout(resolve, 1500));
-    await route.fulfill({ json: { items: [] } }).catch(() => {});
+    await route.fulfill({ json: emptySnapshot }).catch(() => {});
   });
   await enterGuest(page);
   await expect(page.getByText("Loading cards...")).toBeVisible();

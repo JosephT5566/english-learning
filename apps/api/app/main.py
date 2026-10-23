@@ -18,8 +18,6 @@ from app.database import (
 from app.errors import register_error_handlers
 from app.guest_export import router as guest_export_router
 from app.health import router as health_router
-from app.public_admission import PublicAdmission
-from app.public_reviews import router as public_reviews_router
 from app.reads import router as reads_router
 from app.request_context import add_request_id
 from app.reviews import router as reviews_router
@@ -46,7 +44,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         # Expose application-scoped resources to request handlers.
         app.state.settings = settings
         app.state.guest_export_permit = threading.BoundedSemaphore(1)
-        app.state.public_admission = PublicAdmission(settings)
         app.state.database_engine = database_engine
         app.state.database_session_factory = database_session_factory
         app.state.token_verifier = GoogleTokenVerifier(settings.google_oauth_client_id)
@@ -68,7 +65,6 @@ def create_app() -> FastAPI:
     register_error_handlers(app)
     app.include_router(health_router)
     app.include_router(guest_export_router)
-    app.include_router(public_reviews_router)
     app.include_router(auth_router)
     app.include_router(reads_router)
     app.include_router(writes_router)
