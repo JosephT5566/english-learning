@@ -226,16 +226,44 @@ service-account ID token) through the process environment. Never put tokens in a
 files, GitHub variables, logs or artifacts. The script rejects redirects, invalid snapshots,
 responses over 512 KiB and requests/streams exceeding 30 seconds. It replaces output atomically
 only after validation. Empty success intentionally withdraws cards; failure preserves output.
-Real snapshots are ignored at `static/guest/cards.json` and are never committed.
+The approved public snapshot is tracked at `static/guest/cards.json`. Its initial empty envelope
+is intentional; it displays the guest empty state until a real export is reviewed and published.
+Only this deck's approved public fields belong in Git. Anyone can download the full snapshot,
+and removal cannot recall copies or erase Git history. Temporary `exported-guest/` remains ignored.
+Validate local content with `node scripts/validate-guest-snapshot.mjs static/guest/cards.json`.
+The validator uses the shared strict schema and size limit, printing only counts/bytes or a fixed
+failure message. CI and Pages run it before building the committed snapshot.
 
 ### Manual Pages setup (operational prerequisites, not yet verified)
 
-The Pages workflow has only `workflow_dispatch`, runs privileged export only from main, and
-serializes complete publications. It uses the protected `guest-cards-export` environment
-before the separate protected `github-pages` deployment. Retain required reviewers and restrict
-both environments to trusted main. The build receives only the same-run sanitized `guest-cards`
-artifact, never Google tokens or credentials files. A failed export/build/deployment retains
-the currently deployed site, which can contain older public content.
+Both `.github/workflows/deploy.yml` and `.github/workflows/export-guest-cards.yml` have only
+`workflow_dispatch`. Run **Export guest cards** on main to propose an update. Its protected
+`guest-cards-export` job mints the dedicated short-lived Google identity, validates the response,
+and uploads only `cards.json` as a one-day same-run artifact. A separate proposal job has
+contents/PR write permissions but no Google credentials or ID-token permission. It downloads
+validates that file, formats it with the repository Prettier configuration, and revalidates
+the formatted bytes against the 512 KiB cap. It then uses the repository `GITHUB_TOKEN` to create or update
+`automation/guest-cards-snapshot` into main with only `static/guest/cards.json` in `add-paths`.
+Do not edit this managed branch manually. Export never auto-merges or deploys.
+
+Enable **Allow GitHub Actions to create and approve pull requests** in repository Settings >
+Actions > General > Workflow permissions, subject to organization policy. The workflow does not
+approve its PRs. It uses the official
+[create-pull-request action](https://github.com/peter-evans/create-pull-request), pinned to v8 commit
+`5f6978faf089d4d20b00c7766989d076bb2fc7f1`. No PAT or persistent Google key is required.
+According to GitHub's [workflow trigger rules](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow),
+PR events created with `GITHUB_TOKEN` can require maintainer approval before CI runs. Inspect the
+PR's Actions/checks, approve pending runs when required, and verify CI before merging. Do not
+bypass checks or add a PAT to avoid that review.
+
+Review the JSON as public content, merge the PR, then manually run **Deploy to GitHub Pages**
+on main. Pages validates and builds the committed snapshot without contacting BE, reading an
+export artifact or obtaining Google credentials. It can republish the last committed snapshot
+even when BE or WIF is unavailable. A merged export PR does not deploy automatically. Retain
+required reviewers and restrict the `guest-cards-export` and `github-pages` environments to
+trusted main. The workflows have separate concurrency groups. Failed export leaves main and
+Pages unchanged; failed deployment retains the deployed site. An intentional empty export can
+withdraw cards only after review, merge and manual Pages publication.
 
 Configure these `guest-cards-export` environment variables:
 
@@ -256,36 +284,48 @@ export or frontend build runner.
 Grant only `roles/iam.workloadIdentityUser` impersonation on the dedicated export service
 account to the exact trusted WIF principal. Restrict provider mappings/conditions and that
 binding to the numeric repository/owner IDs, `ref=refs/heads/main`, this exact
-`.github/workflows/deploy.yml@refs/heads/main` workflow and the `guest-cards-export` environment
+`.github/workflows/export-guest-cards.yml@refs/heads/main` workflow and the `guest-cards-export` environment
 subject. Environment subjects alone do not prove main. Reuse a provider only if its existing
 conditions support these restrictions without broadening deployment trust; otherwise provision
 a separate provider. The export account needs no database, Secret Manager, deployment or
 project-wide role. Do not use the deployment service account, service-account keys or user tokens.
 The token must contain the exact verified service-account email, numeric subject and audience.
+Update any previous `deploy.yml` WIF trust to that exact export workflow reference before the
+first export run. Do not grant the proposal job or Pages build the Google export identity.
 Actual IAM changes require separate operational authorization.
 
 ### Release and rollback order
 
-1. Deploy/configure supporting backend commit `34c7560`, which includes export and retains the
-   anonymous route for the old frontend. Keep its legacy allowlist empty.
-2. Put the final frontend workflow/source on trusted main and manually dispatch Pages.
-   Verify guest entry, answering and Practice again make no `/v1/` requests.
-3. Only after step 2 succeeds, deploy the final backend version that removes the anonymous route.
+1. Put the static frontend and independent workflows on trusted main. Manually publish Pages
+   with the intentional empty snapshot while the existing backend remains available. Verify
+   guest entry, answering and Practice again make no `/v1/` requests using local fixtures;
+   production shows an empty state until public cards are reviewed and published.
+2. After the static cutover succeeds, deploy/configure the final protected-export backend,
+   which removes the unused anonymous route.
+3. Configure the export workflow's WIF trust and repository PR setting. Manually export,
+   review and merge its snapshot PR, then manually publish Pages again to display real cards.
 
-If Pages fails, retain the supporting backend and previous Pages site, then retry. After removal,
-rolling Pages back to the old API-dependent frontend also requires restoring the supporting
-backend first. Archiving/removing cards cannot recall downloaded snapshots; the next successful
-publication replaces them. No cloud setup, deployment, promotion or real export was run locally.
+Pages can build and deploy without the exporter, WIF or BE availability. If real cards are
+required at the first static publication, optionally deploy supporting backend commit `34c7560`
+first, configure export, and review/merge a snapshot before publishing static Pages. That historical
+support release retains the anonymous route for the old frontend. Remove the route only after
+the static cutover. If Pages fails, retain the previous frontend/backend pairing and retry.
+
+After anonymous-route removal, rolling Pages back to the old API-dependent frontend requires
+restoring compatible backend support first. Archiving/removing cards cannot recall downloaded
+snapshots; the next successful reviewed export and manual publication replaces them. No cloud
+setup, deployment, promotion or real export was run locally.
 
 ### Local verification and reviewer setup
 
 `npm run test:browser -- tests/browser/guest-review-flow.spec.ts tests/browser/review-flow.spec.ts`
-builds with a clearly synthetic two-card snapshot and a mock API for private review only. The
-fixture preparer writes the ignored `static/guest/cards.json`; it is never a production fallback.
+builds the tracked snapshot, then installs a clearly synthetic two-card fixture only in ignored
+`build/guest/cards.json`, with a mock API for private review. The preparer never writes the tracked
+`static/guest/cards.json`; synthetic cards are never a production fallback.
 For subpaths, prefix that command with `BASE_PATH=/english-learning`.
 
-For interactive review, after Playwright stops, run `node tests/browser/prepare-guest-fixture.mjs`,
-then `PUBLIC_GOOGLE_AUTH_CLIENT_ID=browser-contract-test PUBLIC_EMAIL_WHITE_LIST=browser-test@example.com PUBLIC_API_BASE_URL=http://127.0.0.1:8001 BASE_PATH=/english-learning npm run build`.
+For interactive review, after Playwright stops, run `PUBLIC_GOOGLE_AUTH_CLIENT_ID=browser-contract-test PUBLIC_EMAIL_WHITE_LIST=browser-test@example.com PUBLIC_API_BASE_URL=http://127.0.0.1:8001 BASE_PATH=/english-learning npm run build`,
+then `node tests/browser/prepare-guest-fixture.mjs`.
 Start `BASE_PATH=/english-learning node tests/browser/static-test-server.mjs` and separately
 `MOCK_REVIEW_MODE=by-subject MOCK_REVIEW_PORT=8001 node tests/browser/mock-review-api.mjs`.
 Open `http://127.0.0.1:4173/english-learning/` and choose Continue as guest. Use desktop and

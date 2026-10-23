@@ -1,5 +1,9 @@
 # Static guest cards implementation plan
 
+Historical implementation plan for PR #58. The approved
+[separate export plan](2026-10-23-separate-guest-export-plan.md) supersedes its publication
+workflow and ignored-snapshot details.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement
 > this plan task-by-task within the assigned worker. The parent coordinates the independent
 > reviewer requested by the owner. Do not delegate additional agents.

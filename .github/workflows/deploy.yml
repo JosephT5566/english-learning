@@ -11,50 +11,8 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  export_guest_cards:
-    if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    environment: guest-cards-export
-    permissions:
-      contents: read
-      id-token: write
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-      - name: Install deps
-        run: npm ci
-      - name: Authenticate dedicated export identity
-        id: export_auth
-        uses: google-github-actions/auth@v3
-        with:
-          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ vars.GUEST_EXPORT_EMAIL }}
-          token_format: id_token
-          id_token_audience: ${{ vars.GUEST_EXPORT_AUDIENCE }}
-          id_token_include_email: true
-          create_credentials_file: false
-          export_environment_variables: false
-      - name: Export validated public snapshot
-        env:
-          GUEST_EXPORT_API_ORIGIN: ${{ vars.GUEST_EXPORT_API_ORIGIN }}
-          GUEST_EXPORT_TOKEN: ${{ steps.export_auth.outputs.id_token }}
-        run: node scripts/export-guest-cards.mjs exported-guest/cards.json
-      - name: Transfer sanitized snapshot only
-        uses: actions/upload-artifact@v4
-        with:
-          name: guest-cards
-          path: exported-guest/cards.json
-          if-no-files-found: error
-          retention-days: 1
-
   build_site:
-    needs: export_guest_cards
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     env:
       PUBLIC_API_BASE_URL: ${{ vars.PUBLIC_API_BASE_URL }}
@@ -71,11 +29,8 @@ jobs:
           cache: npm
       - name: Install deps
         run: npm ci
-      - name: Download same-run sanitized snapshot
-        uses: actions/download-artifact@v4
-        with:
-          name: guest-cards
-          path: static/guest
+      - name: Validate committed guest snapshot
+        run: node scripts/validate-guest-snapshot.mjs static/guest/cards.json
       - name: Validate public runtime configuration
         run: node scripts/validate-public-env.mjs
       - name: Build
@@ -88,6 +43,7 @@ jobs:
           path: build
 
   deploy:
+    if: github.ref == 'refs/heads/main'
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}

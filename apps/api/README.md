@@ -378,7 +378,10 @@ per process and is not a service-wide cost cap. Authentication rejects untrusted
 HTTP traffic still reaches the service. This feature does not claim DDoS protection.
 
 See [development setup](../../doc/development.md#manual-pages-setup-operational-prerequisites-not-yet-verified)
-for manual-only Actions, protected WIF trust and settings. The supporting backend release is
-commit `34c7560`; deploy it first, publish/verify static Pages second, deploy anonymous-route
-removal last. Restore compatible backend support before rolling back to the old frontend.
+for independent manual export/PR and Pages Actions, protected WIF trust and settings. Pages can
+publish the empty seed before backend changes. After static cutover and verification, deploy
+this final protected-export backend, configure WIF, and manually export/review/publish real cards.
+Supporting backend commit `34c7560` is optional when real cards are needed before first static
+publication. It retains anonymous compatibility for the old frontend. Restore compatible backend
+support before rolling back to that frontend.
 Live IAM setup, real-card export and deployment are not established by local test results.

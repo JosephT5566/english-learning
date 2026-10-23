@@ -515,9 +515,22 @@ contains `schema_version=1`, `generated_at`, and up to 50 distinct active Englis
 with a 512 KiB encoded size limit. Missing/wrong-language decks fail; archived decks and
 empty active decks export an intentional empty pool.
 
-The supporting backend release is local commit `34c7560`, which retains the anonymous route.
-The final release removes it only after static Pages publication succeeds. `.github/workflows/deploy.yml`
-is manual-only and restricts export to main. A protected `guest-cards-export` job uses dedicated
-WIF impersonation, transfers only validated JSON, and gives the build job no Google credentials.
-The protected `github-pages` deployment consumes the same-run build. Live IAM and deployment
-are not verified by repository tests.
+Pages can publish the empty static seed while the existing backend remains available, then
+remove the anonymous route with the final protected-export backend after the static cutover.
+Supporting backend commit `34c7560` retains the anonymous route and is optional when real cards
+must be exported before the first static publication. Pages itself does not depend on that release.
+`.github/workflows/export-guest-cards.yml` is manual-only and restricts both jobs to trusted main.
+Its protected `guest-cards-export` job uses dedicated WIF impersonation with read-only contents
+and ID-token permissions. It uploads only validated JSON. A separate proposal job has contents
+and PR write permissions, no Google credentials or ID-token permission, and consumes only that
+same-run artifact. It creates or updates `automation/guest-cards-snapshot` into main, limiting
+committed changes to `static/guest/cards.json`. It never merges or deploys.
+
+Approved public snapshots are tracked in Git, starting with an intentional empty envelope.
+`.github/workflows/deploy.yml` independently validates that committed JSON, builds the frontend,
+and publishes through the protected `github-pages` deployment. It uses no export API or Google
+credentials. Both publication workflows require manual dispatch, with separate concurrency groups.
+CI validates the source snapshot before building. Browser fixtures replace only ignored build
+output after compilation, preserving the tracked source. The local validator and browser/export
+transports share the generated strict schema, duplicate-ID check and 512 KiB streaming limit.
+Live WIF, Actions PR creation and deployment are not verified by repository tests.
