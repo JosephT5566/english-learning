@@ -1,7 +1,6 @@
 """Anonymous, explicitly projected, transactionally read-only card batches."""
 
 from typing import Annotated
-from uuid import UUID
 
 import anyio
 from fastapi import APIRouter, Depends, Request
@@ -12,46 +11,25 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from app.database import database_transaction
 from app.errors import ApiError, ErrorResponse
 from app.public_admission import AdmissionRejection
-from app.reads import TargetLanguage
+from app.public_content import PUBLIC_CARD_PROJECTION, PublicReviewCard
 
 PUBLIC_REVIEW_PATH = "/v1/public/review-cards"
 router = APIRouter()
-
-
-class PublicReviewCard(BaseModel):
-    id: UUID
-    target_language: TargetLanguage
-    term: str
-    meaning: str
-    pronunciation: str | None
-    reading: str | None
-    romanization: str | None
-    part_of_speech: str | None
-    part_of_speech_detail: str | None
-    target_language_definition: str | None
-    example_sentence: str | None
-    example_translation: str | None
-    synonyms: list[str]
-    antonyms: list[str]
 
 
 class PublicReviewCards(BaseModel):
     items: list[PublicReviewCard]
 
 
-PUBLIC_CARDS_QUERY = text("""
-    SELECT c.id, d.target_language, c.term, c.meaning,
-           c.pronunciation, c.reading, c.romanization,
-           c.part_of_speech, c.part_of_speech_detail,
-           c.target_language_definition, c.example_sentence, c.example_translation,
-           c.synonyms, c.antonyms
-    FROM learning_cards AS c
-    JOIN learning_decks AS d ON d.id = c.deck_id AND d.owner_id = c.owner_id
+PUBLIC_CARDS_QUERY = text(
+    PUBLIC_CARD_PROJECTION
+    + """
     WHERE d.id IN :deck_ids
       AND d.archived_at IS NULL AND c.archived_at IS NULL
     ORDER BY random(), c.id
     LIMIT 10
-""").bindparams(bindparam("deck_ids", expanding=True, type_=Uuid))
+"""
+).bindparams(bindparam("deck_ids", expanding=True, type_=Uuid))
 
 
 def _read_batch(request: Request) -> PublicReviewCards:

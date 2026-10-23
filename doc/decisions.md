@@ -355,3 +355,13 @@ Last updated: 2026-10-22
   choice. Valid authentication takes priority; private pending-command reauthentication remains.
   Hide primary navigation during initialization and while signed out, preserving header space
   and the account avatar. Guest deadlines control browser presentation, not backend identity.
+
+## 2026-10-23: Publish guest cards through a machine-only snapshot export
+
+The owner approved a manually dispatched export and Pages publication for English deck
+`e3fa16a8-698b-445f-af1f-920c6758b377`. Export uses a dedicated short-lived Google service-account
+identity, independently verified from browser auth, and reuses the explicit content projection.
+No notes, tags, user metadata or review state are selected. The snapshot contains up to 50
+cards and is capped at 512 KiB. Guest rounds will sample locally, avoiding anonymous database
+traffic. Supporting exporter deployment, static Pages publication, and anonymous-route removal
+must remain separately deployable stages. Live infrastructure setup is a separate operation.

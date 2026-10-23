@@ -1,0 +1,175 @@
+{
+  "$defs": {
+    "PublicReviewCard": {
+      "additionalProperties": false,
+      "properties": {
+        "antonyms": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Antonyms",
+          "type": "array"
+        },
+        "example_sentence": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Example Sentence"
+        },
+        "example_translation": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Example Translation"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "meaning": {
+          "title": "Meaning",
+          "type": "string"
+        },
+        "part_of_speech": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Part Of Speech"
+        },
+        "part_of_speech_detail": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Part Of Speech Detail"
+        },
+        "pronunciation": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Pronunciation"
+        },
+        "reading": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Reading"
+        },
+        "romanization": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Romanization"
+        },
+        "synonyms": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Synonyms",
+          "type": "array"
+        },
+        "target_language": {
+          "const": "en",
+          "type": "string"
+        },
+        "target_language_definition": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Target Language Definition"
+        },
+        "term": {
+          "title": "Term",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "target_language",
+        "term",
+        "meaning",
+        "pronunciation",
+        "reading",
+        "romanization",
+        "part_of_speech",
+        "part_of_speech_detail",
+        "target_language_definition",
+        "example_sentence",
+        "example_translation",
+        "synonyms",
+        "antonyms"
+      ],
+      "title": "PublicReviewCard",
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "generated_at": {
+      "format": "date-time",
+      "title": "Generated At",
+      "type": "string"
+    },
+    "items": {
+      "items": {
+        "$ref": "#/$defs/PublicReviewCard"
+      },
+      "maxItems": 50,
+      "title": "Items",
+      "type": "array"
+    },
+    "schema_version": {
+      "const": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "schema_version",
+    "generated_at",
+    "items"
+  ],
+  "title": "GuestSnapshot",
+  "type": "object"
+}

@@ -10,6 +10,7 @@ from pydantic import (
     StringConstraints,
     ValidationError,
     field_validator,
+    model_validator,
 )
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic_settings.exceptions import SettingsError
@@ -76,6 +77,48 @@ class Settings(BaseSettings):
     public_review_global_burst: Annotated[int, Field(gt=0, le=10000)] = 10
     public_review_max_in_flight: Annotated[int, Field(gt=0, le=20)] = 1
     public_review_query_timeout_ms: Annotated[int, Field(gt=0, le=10000)] = 2000
+
+    guest_export_deck_id: UUID | None = None
+    guest_export_audience: str | None = None
+    guest_export_subject: (
+        Annotated[str, StringConstraints(pattern=r"^[0-9]{1,255}$")] | None
+    ) = None
+    guest_export_email: (
+        Annotated[
+            str,
+            StringConstraints(
+                pattern=r"^[a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+\.iam\.gserviceaccount\.com$"
+            ),
+        ]
+        | None
+    ) = None
+    guest_export_query_timeout_ms: Annotated[int, Field(gt=0, le=10000)] = 2000
+
+    @model_validator(mode="after")
+    def export_configuration(self):
+        values = (
+            self.guest_export_deck_id,
+            self.guest_export_audience,
+            self.guest_export_subject,
+            self.guest_export_email,
+        )
+        if any(value is not None for value in values):
+            if not all(values):
+                raise ValueError("guest export requires all identity and deck settings")
+            from urllib.parse import urlsplit
+
+            audience = urlsplit(self.guest_export_audience)
+            if (
+                audience.scheme != "https"
+                or not audience.hostname
+                or audience.username
+                or audience.password
+                or audience.query
+                or audience.fragment
+                or self.guest_export_audience == self.google_oauth_client_id
+            ):
+                raise ValueError("guest export requires a distinct HTTPS audience")
+        return self
 
     vertex_project_id: (
         Annotated[str, StringConstraints(pattern=r"^[a-z][a-z0-9-]{4,61}[a-z0-9]$")]

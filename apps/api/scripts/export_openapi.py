@@ -9,6 +9,7 @@ OUTPUT_PATH = API_ROOT / "openapi.json"
 
 sys.path.insert(0, str(API_ROOT))
 
+from app.guest_export import GuestSnapshot
 from app.main import create_app
 from app.writes import CardDrafts
 
@@ -26,6 +27,18 @@ def main() -> None:
     draft_path = API_ROOT.parents[1] / "src/lib/api/card-drafts.schema.json"
     draft_path.write_text(
         json.dumps(draft_schema, ensure_ascii=True, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+    snapshot_schema = GuestSnapshot.model_json_schema(mode="validation")
+    snapshot_schema["$schema"] = "https://json-schema.org/draft/2020-12/schema"
+    snapshot_schema["$defs"]["PublicReviewCard"]["properties"]["target_language"] = {
+        "const": "en",
+        "type": "string",
+    }
+    snapshot_path = API_ROOT.parents[1] / "src/lib/api/guest-snapshot.schema.json"
+    snapshot_path.write_text(
+        json.dumps(snapshot_schema, ensure_ascii=True, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
 

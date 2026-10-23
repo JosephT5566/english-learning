@@ -522,3 +522,20 @@ automatic retry or prefetch. Cancellation aborts the browser request on leaving 
 Live publication remains gated on inspection of selected content and the deployed proxy chain,
 including a disposable forged-forwarding-prefix smoke. Local mocks cannot prove trusted client
 identity in Cloud Run. Statement timeout bounds SQL execution, not connection-pool wait time.
+
+### Static guest publication exporter (2026-10-23)
+
+`GET /v1/internal/guest-cards/export` is separate from browser authentication. It verifies
+Google's signature/issuer/expiry and a dedicated export audience, exact service-account
+subject, exact email and `email_verified=true` before database checkout. It never resolves
+or upserts an application user. All four `GUEST_EXPORT_*` identity/deck settings must be
+configured together; otherwise export is disabled or startup rejects partial settings.
+The content-only projection is shared in `app/public_content.py`. A read-only transaction,
+statement timeout and one nonblocking export permit bound the database work. The response
+contains `schema_version=1`, `generated_at`, and up to 50 distinct active English cards,
+with a 512 KiB encoded size limit. Missing/wrong-language decks fail; archived decks and
+empty active decks export an intentional empty pool.
+
+The supporting release retains the anonymous route for the old frontend. Removal must
+follow successful static Pages publication. Live IAM and deployment are not verified by
+repository tests.
