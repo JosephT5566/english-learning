@@ -56,6 +56,9 @@ jobs:
       - name: Check generated API contract
         run: npm run api:check
 
+      - name: Validate committed guest snapshot
+        run: node scripts/validate-guest-snapshot.mjs static/guest/cards.json
+
       - name: Build frontend
         env:
           BASE_PATH: "/${{ github.event.repository.name }}"

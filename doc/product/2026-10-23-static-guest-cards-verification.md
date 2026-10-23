@@ -1,5 +1,9 @@
 # Static guest cards verification
 
+Historical record for PR #58. The later
+[separate export verification](2026-10-23-separate-guest-export-verification.md) supersedes the
+same-run export/Pages dependency and ignored-snapshot publication model described below.
+
 Date: 2026-10-23 (Asia/Taipei). Worker verification and independent reviewer PASS.
 Checkout: `/Users/joseph/Documents/Git/english-learning`, branch `codex/static-guest-cards`.
 Review base: `80b57736ba3ba950d77f2cb9da02d077278ab853`.

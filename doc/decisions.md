@@ -365,3 +365,17 @@ No notes, tags, user metadata or review state are selected. The snapshot contain
 cards and is capped at 512 KiB. Guest rounds will sample locally, avoiding anonymous database
 traffic. Supporting exporter deployment, static Pages publication, and anonymous-route removal
 must remain separately deployable stages. Live infrastructure setup is a separate operation.
+
+## 2026-10-23: Separate manual guest export from Pages publication
+
+The owner approved storing the selected deck's public snapshot in Git through an export-created
+PR. This supersedes the earlier same-run export-to-Pages artifact dependency and the prohibition
+on committing approved public cards. Both workflows remain manual-only. Export uses protected
+main-branch WIF in a read-only job, then transfers only validated JSON to a distinct PR-write job
+without Google credentials. The managed branch targets main and includes only
+`static/guest/cards.json`; no automatic merge or deployment occurs. Pages validates and builds
+the committed snapshot independently of BE availability. The initial snapshot is intentionally
+empty, and failed exports preserve the previous source/deployed content. Synthetic browser
+fixtures now replace ignored build output only. IAM trust must move to the exact export workflow
+reference, and Actions PR creation must be enabled before use. These operational changes remain
+unverified and were not performed. See the [follow-up plan](product/2026-10-23-separate-guest-export-plan.md).

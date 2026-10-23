@@ -40,6 +40,5 @@ __pycache__/
 # Local cloud release configuration
 /deploy/cloud-run/release.env
 
-# Generated public snapshots are deployment artifacts, never source content.
-/static/guest/cards.json
+# Temporary export output; approved public snapshots are tracked under static/guest.
 /exported-guest/

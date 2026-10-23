@@ -1,13 +1,14 @@
 # Publish static guest review cards
 
 Status: owner-approved on 2026-10-23. Implementation and independent review are authorized;
-production setup and deployment remain separate.
+production setup and deployment remain separate. Publication details incorporate the
+[owner-approved follow-up](2026-10-23-separate-guest-export-plan.md).
 
 ## Intent
 
 Give guests the existing review experience without sending their card reads or answers to
-FastAPI or PostgreSQL. A manually dispatched GitHub Action exports approved content and publishes it
-with the static frontend.
+FastAPI or PostgreSQL. A manually dispatched GitHub Action exports approved content and proposes
+a PR. A separate manual Pages Action publishes the reviewed, committed snapshot.
 
 The owner selected deck `e3fa16a8-698b-445f-af1f-920c6758b377`, English content, a pool of up to
 50 cards, and manually dispatched GitHub Actions for repeatable updates. The owner explicitly
@@ -79,30 +80,44 @@ JSON size cap; exceeding it fails the export without truncating cards. This is a
 guard, not a measured performance target. Retain a successful empty result distinctly from a
 failed request.
 
-Extend the Pages workflow with an export job using `google-github-actions/auth` and WIF to mint
-an ID token for the dedicated export audience. Upload only validated `cards.json` as an artifact.
-The frontend build job downloads that same-run artifact into `static/guest/cards.json`, then
-builds and publishes through the existing Pages deployment. Credentials are not shared with the
-frontend build or included in artifacts. There are no automated data commits or pull requests.
+Use a separate manual `export-guest-cards.yml` workflow. Its protected export job uses
+`google-github-actions/auth` and narrowly scoped WIF to mint the dedicated audience ID token.
+It has read-only contents and ID-token permission and uploads only validated `cards.json`.
+A second job gets contents/PR write permissions but no Google credentials or ID-token permission.
+It downloads only that same-run sanitized artifact, validates it with the shared local CLI,
+formats it with repository Prettier, then validates the formatted bytes against the size cap.
+It creates or updates a PR from `automation/guest-cards-snapshot` to main. The official
+create-pull-request action is pinned to an immutable v8 commit and restricts `add-paths` to
+`static/guest/cards.json`. Use `GITHUB_TOKEN`; enable repository Actions PR creation and review
+any pending CI-run approval. Do not auto-merge or deploy.
 
-Run this export and publication flow only through `workflow_dispatch`. Remove the current Pages
-workflow's push trigger when integrating export; do not add a cron schedule or another automatic
-trigger. Restrict publication to trusted main; untrusted PRs cannot export. Keep one Pages
-publication concurrency group to avoid overlapping manual deployments. Unrelated CI workflows
-are outside this design's scope.
+Track the approved public JSON in Git, starting with an explicitly empty envelope. Public content
+and prior snapshots remain in history. The owner accepted this retention in the follow-up.
+Keep private fields and synthetic browser fixture words out of the production file. Ignore only
+temporary export files. CI validates the committed snapshot before build or test fixtures.
 
-If export, validation, build, or publication fails, stop the run and retain the currently deployed
-site. Never substitute fixtures or an accidental empty pool for an API failure. A successful
-snapshot replaces the previous snapshot only when the Pages deployment succeeds.
+Keep `deploy.yml` independent. It validates the committed JSON, builds the frontend and deploys
+the same-run Pages build artifact without Google credentials or BE access. Both workflows use
+only `workflow_dispatch`, restrict privileged jobs to trusted main and use separate concurrency
+groups. There is no schedule, push publication, export-to-Pages dependency or automatic merge.
 
-Roll out in three verifiable stages. First deploy and configure the protected exporter while
-retaining the current anonymous endpoint and its empty allowlist for the existing frontend.
-Next publish the static frontend and verify that guest entry and repeated rounds make no API
-requests. Finally deploy removal of the anonymous endpoint and obsolete admission plumbing.
-Keep the supporting backend release and final removal release separately deployable; never
-deploy removal before static Pages publication succeeds. If Pages publication fails, retain
-the supporting backend and current frontend, then retry publication. After removal, a rollback
-to the old API-dependent frontend also requires restoring its compatible backend release.
+Failed export leaves main and Pages unchanged. A successful export updates only its PR until
+review and merge. Only a successful manual Pages deployment publishes the committed snapshot.
+An intentional empty export can withdraw cards through the same review/merge/publication process.
+Never replace a failed API response with fixtures or accidental empty data.
+
+First publish the static frontend with the intentional empty seed while the existing backend
+remains available. Verify guests use no API requests, then deploy/configure the final protected
+exporter backend and remove the unused anonymous route. Configure the exact export workflow WIF
+trust, manually export, review/merge the public snapshot PR, then manually publish Pages again.
+Pages remains independently deployable without BE or WIF availability.
+
+If real cards are needed at the first static publication, optionally deploy supporting backend
+commit `34c7560`, which retains the anonymous endpoint for the existing frontend. Configure the
+exporter and review/merge a snapshot before static publication. Keep the supporting and final
+removal releases separately deployable. Never remove the anonymous route before static Pages
+publication succeeds. A rollback to the old API-dependent frontend after removal requires a
+compatible backend release as well.
 
 Protected-environment variables and WIF bindings must exist before the first manual run.
 Preserve existing protected-environment review requirements. Manual dispatch does not bypass
@@ -122,7 +137,8 @@ deadline, and authenticated private-review behavior. Guest answers remain memory
 
 Keep loading, empty, and retryable download-error states. Remove API-specific cooldown behavior
 from the static transport. A retry follows an explicit user action, with no private API fallback.
-Development and CI use clearly synthetic fixtures; real card content is not committed to Git.
+Development and CI install clearly synthetic fixtures only in ignored build output after build;
+they never modify the tracked source JSON. Approved public card content is committed through PRs.
 
 ## Limits
 

@@ -34,13 +34,22 @@ for same-account sign-in and retry, without silently entering guest mode. Accoun
 the old controller and reject stale responses. Browser guest state never grants backend access.
 
 As of 2026-10-23, the implemented guest controller loads a static snapshot once and samples
-Practice again locally. It never calls the backend. A manual-only Pages Action exports up to
-50 distinct English cards from approved deck `e3fa16a8-698b-445f-af1f-920c6758b377` through a
-separate machine-authenticated exporter. No real learning content is committed. Export failure
-retains the deployed snapshot; edits/archive take effect only after successful publication.
+Practice again locally. It never calls the backend. The manual-only Export guest cards Action
+exports up to 50 distinct English cards from approved deck
+`e3fa16a8-698b-445f-af1f-920c6758b377` through the machine-authenticated exporter and proposes
+`static/guest/cards.json` in a PR. Approved public content is intentionally retained in Git.
+The separate manual-only Pages workflow validates and builds that committed file without BE
+access. Neither export nor merge publishes automatically. The initial snapshot is intentionally
+empty until the first approved export PR merges and Pages is manually published. Failed export
+leaves the committed and deployed snapshots unchanged. Edits/archive take effect after export,
+PR review/merge and manual Pages publication. See the
+[follow-up plan](product/2026-10-23-separate-guest-export-plan.md) and
+[follow-up verification](product/2026-10-23-separate-guest-export-verification.md).
 
-Supporting backend commit `34c7560` retains the legacy anonymous route. Deploy that support,
-publish static Pages and verify zero guest API calls, then deploy the final removal version.
+Pages can first publish the empty static seed with the existing backend unchanged. After verifying
+zero guest API calls, deploy the final protected-export backend and configure the separate manual
+export workflow. Supporting backend commit `34c7560` is an optional compatibility path when real
+cards are required before the first static publication, not a dependency of ordinary Pages builds.
 Production WIF/IAM, protected environment setup and publication remain unverified and were
 not performed. See the [design](product/2026-10-23-static-guest-cards-design.md),
 [verification](product/2026-10-23-static-guest-cards-verification.md), and
