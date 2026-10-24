@@ -425,9 +425,11 @@ Review update payload shape is:
   extra fields, requires 1-20 cards, limits valid request bodies to 100,000 bytes, and returns
   normalized drafts. It creates no cards or review states. Invalid fields use the existing safe
   validation envelope, including card indices.
-- Users edit, deselect, and explicitly confirm drafts. The complete selected set is revalidated
-  after edits, then saved with one `POST /v1/decks/{deck_id}/cards/bulk` request. Its Pydantic
+- Users edit, deselect, and explicitly confirm drafts. The complete selected set is checked and
+  normalized synchronously against the local schema after edits, without another remote validation
+  request. The normalized typed fields and keys are persisted before one `POST /v1/decks/{deck_id}/cards/bulk` request. Its Pydantic
   envelope contains 1-20 `{idempotency_key, fields}` entries and is bounded to 100,000 bytes.
+  The bulk endpoint still validates every card with Pydantic `CardFields`.
   Deck context stays in the route. All new cards, fresh review states, and semantic hashes commit
   in one transaction; any rejection rolls back every new card in the selection.
 - Bulk and single-card creation share the same per-card idempotency keys and normalized request

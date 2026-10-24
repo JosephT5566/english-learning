@@ -389,3 +389,10 @@ it identifies neither an account nor a year. A storage failure cannot turn a con
 an unconfirmed result. Success copy confirms only the saved batch and practiced-today activity,
 because the ten-card request can leave more cards due. Backend scheduling and API contracts are
 unchanged.
+
+- 2026-10-24: JSON card confirmation now checks and normalizes the edited selection locally,
+  persists the normalized fields and existing keys, and sends one bulk create request. The remote
+  owned-deck validation endpoint remains the preview boundary; confirmation no longer repeats that
+  read-only request. Bulk creation still enforces Pydantic CardFields validation and ownership.
+  Uncertain retries bypass normalization and reuse the exact stored content and keys; storage
+  failure still prevents starting a write.
