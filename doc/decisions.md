@@ -401,3 +401,8 @@ unchanged.
   read-only request. Bulk creation still enforces Pydantic CardFields validation and ownership.
   Uncertain retries bypass normalization and reuse the exact stored content and keys; storage
   failure still prevents starting a write.
+
+- 2026-10-24: Semantic search checks current index coverage before calling Vertex. A configured
+  search with zero indexed cards returns the existing empty response and eligible count without
+  requesting a query embedding or running vector ranking. Owner/deck checks and the unconfigured
+  provider error keep their precedence. Indexed searches still report provider failures as 503.

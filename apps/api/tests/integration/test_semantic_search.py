@@ -5,7 +5,7 @@ from collections.abc import Iterator
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import Engine, MetaData, Table, text
+from sqlalchemy import Engine, MetaData, Table, event, text
 
 from app import semantic_search
 from app.auth import VerifiedGoogleIdentity
@@ -214,8 +214,20 @@ def test_invalid_auth_and_body_do_not_call_provider(
 
 
 def test_provider_failure_is_retryable_not_empty(
-    search_client: TestClient, monkeypatch: pytest.MonkeyPatch
+    search_client: TestClient,
+    migrated_database_engine: Engine,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    assert search_client.get("/v1/me", headers=headers()).status_code == 200
+    owner = owner_id(migrated_database_engine)
+    deck = insert_deck(migrated_database_engine, owner_id=owner)
+    add_indexed_card(
+        migrated_database_engine,
+        owner,
+        deck,
+        "indexed",
+        [1.0] + [0.0] * (DIMENSIONS - 1),
+    )
     monkeypatch.setattr(
         semantic_search,
         "vertex_query_embedding",
@@ -233,12 +245,53 @@ def test_provider_failure_is_retryable_not_empty(
     assert response.json()["error"]["retryable"] is True
 
 
-def test_empty_and_fully_unindexed_corpus_report_empty(
+@pytest.mark.parametrize("corpus", ["empty", "unindexed", "stale_hash", "stale_model"])
+def test_corpus_without_current_embeddings_skips_provider_and_ranking(
     search_client: TestClient,
     migrated_database_engine: Engine,
     monkeypatch: pytest.MonkeyPatch,
+    corpus: str,
 ) -> None:
     assert search_client.get("/v1/me", headers=headers()).status_code == 200
+    owner = owner_id(migrated_database_engine)
+    deck = insert_deck(migrated_database_engine, owner_id=owner)
+    if corpus == "unindexed":
+        cards = Table(
+            "learning_cards", MetaData(), autoload_with=migrated_database_engine
+        )
+        insert_card(
+            migrated_database_engine,
+            cards,
+            valid_card_values(
+                deck_id=deck,
+                owner_id=owner,
+                term="unindexed",
+                meaning="eligible without an embedding",
+            ),
+        )
+    elif corpus in {"stale_hash", "stale_model"}:
+        card = add_indexed_card(
+            migrated_database_engine,
+            owner,
+            deck,
+            "stale",
+            [1.0] + [0.0] * (DIMENSIONS - 1),
+        )
+        with migrated_database_engine.begin() as connection:
+            if corpus == "stale_hash":
+                connection.execute(
+                    text(
+                        "UPDATE card_embeddings SET content_hash = :hash WHERE card_id = :id"
+                    ),
+                    {"hash": "0" * 64, "id": card},
+                )
+            else:
+                connection.execute(
+                    text(
+                        "UPDATE card_embeddings SET model_version = 'stale-model' WHERE card_id = :id"
+                    ),
+                    {"id": card},
+                )
     calls: list[str] = []
     monkeypatch.setattr(
         semantic_search,
@@ -248,45 +301,54 @@ def test_empty_and_fully_unindexed_corpus_report_empty(
         ),
     )
 
-    empty_response = search_client.post(
+    ranking_statements: list[str] = []
+
+    def record_ranking(_conn, _cursor, statement, _parameters, _context, _executemany):
+        if "<=>" in statement:
+            ranking_statements.append(statement)
+
+    event.listen(Engine, "before_cursor_execute", record_ranking)
+    try:
+        response = search_client.post(
+            "/v1/cards/semantic-search",
+            headers=headers(),
+            json={"query": "nothing indexed", "target_language": "en"},
+        )
+    finally:
+        event.remove(Engine, "before_cursor_execute", record_ranking)
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "items": [],
+        "index_status": "empty",
+        "eligible_count": 0 if corpus == "empty" else 1,
+        "indexed_count": 0,
+    }
+    assert (calls, ranking_statements) == ([], [])
+
+
+def test_unconfigured_provider_still_reports_unavailable_for_empty_corpus(
+    search_client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    search_client.app.state.settings = search_client.app.state.settings.model_copy(
+        update={"vertex_project_id": None}
+    )
+    calls: list[str] = []
+    monkeypatch.setattr(
+        semantic_search,
+        "vertex_query_embedding",
+        lambda query, **_kwargs: calls.append(query) or [1.0] * DIMENSIONS,
+    )
+
+    response = search_client.post(
         "/v1/cards/semantic-search",
         headers=headers(),
         json={"query": "nothing indexed", "target_language": "en"},
     )
-    assert empty_response.status_code == 200
-    assert empty_response.json() == {
-        "items": [],
-        "index_status": "empty",
-        "eligible_count": 0,
-        "indexed_count": 0,
-    }
 
-    owner = owner_id(migrated_database_engine)
-    deck = insert_deck(migrated_database_engine, owner_id=owner)
-    cards = Table("learning_cards", MetaData(), autoload_with=migrated_database_engine)
-    insert_card(
-        migrated_database_engine,
-        cards,
-        valid_card_values(
-            deck_id=deck,
-            owner_id=owner,
-            term="unindexed",
-            meaning="eligible without an embedding",
-        ),
-    )
-    unindexed_response = search_client.post(
-        "/v1/cards/semantic-search",
-        headers=headers(),
-        json={"query": "still nothing indexed", "target_language": "en"},
-    )
-    assert unindexed_response.status_code == 200
-    assert unindexed_response.json() == {
-        "items": [],
-        "index_status": "empty",
-        "eligible_count": 1,
-        "indexed_count": 0,
-    }
-    assert calls == ["nothing indexed", "still nothing indexed"]
+    assert response.status_code == 503
+    assert response.json()["error"]["code"] == "semantic_search_not_configured"
+    assert calls == []
 
 
 def test_foreign_and_archived_decks_stop_before_provider(

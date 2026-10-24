@@ -75,8 +75,10 @@ Last updated: 2026-10-23
 - `apps/api/app/writes.py`: server-owned deck/card create, optimistic edit, and archive operations.
 - `apps/api/app/reviews.py`: authenticated atomic review submissions, scheduling transitions,
   idempotent replay, and deterministic row-lock concurrency control.
-- `apps/api/app/semantic_search.py`: bounded query validation, one Vertex query embedding, and exact
-  pgvector ranking after owner/archive/language/deck/model/state/hash SQL predicates.
+- `apps/api/app/semantic_search.py`: bounded query validation and owner-scoped index coverage before
+  one Vertex query embedding and exact pgvector ranking. Zero current embeddings skip both provider
+  and ranking work after deck and provider-configuration checks. Coverage and ranking apply
+  owner/archive/language/deck/model/state/hash SQL predicates.
 - `apps/api/app/imports.py`: bounded CSV reading, validation, canonicalization, hashing, dry-run
   audit persistence, and private in-memory confirmed-import candidates.
 - `apps/api/app/import_events.py`: bounded local import-command outcome events without source

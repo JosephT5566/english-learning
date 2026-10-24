@@ -128,18 +128,11 @@ def semantic_search(
             retryable=False,
         )
     try:
-        query_vector = vertex_query_embedding(
-            payload.query,
-            project=settings.vertex_project_id,
-            location=settings.vertex_location,
-        )
         parameters = {
             "owner_id": user.id,
             "language": payload.target_language,
             "deck_id": payload.deck_id,
             "model": MODEL_VERSION,
-            "vector": json.dumps(query_vector),
-            "limit": payload.limit,
         }
         coverage = (
             session.execute(
@@ -164,6 +157,22 @@ def semantic_search(
             .mappings()
             .one()
         )
+        eligible_count = int(coverage.eligible_count)
+        indexed_count = int(coverage.indexed_count)
+        if indexed_count == 0:
+            return SemanticSearchResponse(
+                items=[],
+                index_status="empty",
+                eligible_count=eligible_count,
+                indexed_count=0,
+            )
+
+        query_vector = vertex_query_embedding(
+            payload.query,
+            project=settings.vertex_project_id,
+            location=settings.vertex_location,
+        )
+        parameters.update(vector=json.dumps(query_vector), limit=payload.limit)
         rows = (
             session.execute(
                 text("""
@@ -199,14 +208,8 @@ def semantic_search(
             retryable=True,
         ) from None
 
-    eligible_count = int(coverage.eligible_count)
-    indexed_count = int(coverage.indexed_count)
-    status: Literal["complete", "partial", "empty"] = (
-        "empty"
-        if eligible_count == 0 or indexed_count == 0
-        else "complete"
-        if indexed_count == eligible_count
-        else "partial"
+    status: Literal["complete", "partial"] = (
+        "complete" if indexed_count == eligible_count else "partial"
     )
     return SemanticSearchResponse(
         items=[SemanticSearchItem.model_validate(row) for row in rows],
