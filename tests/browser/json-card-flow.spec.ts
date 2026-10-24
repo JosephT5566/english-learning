@@ -107,7 +107,7 @@ async function mockJsonApi(
 
 async function openJson(page: Page, language: "en" | "ja") {
   await page.goto(
-    `/decks/${language === "ja" ? jaDeck : enDeck}?language=${language}`,
+    `decks/${language === "ja" ? jaDeck : enDeck}?language=${language}`,
   );
   await page.getByRole("button", { name: "New card" }).click();
   await expect(
