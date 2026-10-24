@@ -292,7 +292,7 @@ def _card_detail(session: Session, card_id: UUID, owner_id: int) -> CardDetail:
     return CardDetail.model_validate(row)
 
 
-def _semantic_hash(session: Session, card_id: UUID, owner_id: int) -> str:
+def _refresh_semantic_hash(session: Session, card_id: UUID, owner_id: int) -> None:
     from app.embeddings import CARD_SELECT
 
     row = (
@@ -300,7 +300,14 @@ def _semantic_hash(session: Session, card_id: UUID, owner_id: int) -> str:
         .mappings()
         .one()
     )
-    return content_hash(dict(row))
+    new_hash = content_hash(dict(row))
+    if new_hash != row["semantic_content_hash"]:
+        session.execute(
+            text(
+                "UPDATE learning_cards SET semantic_content_hash = :hash WHERE id = :id AND owner_id = :owner_id"
+            ),
+            {"hash": new_hash, "id": card_id, "owner_id": owner_id},
+        )
 
 
 def _try_embed_after_commit(request: Request, card_id: UUID, owner_id: int) -> None:
@@ -647,16 +654,7 @@ def _create_card_in_transaction(
         ),
         {"card_id": card_id, "owner_id": owner_id},
     )
-    session.execute(
-        text(
-            "UPDATE learning_cards SET semantic_content_hash = :hash WHERE id = :id AND owner_id = :owner_id"
-        ),
-        {
-            "hash": _semantic_hash(session, card_id, owner_id),
-            "id": card_id,
-            "owner_id": owner_id,
-        },
-    )
+    _refresh_semantic_hash(session, card_id, owner_id)
     detail = _card_detail(session, card_id, owner_id)
     return detail
 
@@ -752,20 +750,7 @@ def update_card(
         if owned is None:
             raise _not_found("card")
         raise _version_conflict()
-    new_hash = _semantic_hash(session, card_id, user.id)
-    previous_hash = session.execute(
-        text(
-            "SELECT semantic_content_hash FROM learning_cards WHERE id = :id AND owner_id = :owner_id"
-        ),
-        {"id": card_id, "owner_id": user.id},
-    ).scalar_one()
-    if new_hash != previous_hash:
-        session.execute(
-            text(
-                "UPDATE learning_cards SET semantic_content_hash = :hash WHERE id = :id AND owner_id = :owner_id"
-            ),
-            {"hash": new_hash, "id": card_id, "owner_id": user.id},
-        )
+    _refresh_semantic_hash(session, card_id, user.id)
     detail = _card_detail(session, card_id, user.id)
     session.commit()
     if EDITABLE_SEMANTIC_FIELDS.intersection(changes):

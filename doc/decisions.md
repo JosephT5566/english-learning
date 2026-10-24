@@ -422,3 +422,9 @@ unchanged.
   HTTP calls remain independent and retain their eight-second
   timeout outside the credential lock. Startup, health checks, and dry runs make no ADC or Vertex
   calls. No process-global credential cache or shared prediction session was added.
+
+- 2026-10-24: Card creation and edits refresh the canonical semantic hash from one owned card/deck
+  snapshot that includes the stored hash. The helper writes only when the computed hash differs,
+  removing the separate hash-only read on edits. Every edit still recomputes from persisted fields,
+  including note-only edits that repair a missing hash. Canonical normalization, optimistic versions,
+  transaction boundaries, and background embedding eligibility retain their existing behavior.

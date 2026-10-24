@@ -7,13 +7,13 @@ from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import Engine, text
+from sqlalchemy import Engine, event, text
 from starlette.types import Message, Receive, Scope, Send
 
 from app.auth import VerifiedGoogleIdentity
 from app.embeddings import EmbeddingFailure
 from app.main import create_app
-from app.semantic_text import DIMENSIONS
+from app.semantic_text import DIMENSIONS, content_hash
 from tests.integration.test_multilingual_domain_fixture import load_multilingual_fixture
 
 pytestmark = [
@@ -489,6 +489,114 @@ def test_only_semantic_card_edits_call_provider(
     )
     assert unchanged.status_code == 200
     assert len(calls) == 1
+
+
+@pytest.mark.parametrize(
+    ("operation", "hash_writes"),
+    [
+        ("create", 1),
+        ("note", 0),
+        ("same_semantic", 0),
+        ("normalized_semantic", 0),
+        ("changed_semantic", 1),
+        ("missing_hash_note", 1),
+    ],
+)
+def test_card_save_refreshes_hash_from_one_semantic_snapshot(
+    api_client: TestClient,
+    operation: str,
+    hash_writes: int,
+) -> None:
+    api_client.app.state.settings = api_client.app.state.settings.model_copy(
+        update={"vertex_project_id": None}
+    )
+    engine = api_client.app.state.database_engine
+    payload = {
+        "deck_id": FIXTURE_DECK_ID,
+        "term": "caf\u00e9",
+        "meaning": "coffee shop",
+        "pronunciation": "/ka.fei/",
+        "example_sentence": "We meet at the cafe.",
+        "example_translation": "A meeting at a coffee shop.",
+        "synonyms": ["coffeehouse", "cafe"],
+        "antonyms": [],
+    }
+    expected = {**payload, "language": "en"}
+    headers = bearer("fixture-token")
+    original = None
+    if operation != "create":
+        created = api_client.post(
+            "/v1/cards", json=payload, headers=create_headers("fixture-token")
+        )
+        assert created.status_code == 201
+        original = created.json()
+        if operation == "missing_hash_note":
+            with engine.begin() as connection:
+                connection.execute(
+                    text(
+                        "UPDATE learning_cards SET semantic_content_hash = NULL WHERE id = :id"
+                    ),
+                    {"id": original["id"]},
+                )
+
+    statements = []
+
+    def record_statement(
+        connection, cursor, statement, parameters, context, executemany
+    ):
+        statements.append(" ".join(statement.split()))
+
+    event.listen(engine, "before_cursor_execute", record_statement)
+    try:
+        if operation == "create":
+            response = api_client.post(
+                "/v1/cards", json=payload, headers=create_headers("fixture-token")
+            )
+        else:
+            changes = {
+                "note": {"note": "a note"},
+                "same_semantic": {"meaning": payload["meaning"]},
+                "normalized_semantic": {"term": " cafe\u0301 "},
+                "changed_semantic": {"meaning": "a different meaning"},
+                "missing_hash_note": {"note": "a note"},
+            }[operation]
+            response = api_client.patch(
+                f"/v1/cards/{original['id']}",
+                json={"version": original["version"], **changes},
+                headers=headers,
+            )
+            expected.update(changes)
+    finally:
+        event.remove(engine, "before_cursor_execute", record_statement)
+
+    assert response.status_code == (201 if operation == "create" else 200)
+    saved = response.json()
+    assert saved["version"] == (1 if original is None else original["version"] + 1)
+    assert saved["term"] == expected["term"].strip()
+    assert saved["meaning"] == expected["meaning"]
+    assert saved["note"] == expected.get("note")
+    with engine.connect() as connection:
+        stored_hash = connection.execute(
+            text("SELECT semantic_content_hash FROM learning_cards WHERE id = :id"),
+            {"id": saved["id"]},
+        ).scalar_one()
+    assert stored_hash == content_hash(expected)
+
+    semantic_reads = [
+        statement
+        for statement in statements
+        if statement.startswith("SELECT") and "semantic_content_hash" in statement
+    ]
+    assert len(semantic_reads) == 1
+    assert "c.term, c.meaning" in semantic_reads[0]
+    assert "c.owner_id =" in semantic_reads[0]
+    assert (
+        sum(
+            statement.startswith("UPDATE learning_cards SET semantic_content_hash =")
+            for statement in statements
+        )
+        == hash_writes
+    )
 
 
 def test_other_user_cannot_edit_or_archive_resources_by_changing_ids(
