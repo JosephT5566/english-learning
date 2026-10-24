@@ -8,6 +8,7 @@ from uuid import uuid4
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import Engine, text
+from starlette.types import Message, Receive, Scope, Send
 
 from app import writes
 from app.auth import VerifiedGoogleIdentity
@@ -352,6 +353,98 @@ def test_card_create_commits_before_provider_timeout_and_replays_once(
             {"key": key},
         ).one()
     assert row == (1, 1, "retryable")
+
+
+@pytest.mark.parametrize("operation", ["create", "edit"])
+def test_card_save_sends_response_before_embedding_and_keeps_provider_failure(
+    api_client: TestClient,
+    migrated_database_engine: Engine,
+    monkeypatch: pytest.MonkeyPatch,
+    operation: str,
+) -> None:
+    api_client.app.state.settings = api_client.app.state.settings.model_copy(
+        update={"vertex_project_id": "synthetic-project"}
+    )
+    sent = []
+    observed = []
+
+    async def observe_response(scope: Scope, receive: Receive, send: Send) -> None:
+        async def observe_send(message: Message) -> None:
+            await send(message)
+            if message["type"] in {"http.response.start", "http.response.body"}:
+                sent.append(message.copy())
+
+        await api_client.app(scope, receive, observe_send)
+
+    def timeout(_content: str, **_kwargs: object) -> list[float]:
+        with migrated_database_engine.connect() as connection:
+            committed = connection.execute(
+                text("""
+                    SELECT c.id, c.meaning, c.semantic_content_hash, s.card_id
+                    FROM learning_cards c
+                    JOIN review_states s ON (s.card_id, s.owner_id) = (c.id, c.owner_id)
+                    WHERE c.term = 'response ordering'
+                """)
+            ).one()
+        observed.append((list(sent), committed))
+        raise EmbeddingFailure("provider_timeout")
+
+    monkeypatch.setattr(writes, "vertex_document_embedding", timeout)
+    client = TestClient(observe_response, raise_server_exceptions=False)
+    if operation == "create":
+        response = client.post(
+            "/v1/cards",
+            json={
+                "deck_id": FIXTURE_DECK_ID,
+                "term": "response ordering",
+                "meaning": "committed meaning",
+            },
+            headers=create_headers("fixture-token"),
+        )
+        expected_status = 201
+    else:
+        original = api_client.get(
+            f"/v1/cards/{FIXTURE_CARD_ID}", headers=bearer("fixture-token")
+        ).json()
+        response = client.patch(
+            f"/v1/cards/{FIXTURE_CARD_ID}",
+            json={
+                "version": original["version"],
+                "term": "response ordering",
+                "meaning": "committed meaning",
+            },
+            headers=bearer("fixture-token"),
+        )
+        expected_status = 200
+    client.close()
+
+    assert response.status_code == expected_status
+    assert len(observed) == 1
+    sent_before_provider, committed = observed[0]
+    assert sent_before_provider, "Provider started before response was sent"
+    assert sent_before_provider[0]["type"] == "http.response.start"
+    assert sent_before_provider[0]["status"] == expected_status
+    assert all(
+        message["type"] == "http.response.body" for message in sent_before_provider[1:]
+    )
+    assert sent_before_provider[-1]["type"] == "http.response.body"
+    assert not sent_before_provider[-1].get("more_body", False)
+    assert (
+        b"".join(message["body"] for message in sent_before_provider[1:])
+        == response.content
+    )
+    assert str(committed.id) == response.json()["id"]
+    assert committed.meaning == response.json()["meaning"] == "committed meaning"
+    assert committed.semantic_content_hash is not None
+    assert committed.card_id == committed.id
+    with migrated_database_engine.connect() as connection:
+        failure = connection.execute(
+            text("""
+                SELECT state, last_error_code FROM card_embeddings WHERE card_id = :id
+            """),
+            {"id": committed.id},
+        ).one()
+    assert failure == ("retryable", "provider_timeout")
 
 
 def test_only_semantic_card_edits_call_provider(

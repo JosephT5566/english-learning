@@ -406,3 +406,10 @@ unchanged.
   search with zero indexed cards returns the existing empty response and eligible count without
   requesting a query embedding or running vector ranking. Owner/deck checks and the unconfigured
   provider error keep their precedence. Indexed searches still report provider failures as 503.
+
+- 2026-10-24: Single-card creation and semantic edits now follow bulk creation's best-effort
+  in-process BackgroundTasks pattern. Confirmed content and its semantic hash commit before the
+  response, and ASGI sends the final body before embedding begins. Existing owner/hash/claim guards,
+  replay behavior, note-only exclusion, ready-content no-op, and explicit backfill remain in force.
+  Process interruption can leave derived data missing or retryable; no durable queue or provider
+  availability requirement was added to card confirmation.

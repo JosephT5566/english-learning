@@ -512,6 +512,7 @@ def archive_deck(
 def create_card(
     request: Request,
     payload: Annotated[CardCreate, Body()],
+    background_tasks: BackgroundTasks,
     session: SessionDependency,
     user: CurrentUserDependency,
     raw_idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
@@ -520,7 +521,7 @@ def create_card(
     idempotency_key = _idempotency_key(raw_idempotency_key)
     detail = _create_card_in_transaction(session, payload, user.id, idempotency_key)
     session.commit()
-    _try_embed_after_commit(request, detail.id, user.id)
+    background_tasks.add_task(_try_embed_after_commit, request, detail.id, user.id)
     return detail
 
 
@@ -717,6 +718,7 @@ def update_card(
     card_id: UUID,
     request: Request,
     payload: Annotated[CardUpdate, Body()],
+    background_tasks: BackgroundTasks,
     session: SessionDependency,
     user: CurrentUserDependency,
 ) -> CardDetail:
@@ -767,7 +769,7 @@ def update_card(
     detail = _card_detail(session, card_id, user.id)
     session.commit()
     if EDITABLE_SEMANTIC_FIELDS.intersection(changes):
-        _try_embed_after_commit(request, card_id, user.id)
+        background_tasks.add_task(_try_embed_after_commit, request, card_id, user.id)
     return detail
 
 

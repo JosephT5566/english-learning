@@ -211,6 +211,12 @@ writes have no fallback or dual-write path.
 6. Deck/card creates require a UUID idempotency key. Versioned normalized validated request content is hashed
    and stored with the resource under a partial owner/key unique index. Exact retries return that
    resource; different content under the key returns `409 idempotency_key_reused`.
+7. Single-card create and semantic edits explicitly commit confirmed content before scheduling
+   the existing hash-guarded embedding operation as a best-effort in-process background task.
+   ASGI sends the final response body before that task runs. Note-only edits skip embedding work;
+   unchanged semantic content skips the provider when its current embedding is already ready.
+   Missing or failed derived data remains recoverable through explicit backfill, including when
+   the process stops after confirmation and before the task finishes.
 
 ## Backend Review Write Flow
 
