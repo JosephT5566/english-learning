@@ -1,6 +1,6 @@
 # Decisions And Known Issues
 
-Last updated: 2026-10-22
+Last updated: 2026-10-24
 
 ## Durable Decisions
 
@@ -379,3 +379,13 @@ empty, and failed exports preserve the previous source/deployed content. Synthet
 fixtures now replace ignored build output only. IAM trust must move to the exact export workflow
 reference, and Actions PR creation must be enabled before use. These operational changes remain
 unverified and were not performed. See the [follow-up plan](product/2026-10-23-separate-guest-export-plan.md).
+
+## 2026-10-24: Track account-scoped practice activity instead of daily completion
+
+A validated private review result records an optional browser-local `YYYY-MM-DD` under an
+account-scoped activity key. The homepage follows the active authenticated subject and local date;
+guest sessions never access activity markers. Ignore the legacy shared month/day marker because
+it identifies neither an account nor a year. A storage failure cannot turn a confirmed save into
+an unconfirmed result. Success copy confirms only the saved batch and practiced-today activity,
+because the ten-card request can leave more cards due. Backend scheduling and API contracts are
+unchanged.

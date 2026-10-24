@@ -4,10 +4,22 @@
   import { enterGuestSession } from "$lib/auth";
   import { goto } from "$app/navigation";
   import GoogleSignIn from "$lib/components/GoogleSignIn.svelte";
-  import { isSignedIn } from "$lib/stores/auth";
+  import { authSession, isSignedIn } from "$lib/stores/auth";
+  import { hasPracticedToday, localReviewDate } from "$lib/review/activity";
 
-  let todayStr = $state("");
-  let testedToday = $state(false);
+  let today = $state<Date | null>(null);
+  let todayDate = $derived(today ? localReviewDate(today) : "");
+  let todayStr = $derived(
+    todayDate ? `${todayDate.slice(5, 7)}/${todayDate.slice(8)}` : "",
+  );
+  let ownerSubject = $derived(
+    $authSession.kind === "authenticated"
+      ? $authSession.profile.sub
+      : undefined,
+  );
+  let practicedToday = $derived(
+    !!today && !!ownerSubject && hasPracticedToday(ownerSubject, today),
+  );
   let guestError = $state("");
   async function continueAsGuest() {
     const result = enterGuestSession();
@@ -15,23 +27,25 @@
     else guestError = result.error;
   }
   let pageTitle = $derived(
-    $isSignedIn && testedToday
-      ? "Daily review complete — English Learning"
+    practicedToday
+      ? "Practiced today — English Learning"
       : "Daily review — English Learning",
   );
 
   onMount(() => {
-    const d = new Date();
-    const mm = String(d.getMonth() + 1).padStart(2, "0");
-    const dd = String(d.getDate()).padStart(2, "0");
-    todayStr = `${mm}/${dd}`;
-
-    try {
-      const v = localStorage.getItem("isTestedToday");
-      testedToday = v === todayStr;
-    } catch {
-      testedToday = false;
+    let timer: ReturnType<typeof setTimeout>;
+    function refreshDate() {
+      const now = new Date();
+      today = now;
+      const midnight = new Date(
+        now.getFullYear(),
+        now.getMonth(),
+        now.getDate() + 1,
+      );
+      timer = setTimeout(refreshDate, midnight.getTime() - now.getTime());
     }
+    refreshDate();
+    return () => clearTimeout(timer);
   });
 </script>
 
@@ -45,9 +59,7 @@
 
 <section class="homepage-container">
   <div class="welcome-copy">
-    {#if todayStr}<time datetime={new Date().toISOString().slice(0, 10)}
-        >{todayStr}</time
-      >{/if}
+    {#if todayStr}<time datetime={todayDate}>{todayStr}</time>{/if}
     <h1>Welcome to your daily practice.</h1>
     <p>Your language cards are ready whenever you are.</p>
   </div>
@@ -55,27 +67,27 @@
   <div class="review-invitation">
     <div
       class="review-status"
-      class:complete={$isSignedIn && testedToday}
+      class:complete={practicedToday}
       aria-hidden="true"
     >
       <span></span>
     </div>
     <div class="invitation-copy">
       <h2>
-        {$isSignedIn && testedToday
-          ? "Today’s review is complete"
+        {practicedToday
+          ? "You've practiced today"
           : "Make a little progress today"}
       </h2>
       <p>
-        {$isSignedIn && testedToday
-          ? "You can stop here, or take another pass through your due cards."
+        {practicedToday
+          ? "Your answers were saved. More cards may still be due; review again whenever you're ready."
           : "Open your due cards, reveal each answer, and mark how well you remembered it."}
       </p>
     </div>
 
     {#if $isSignedIn}
       <a class="primary-action" href={resolve("/review")}
-        >{testedToday ? "Review again" : "Start today’s review"}<span
+        >{practicedToday ? "Review again" : "Start today’s review"}<span
           aria-hidden="true">→</span
         ></a
       >

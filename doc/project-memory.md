@@ -1,6 +1,6 @@
 # Project Memory
 
-Last updated: 2026-10-23
+Last updated: 2026-10-24
 
 This file is the current product-state index. Training milestones, evidence limits, and the next
 training action belong in [`training/project-memory.md`](training/project-memory.md); detailed
@@ -20,7 +20,7 @@ Flip-before-answer, grading buttons, swipes and keyboard controls share the priv
 As of 2026-10-23, guest review omits the extra heading, progress notice and home/sign-in link;
 the shared header provides navigation and account actions.
 Completion offers an explicit Practice again action. Guest activity never reads, writes or clears
-private pending review commands or daily completion markers, and never submits answers.
+private pending review commands or account-scoped practice activity markers, and never submits answers.
 Authenticated users always receive private review at `/review`. The legacy `/review/guest`
 redirects to that shared entry and does not select guest mode. Fresh signed-out review entry
 without an explicit, unexpired choice returns home. Primary navigation is hidden during
@@ -163,8 +163,12 @@ and sanitized snapshot remain as evidence, but the wrapper requires deliberate e
   the user explicitly reloads and discards them; unclear archives refetch before claiming success.
 - Cards show an English-to-Chinese direction by default.
 - A card starts on the front face. The user clicks to flip it, then can drag/swipe or use action buttons on the back face.
-- Answer completion shows a `Submit Results` button. Only a validated FastAPI result changes the UI
-  to completed; retryable/authentication failures remain explicitly unconfirmed.
+- Answer completion shows a `Submit Results` button. Only a validated FastAPI result confirms that
+  batch was saved; retryable/authentication failures remain explicitly unconfirmed. A saved batch
+  records a best-effort browser-local `YYYY-MM-DD` activity hint scoped to the Google subject.
+  The homepage says "You've practiced today" for that account and date, including after an account
+  switch on the mounted page. This does not establish that all due cards were reviewed. The legacy
+  shared month/day marker is ignored, and unavailable marker storage cannot undo confirmed success.
 
 ## Important Behavior To Preserve
 
