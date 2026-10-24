@@ -11,6 +11,133 @@ async function answerOneCard(page: import("@playwright/test").Page) {
     .click();
 }
 
+for (const width of [1280, 390]) {
+  test(`a saved ten-card batch records account activity without claiming an empty backlog at ${width}px`, async ({
+    page,
+  }, testInfo) => {
+    await page.setViewportSize({ width, height: 850 });
+    await page.route("**/v1/reviews/due?*", async (route) => {
+      const response = await route.fetch();
+      const data = await response.json();
+      await route.fulfill({
+        response,
+        json: {
+          ...data,
+          items: Array.from({ length: 10 }, (_, index) => ({
+            ...data.items[0],
+            id: `aaaaaaaa-aaaa-4aaa-8aaa-${String(index + 1).padStart(12, "0")}`,
+          })),
+          next_cursor: "more-due-cards",
+        },
+      });
+    });
+    await page.goto("/__test__/auth/success");
+    for (let index = 0; index < 10; index++) {
+      const active = page.locator('.swipe--card[aria-hidden="false"]');
+      await expect(active).toBeVisible();
+      await expect(async () => {
+        await active.press("Enter");
+        await expect(active).toHaveAttribute("aria-expanded", "true", {
+          timeout: 100,
+        });
+      }).toPass({ intervals: [200], timeout: 3000 });
+      const answer = page.getByRole("button", { name: "Knew it", exact: true });
+      await expect(answer).toBeEnabled();
+      await answer.click();
+    }
+    await page
+      .getByRole("button", { name: "Submit Results", exact: true })
+      .click();
+    await expect(
+      page.getByRole("heading", { name: "Your review batch is saved!" }),
+    ).toBeVisible();
+    await expect(
+      page.getByText("10 answers were saved.", { exact: true }),
+    ).toBeVisible();
+    await expect(page.getByText(/More cards may still be due/)).toBeVisible();
+    await page.screenshot({
+      path: testInfo.outputPath(`activity-saved-${width}.png`),
+      fullPage: true,
+    });
+    const date = await page.evaluate(() => {
+      const now = new Date();
+      return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+    });
+    expect(
+      await page.evaluate(() =>
+        localStorage.getItem("review_practiced_on_v1:browser-test-success"),
+      ),
+    ).toBe(date);
+    expect(
+      await page.evaluate(() => localStorage.getItem("isTestedToday")),
+    ).toBeNull();
+    await page.getByRole("link", { name: "Back home", exact: true }).click();
+    await expect(
+      page.getByRole("heading", { name: "You've practiced today" }),
+    ).toBeVisible();
+    await expect(page).toHaveTitle("Practiced today — English Learning");
+    await expect(page.getByText(/More cards may still be due/)).toBeVisible();
+    await page.screenshot({
+      path: testInfo.outputPath(`activity-home-${width}.png`),
+      fullPage: true,
+    });
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+    ).toBe(true);
+    await page.evaluate(() => {
+      const exp = Math.floor(Date.now() / 1000) + 3600;
+      localStorage.setItem(
+        "gid_id_token",
+        `e30.${btoa(JSON.stringify({ sub: "browser-test-other-account", exp }))}.test`,
+      );
+      localStorage.setItem("gid_exp", String(exp));
+      window.dispatchEvent(
+        new StorageEvent("storage", { key: "gid_id_token" }),
+      );
+    });
+    await expect(
+      page.getByRole("link", { name: /Start today.s review/ }),
+    ).toBeVisible();
+    await expect(page).toHaveTitle("Daily review — English Learning");
+  });
+}
+
+test("activity storage failure cannot turn a validated save into an unconfirmed review", async ({
+  page,
+}) => {
+  await page.goto("/__test__/auth/success");
+  await expect(page.getByText("resilient", { exact: true })).toBeVisible();
+  await page.evaluate(() => {
+    const setItem = Storage.prototype.setItem;
+    Storage.prototype.setItem = function (key, value) {
+      if (
+        key.startsWith("review_practiced_on_v1:") ||
+        key === "isTestedToday"
+      ) {
+        throw new DOMException("Storage full", "QuotaExceededError");
+      }
+      setItem.call(this, key, value);
+    };
+  });
+  await answerOneCard(page);
+  await expect(
+    page.getByRole("heading", { name: "Your review batch is saved!" }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("1 answers were saved.", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Review not confirmed" }),
+  ).toHaveCount(0);
+  expect(
+    await page.evaluate(() =>
+      localStorage.getItem("review_practiced_on_v1:browser-test-success"),
+    ),
+  ).toBeNull();
+});
+
 test("the review card stack receives usable viewport height", async ({
   page,
 }) => {
@@ -51,12 +178,17 @@ test("an unconfirmed submission retries the identical command and succeeds once"
     localStorage.getItem("pending_review_submission_v1"),
   );
   expect(firstPending).not.toBeNull();
+  expect(
+    await page.evaluate(() =>
+      localStorage.getItem("review_practiced_on_v1:browser-test-retryable"),
+    ),
+  ).toBeNull();
 
   await page
     .getByRole("button", { name: "Retry submission", exact: true })
     .click();
   await expect(
-    page.getByRole("heading", { name: "You've completed today's review!" }),
+    page.getByRole("heading", { name: "Your review batch is saved!" }),
   ).toBeVisible();
   expect(
     await page.evaluate(() =>
@@ -178,6 +310,13 @@ for (const mode of ["server-error", "invalid-response"]) {
         localStorage.getItem("pending_review_submission_v1"),
       ),
     ).not.toBeNull();
+    expect(
+      await page.evaluate(
+        (mode) =>
+          localStorage.getItem(`review_practiced_on_v1:browser-test-${mode}`),
+        mode,
+      ),
+    ).toBeNull();
   });
 }
 
@@ -332,7 +471,7 @@ test("guest login replaces its batch with owned review and sends no guest answer
   ).toBeNull();
   await answerOneCard(page);
   await expect(
-    page.getByRole("heading", { name: "You've completed today's review!" }),
+    page.getByRole("heading", { name: "Your review batch is saved!" }),
   ).toBeVisible();
   await page.evaluate(() => {
     localStorage.removeItem("gid_id_token");
@@ -340,7 +479,7 @@ test("guest login replaces its batch with owned review and sends no guest answer
     window.dispatchEvent(new StorageEvent("storage", { key: "gid_id_token" }));
   });
   await expect(
-    page.getByRole("heading", { name: "You've completed today's review!" }),
+    page.getByRole("heading", { name: "Your review batch is saved!" }),
   ).toBeVisible();
   expect(
     await page.evaluate(() =>
@@ -397,7 +536,7 @@ test("private 401 retains exact pending bytes and retries after same-account log
     .getByRole("button", { name: "Retry submission", exact: true })
     .click();
   await expect(
-    page.getByRole("heading", { name: "You've completed today's review!" }),
+    page.getByRole("heading", { name: "Your review batch is saved!" }),
   ).toBeVisible();
   expect(commands).toHaveLength(2);
   expect(commands[1]).toEqual(commands[0]);

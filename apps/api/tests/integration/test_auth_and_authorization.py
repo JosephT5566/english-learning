@@ -7,13 +7,13 @@ from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import Engine, text
+from sqlalchemy import Engine, event, text
+from starlette.types import Message, Receive, Scope, Send
 
-from app import writes
 from app.auth import VerifiedGoogleIdentity
 from app.embeddings import EmbeddingFailure
 from app.main import create_app
-from app.semantic_text import DIMENSIONS
+from app.semantic_text import DIMENSIONS, content_hash
 from tests.integration.test_multilingual_domain_fixture import load_multilingual_fixture
 
 pytestmark = [
@@ -331,7 +331,9 @@ def test_card_create_commits_before_provider_timeout_and_replays_once(
         calls.append(content)
         raise EmbeddingFailure("provider_timeout")
 
-    monkeypatch.setattr(writes, "vertex_document_embedding", timeout)
+    monkeypatch.setattr(
+        api_client.app.state.embedding_provider, "document_embedding", timeout
+    )
     key = str(uuid4())
     payload = {"deck_id": FIXTURE_DECK_ID, "term": "derived", "meaning": "safe card"}
     headers = create_headers("fixture-token", key)
@@ -354,6 +356,100 @@ def test_card_create_commits_before_provider_timeout_and_replays_once(
     assert row == (1, 1, "retryable")
 
 
+@pytest.mark.parametrize("operation", ["create", "edit"])
+def test_card_save_sends_response_before_embedding_and_keeps_provider_failure(
+    api_client: TestClient,
+    migrated_database_engine: Engine,
+    monkeypatch: pytest.MonkeyPatch,
+    operation: str,
+) -> None:
+    api_client.app.state.settings = api_client.app.state.settings.model_copy(
+        update={"vertex_project_id": "synthetic-project"}
+    )
+    sent = []
+    observed = []
+
+    async def observe_response(scope: Scope, receive: Receive, send: Send) -> None:
+        async def observe_send(message: Message) -> None:
+            await send(message)
+            if message["type"] in {"http.response.start", "http.response.body"}:
+                sent.append(message.copy())
+
+        await api_client.app(scope, receive, observe_send)
+
+    def timeout(_content: str, **_kwargs: object) -> list[float]:
+        with migrated_database_engine.connect() as connection:
+            committed = connection.execute(
+                text("""
+                    SELECT c.id, c.meaning, c.semantic_content_hash, s.card_id
+                    FROM learning_cards c
+                    JOIN review_states s ON (s.card_id, s.owner_id) = (c.id, c.owner_id)
+                    WHERE c.term = 'response ordering'
+                """)
+            ).one()
+        observed.append((list(sent), committed))
+        raise EmbeddingFailure("provider_timeout")
+
+    monkeypatch.setattr(
+        api_client.app.state.embedding_provider, "document_embedding", timeout
+    )
+    client = TestClient(observe_response, raise_server_exceptions=False)
+    if operation == "create":
+        response = client.post(
+            "/v1/cards",
+            json={
+                "deck_id": FIXTURE_DECK_ID,
+                "term": "response ordering",
+                "meaning": "committed meaning",
+            },
+            headers=create_headers("fixture-token"),
+        )
+        expected_status = 201
+    else:
+        original = api_client.get(
+            f"/v1/cards/{FIXTURE_CARD_ID}", headers=bearer("fixture-token")
+        ).json()
+        response = client.patch(
+            f"/v1/cards/{FIXTURE_CARD_ID}",
+            json={
+                "version": original["version"],
+                "term": "response ordering",
+                "meaning": "committed meaning",
+            },
+            headers=bearer("fixture-token"),
+        )
+        expected_status = 200
+    client.close()
+
+    assert response.status_code == expected_status
+    assert len(observed) == 1
+    sent_before_provider, committed = observed[0]
+    assert sent_before_provider, "Provider started before response was sent"
+    assert sent_before_provider[0]["type"] == "http.response.start"
+    assert sent_before_provider[0]["status"] == expected_status
+    assert all(
+        message["type"] == "http.response.body" for message in sent_before_provider[1:]
+    )
+    assert sent_before_provider[-1]["type"] == "http.response.body"
+    assert not sent_before_provider[-1].get("more_body", False)
+    assert (
+        b"".join(message["body"] for message in sent_before_provider[1:])
+        == response.content
+    )
+    assert str(committed.id) == response.json()["id"]
+    assert committed.meaning == response.json()["meaning"] == "committed meaning"
+    assert committed.semantic_content_hash is not None
+    assert committed.card_id == committed.id
+    with migrated_database_engine.connect() as connection:
+        failure = connection.execute(
+            text("""
+                SELECT state, last_error_code FROM card_embeddings WHERE card_id = :id
+            """),
+            {"id": committed.id},
+        ).one()
+    assert failure == ("retryable", "provider_timeout")
+
+
 def test_only_semantic_card_edits_call_provider(
     api_client: TestClient,
     monkeypatch: pytest.MonkeyPatch,
@@ -367,7 +463,9 @@ def test_only_semantic_card_edits_call_provider(
         calls.append(content)
         return [1.0] * DIMENSIONS
 
-    monkeypatch.setattr(writes, "vertex_document_embedding", embed)
+    monkeypatch.setattr(
+        api_client.app.state.embedding_provider, "document_embedding", embed
+    )
     headers = bearer("fixture-token")
     original = api_client.get(f"/v1/cards/{FIXTURE_CARD_ID}", headers=headers).json()
     note = api_client.patch(
@@ -391,6 +489,114 @@ def test_only_semantic_card_edits_call_provider(
     )
     assert unchanged.status_code == 200
     assert len(calls) == 1
+
+
+@pytest.mark.parametrize(
+    ("operation", "hash_writes"),
+    [
+        ("create", 1),
+        ("note", 0),
+        ("same_semantic", 0),
+        ("normalized_semantic", 0),
+        ("changed_semantic", 1),
+        ("missing_hash_note", 1),
+    ],
+)
+def test_card_save_refreshes_hash_from_one_semantic_snapshot(
+    api_client: TestClient,
+    operation: str,
+    hash_writes: int,
+) -> None:
+    api_client.app.state.settings = api_client.app.state.settings.model_copy(
+        update={"vertex_project_id": None}
+    )
+    engine = api_client.app.state.database_engine
+    payload = {
+        "deck_id": FIXTURE_DECK_ID,
+        "term": "caf\u00e9",
+        "meaning": "coffee shop",
+        "pronunciation": "/ka.fei/",
+        "example_sentence": "We meet at the cafe.",
+        "example_translation": "A meeting at a coffee shop.",
+        "synonyms": ["coffeehouse", "cafe"],
+        "antonyms": [],
+    }
+    expected = {**payload, "language": "en"}
+    headers = bearer("fixture-token")
+    original = None
+    if operation != "create":
+        created = api_client.post(
+            "/v1/cards", json=payload, headers=create_headers("fixture-token")
+        )
+        assert created.status_code == 201
+        original = created.json()
+        if operation == "missing_hash_note":
+            with engine.begin() as connection:
+                connection.execute(
+                    text(
+                        "UPDATE learning_cards SET semantic_content_hash = NULL WHERE id = :id"
+                    ),
+                    {"id": original["id"]},
+                )
+
+    statements = []
+
+    def record_statement(
+        connection, cursor, statement, parameters, context, executemany
+    ):
+        statements.append(" ".join(statement.split()))
+
+    event.listen(engine, "before_cursor_execute", record_statement)
+    try:
+        if operation == "create":
+            response = api_client.post(
+                "/v1/cards", json=payload, headers=create_headers("fixture-token")
+            )
+        else:
+            changes = {
+                "note": {"note": "a note"},
+                "same_semantic": {"meaning": payload["meaning"]},
+                "normalized_semantic": {"term": " cafe\u0301 "},
+                "changed_semantic": {"meaning": "a different meaning"},
+                "missing_hash_note": {"note": "a note"},
+            }[operation]
+            response = api_client.patch(
+                f"/v1/cards/{original['id']}",
+                json={"version": original["version"], **changes},
+                headers=headers,
+            )
+            expected.update(changes)
+    finally:
+        event.remove(engine, "before_cursor_execute", record_statement)
+
+    assert response.status_code == (201 if operation == "create" else 200)
+    saved = response.json()
+    assert saved["version"] == (1 if original is None else original["version"] + 1)
+    assert saved["term"] == expected["term"].strip()
+    assert saved["meaning"] == expected["meaning"]
+    assert saved["note"] == expected.get("note")
+    with engine.connect() as connection:
+        stored_hash = connection.execute(
+            text("SELECT semantic_content_hash FROM learning_cards WHERE id = :id"),
+            {"id": saved["id"]},
+        ).scalar_one()
+    assert stored_hash == content_hash(expected)
+
+    semantic_reads = [
+        statement
+        for statement in statements
+        if statement.startswith("SELECT") and "semantic_content_hash" in statement
+    ]
+    assert len(semantic_reads) == 1
+    assert "c.term, c.meaning" in semantic_reads[0]
+    assert "c.owner_id =" in semantic_reads[0]
+    assert (
+        sum(
+            statement.startswith("UPDATE learning_cards SET semantic_content_hash =")
+            for statement in statements
+        )
+        == hash_writes
+    )
 
 
 def test_other_user_cannot_edit_or_archive_resources_by_changing_ids(

@@ -1,6 +1,6 @@
 # Decisions And Known Issues
 
-Last updated: 2026-10-22
+Last updated: 2026-10-24
 
 ## Durable Decisions
 
@@ -279,6 +279,11 @@ Last updated: 2026-10-22
   succeed before the UI confirms any card. Derived embeddings follow the response as best-effort
   in-process work, with the existing backfill as recovery. Manual creation and draft review remain.
 
+- 2026-10-24: Bulk card creation reads and locks its owned deck once per transaction, sharing a
+  private immutable deck context with the single-card creation helper. Single creation still
+  acquires its own lock. Exact replay precedes archive rejection, while new cards, review states,
+  and hashes retain atomic rollback and sorted idempotency-key processing.
+
 - 2026-10-07: Kept JSON authoring as a native textarea with explicit formatting and error navigation.
   jsonc-parser supplies browser-independent syntax offsets and maps local schema errors to original
   source ranges; missing fields point to their containing object. Comments and trailing commas
@@ -379,3 +384,47 @@ empty, and failed exports preserve the previous source/deployed content. Synthet
 fixtures now replace ignored build output only. IAM trust must move to the exact export workflow
 reference, and Actions PR creation must be enabled before use. These operational changes remain
 unverified and were not performed. See the [follow-up plan](product/2026-10-23-separate-guest-export-plan.md).
+
+## 2026-10-24: Track account-scoped practice activity instead of daily completion
+
+A validated private review result records an optional browser-local `YYYY-MM-DD` under an
+account-scoped activity key. The homepage follows the active authenticated subject and local date;
+guest sessions never access activity markers. Ignore the legacy shared month/day marker because
+it identifies neither an account nor a year. A storage failure cannot turn a confirmed save into
+an unconfirmed result. Success copy confirms only the saved batch and practiced-today activity,
+because the ten-card request can leave more cards due. Backend scheduling and API contracts are
+unchanged.
+
+- 2026-10-24: JSON card confirmation now checks and normalizes the edited selection locally,
+  persists the normalized fields and existing keys, and sends one bulk create request. The remote
+  owned-deck validation endpoint remains the preview boundary; confirmation no longer repeats that
+  read-only request. Bulk creation still enforces Pydantic CardFields validation and ownership.
+  Uncertain retries bypass normalization and reuse the exact stored content and keys; storage
+  failure still prevents starting a write.
+
+- 2026-10-24: Semantic search checks current index coverage before calling Vertex. A configured
+  search with zero indexed cards returns the existing empty response and eligible count without
+  requesting a query embedding or running vector ranking. Owner/deck checks and the unconfigured
+  provider error keep their precedence. Indexed searches still report provider failures as 503.
+
+- 2026-10-24: Single-card creation and semantic edits now follow bulk creation's best-effort
+  in-process BackgroundTasks pattern. Confirmed content and its semantic hash commit before the
+  response, and ASGI sends the final body before embedding begins. Existing owner/hash/claim guards,
+  replay behavior, note-only exclusion, ready-content no-op, and explicit backfill remain in force.
+  Process interruption can leave derived data missing or retryable; no durable queue or provider
+  availability requirement was added to card confirmation.
+
+- 2026-10-24: Each application lifespan and explicit embedding backfill run owns one lazy Vertex
+  provider. A lock serializes ADC discovery, stale or expired credential refresh, token snapshots,
+  and auth transport closure. Fresh credentials are reused across document and query embeddings;
+  auth failures permit retry. A provider 401 invalidates only the matching cached token so the next
+  explicit request refreshes it; a delayed rejection cannot invalidate a newer token. Prediction
+  HTTP calls remain independent and retain their eight-second
+  timeout outside the credential lock. Startup, health checks, and dry runs make no ADC or Vertex
+  calls. No process-global credential cache or shared prediction session was added.
+
+- 2026-10-24: Card creation and edits refresh the canonical semantic hash from one owned card/deck
+  snapshot that includes the stored hash. The helper writes only when the computed hash differs,
+  removing the separate hash-only read on edits. Every edit still recomputes from persisted fields,
+  including note-only edits that repair a missing hash. Canonical normalization, optimistic versions,
+  transaction boundaries, and background embedding eligibility retain their existing behavior.

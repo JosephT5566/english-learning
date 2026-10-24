@@ -15,6 +15,7 @@
     ReviewSubmissionItem,
   } from "$lib/api/contracts";
   import { getProfile } from "$lib/auth";
+  import { markPracticedToday } from "$lib/review/activity";
   import { toOwnedStudyCard, type CardAnswer } from "$lib/review/presentation";
   import {
     clearPendingSubmission,
@@ -203,11 +204,7 @@
       clearPendingSubmission();
       pending = null;
       viewState = "success";
-      const today = new Date();
-      localStorage.setItem(
-        "isTestedToday",
-        `${String(today.getMonth() + 1).padStart(2, "0")}/${String(today.getDate()).padStart(2, "0")}`,
-      );
+      markPracticedToday(ownerSubject);
     } catch (error) {
       if (
         active &&
@@ -326,8 +323,11 @@
   {:else if viewState === "success"}
     <section class="review-status" aria-live="polite">
       <Icon icon="solar:confetti-bold-duotone" width="120px" height="120px" />
-      <h1>You've completed today's review!</h1>
+      <h1>Your review batch is saved!</h1>
       <p>{result?.items.length ?? 0} answers were saved.</p>
+      <p>
+        More cards may still be due. You can review another batch from home.
+      </p>
       <a class="review-action" href={resolve("/")}>Back home</a>
     </section>
   {:else if viewState === "authentication_required"}

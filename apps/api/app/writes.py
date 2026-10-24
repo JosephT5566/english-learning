@@ -3,7 +3,8 @@
 import hashlib
 import json
 import logging
-from datetime import date
+from dataclasses import dataclass
+from datetime import date, datetime
 from typing import Annotated, Literal
 from uuid import UUID
 
@@ -23,7 +24,7 @@ from sqlalchemy.orm import Session
 
 from app.auth import CurrentUserDependency
 from app.database import database_session
-from app.embeddings import process_card, vertex_document_embedding
+from app.embeddings import process_card
 from app.errors import ApiError
 from app.reads import (
     CARD_DETAIL_COLUMNS,
@@ -291,7 +292,7 @@ def _card_detail(session: Session, card_id: UUID, owner_id: int) -> CardDetail:
     return CardDetail.model_validate(row)
 
 
-def _semantic_hash(session: Session, card_id: UUID, owner_id: int) -> str:
+def _refresh_semantic_hash(session: Session, card_id: UUID, owner_id: int) -> None:
     from app.embeddings import CARD_SELECT
 
     row = (
@@ -299,7 +300,14 @@ def _semantic_hash(session: Session, card_id: UUID, owner_id: int) -> str:
         .mappings()
         .one()
     )
-    return content_hash(dict(row))
+    new_hash = content_hash(dict(row))
+    if new_hash != row["semantic_content_hash"]:
+        session.execute(
+            text(
+                "UPDATE learning_cards SET semantic_content_hash = :hash WHERE id = :id AND owner_id = :owner_id"
+            ),
+            {"hash": new_hash, "id": card_id, "owner_id": owner_id},
+        )
 
 
 def _try_embed_after_commit(request: Request, card_id: UUID, owner_id: int) -> None:
@@ -311,7 +319,7 @@ def _try_embed_after_commit(request: Request, card_id: UUID, owner_id: int) -> N
             request.app.state.database_session_factory,
             card_id,
             owner_id,
-            lambda content: vertex_document_embedding(
+            lambda content: request.app.state.embedding_provider.document_embedding(
                 content,
                 project=settings.vertex_project_id,
                 location=settings.vertex_location,
@@ -511,6 +519,7 @@ def archive_deck(
 def create_card(
     request: Request,
     payload: Annotated[CardCreate, Body()],
+    background_tasks: BackgroundTasks,
     session: SessionDependency,
     user: CurrentUserDependency,
     raw_idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
@@ -519,12 +528,40 @@ def create_card(
     idempotency_key = _idempotency_key(raw_idempotency_key)
     detail = _create_card_in_transaction(session, payload, user.id, idempotency_key)
     session.commit()
-    _try_embed_after_commit(request, detail.id, user.id)
+    background_tasks.add_task(_try_embed_after_commit, request, detail.id, user.id)
     return detail
 
 
+@dataclass(frozen=True)
+class _LockedDeck:
+    id: UUID
+    owner_id: int
+    archived_at: datetime | None
+
+
+def _lock_card_deck(session: Session, deck_id: UUID, owner_id: int) -> _LockedDeck:
+    deck = (
+        session.execute(
+            text(
+                "SELECT id, owner_id, archived_at FROM learning_decks WHERE id = :id AND owner_id = :owner_id FOR UPDATE"
+            ),
+            {"id": deck_id, "owner_id": owner_id},
+        )
+        .mappings()
+        .one_or_none()
+    )
+    if deck is None:
+        raise _not_found("deck")
+    return _LockedDeck(**deck)
+
+
 def _create_card_in_transaction(
-    session: Session, payload: CardCreate, owner_id: int, idempotency_key: UUID
+    session: Session,
+    payload: CardCreate,
+    owner_id: int,
+    idempotency_key: UUID,
+    *,
+    locked_deck: _LockedDeck | None = None,
 ) -> CardDetail:
     """Create or replay a card without committing the caller's transaction."""
     request_hash = _creation_request_hash(payload)
@@ -548,15 +585,10 @@ def _create_card_in_transaction(
             raise _idempotency_key_reused()
         detail = _card_detail(session, existing.id, owner_id)
         return detail
-    deck_archived = session.execute(
-        text(
-            "SELECT archived_at FROM learning_decks WHERE id = :id AND owner_id = :owner_id FOR UPDATE"
-        ),
-        {"id": payload.deck_id, "owner_id": owner_id},
-    ).one_or_none()
-    if deck_archived is None:
-        raise _not_found("deck")
-    if deck_archived[0] is not None:
+    deck = locked_deck or _lock_card_deck(session, payload.deck_id, owner_id)
+    if deck.id != payload.deck_id or deck.owner_id != owner_id:
+        raise ValueError("Locked deck does not match the card owner and deck.")
+    if deck.archived_at is not None:
         raise ApiError(
             status_code=409,
             code="deck_archived",
@@ -622,16 +654,7 @@ def _create_card_in_transaction(
         ),
         {"card_id": card_id, "owner_id": owner_id},
     )
-    session.execute(
-        text(
-            "UPDATE learning_cards SET semantic_content_hash = :hash WHERE id = :id AND owner_id = :owner_id"
-        ),
-        {
-            "hash": _semantic_hash(session, card_id, owner_id),
-            "id": card_id,
-            "owner_id": owner_id,
-        },
-    )
+    _refresh_semantic_hash(session, card_id, owner_id)
     detail = _card_detail(session, card_id, owner_id)
     return detail
 
@@ -663,19 +686,12 @@ def create_cards(
     _reject_unknown_filters(request, set())
     # Serialize writes against deck archival. Sort keys to prevent deadlocks with
     # overlapping concurrent requests, including keys previously used in other decks.
-    deck = session.execute(
-        text(
-            "SELECT id FROM learning_decks WHERE id = :id AND owner_id = :owner_id FOR UPDATE"
-        ),
-        {"id": deck_id, "owner_id": user.id},
-    ).scalar_one_or_none()
-    if deck is None:
-        raise _not_found("deck")
+    deck = _lock_card_deck(session, deck_id, user.id)
     results = {}
     for item in sorted(payload.cards, key=lambda item: item.idempotency_key):
         command = CardCreate(deck_id=deck_id, **item.fields.model_dump())
         results[item.idempotency_key] = _create_card_in_transaction(
-            session, command, user.id, item.idempotency_key
+            session, command, user.id, item.idempotency_key, locked_deck=deck
         )
     response = CardBulkResult(
         cards=[
@@ -700,6 +716,7 @@ def update_card(
     card_id: UUID,
     request: Request,
     payload: Annotated[CardUpdate, Body()],
+    background_tasks: BackgroundTasks,
     session: SessionDependency,
     user: CurrentUserDependency,
 ) -> CardDetail:
@@ -733,24 +750,11 @@ def update_card(
         if owned is None:
             raise _not_found("card")
         raise _version_conflict()
-    new_hash = _semantic_hash(session, card_id, user.id)
-    previous_hash = session.execute(
-        text(
-            "SELECT semantic_content_hash FROM learning_cards WHERE id = :id AND owner_id = :owner_id"
-        ),
-        {"id": card_id, "owner_id": user.id},
-    ).scalar_one()
-    if new_hash != previous_hash:
-        session.execute(
-            text(
-                "UPDATE learning_cards SET semantic_content_hash = :hash WHERE id = :id AND owner_id = :owner_id"
-            ),
-            {"hash": new_hash, "id": card_id, "owner_id": user.id},
-        )
+    _refresh_semantic_hash(session, card_id, user.id)
     detail = _card_detail(session, card_id, user.id)
     session.commit()
     if EDITABLE_SEMANTIC_FIELDS.intersection(changes):
-        _try_embed_after_commit(request, card_id, user.id)
+        background_tasks.add_task(_try_embed_after_commit, request, card_id, user.id)
     return detail
 
 

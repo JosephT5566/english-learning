@@ -1,6 +1,6 @@
 # Architecture Memory
 
-Last updated: 2026-10-23
+Last updated: 2026-10-24
 
 ## Stack
 
@@ -75,8 +75,10 @@ Last updated: 2026-10-23
 - `apps/api/app/writes.py`: server-owned deck/card create, optimistic edit, and archive operations.
 - `apps/api/app/reviews.py`: authenticated atomic review submissions, scheduling transitions,
   idempotent replay, and deterministic row-lock concurrency control.
-- `apps/api/app/semantic_search.py`: bounded query validation, one Vertex query embedding, and exact
-  pgvector ranking after owner/archive/language/deck/model/state/hash SQL predicates.
+- `apps/api/app/semantic_search.py`: bounded query validation and owner-scoped index coverage before
+  one Vertex query embedding and exact pgvector ranking. Zero current embeddings skip both provider
+  and ranking work after deck and provider-configuration checks. Coverage and ranking apply
+  owner/archive/language/deck/model/state/hash SQL predicates.
 - `apps/api/app/imports.py`: bounded CSV reading, validation, canonicalization, hashing, dry-run
   audit persistence, and private in-memory confirmed-import candidates.
 - `apps/api/app/import_events.py`: bounded local import-command outcome events without source
@@ -84,9 +86,17 @@ Last updated: 2026-10-23
 - `apps/api/app/confirmed_imports.py`: approved-snapshot verification, atomic confirmed import,
   exact replay, post-commit reconciliation, safe reports, and the local operator CLI.
 - `apps/api/app/semantic_text.py`: versioned NFC canonical card text and SHA-256 semantic hash.
-- `apps/api/app/embeddings.py`: bounded Vertex document embedding, vector validation, and
-  owner/hash/model-guarded derived-data transactions after confirmed card commits.
+- `apps/api/app/embeddings.py`: an application-lifespan-owned lazy Vertex embedding provider,
+  vector validation, and owner/hash/model-guarded derived-data transactions after confirmed card
+  commits. One lock protects ADC discovery, credential refresh, token snapshots, and auth transport
+  shutdown. Fresh credentials serve both document and query calls; near-expired or expired tokens
+  refresh before use. Discovery and refresh failures remain retryable. Prediction calls use
+  independent `requests.post` operations with the existing eight-second timeout outside the lock.
+  Startup and health checks do not discover credentials or contact Vertex.
 - `apps/api/app/embedding_backfill.py`: explicit owner-bounded, keyset-paged retry and backfill CLI.
+  Each invocation owns and closes one lazy embedding provider. Dry runs never discover credentials
+  or call the provider. Application shutdown closes its provider's auth transport independently of
+  database disposal.
 - `apps/api/openapi.json`: committed deterministic API schema used for frontend type generation and
   contract-drift checks.
 - `apps/api/scripts/export_openapi.py`: deterministic OpenAPI export from the FastAPI application.
@@ -209,6 +219,12 @@ writes have no fallback or dual-write path.
 6. Deck/card creates require a UUID idempotency key. Versioned normalized validated request content is hashed
    and stored with the resource under a partial owner/key unique index. Exact retries return that
    resource; different content under the key returns `409 idempotency_key_reused`.
+7. Single-card create and semantic edits explicitly commit confirmed content before scheduling
+   the existing hash-guarded embedding operation as a best-effort in-process background task.
+   ASGI sends the final response body before that task runs. Note-only edits skip embedding work;
+   unchanged semantic content skips the provider when its current embedding is already ready.
+   Missing or failed derived data remains recoverable through explicit backfill, including when
+   the process stops after confirmation and before the task finishes.
 
 ## Backend Review Write Flow
 
@@ -425,9 +441,11 @@ Review update payload shape is:
   extra fields, requires 1-20 cards, limits valid request bodies to 100,000 bytes, and returns
   normalized drafts. It creates no cards or review states. Invalid fields use the existing safe
   validation envelope, including card indices.
-- Users edit, deselect, and explicitly confirm drafts. The complete selected set is revalidated
-  after edits, then saved with one `POST /v1/decks/{deck_id}/cards/bulk` request. Its Pydantic
+- Users edit, deselect, and explicitly confirm drafts. The complete selected set is checked and
+  normalized synchronously against the local schema after edits, without another remote validation
+  request. The normalized typed fields and keys are persisted before one `POST /v1/decks/{deck_id}/cards/bulk` request. Its Pydantic
   envelope contains 1-20 `{idempotency_key, fields}` entries and is bounded to 100,000 bytes.
+  The bulk endpoint still validates every card with Pydantic `CardFields`.
   Deck context stays in the route. All new cards, fresh review states, and semantic hashes commit
   in one transaction; any rejection rolls back every new card in the selection.
 - Bulk and single-card creation share the same per-card idempotency keys and normalized request

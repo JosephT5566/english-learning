@@ -12,7 +12,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.config import ConfigurationError, load_settings
 from app.database import create_database_engine, create_database_session_factory
-from app.embeddings import process_card, vertex_document_embedding
+from app.embeddings import VertexEmbeddingProvider, process_card
 from app.semantic_text import MODEL_VERSION
 
 
@@ -33,6 +33,7 @@ def run(
     last_id = cursor
     scan_complete = False
     started = time.monotonic()
+    provider = VertexEmbeddingProvider()
     try:
         # Each page is short-lived; a card may change while the provider is running.
         while sum(counts.values()) < limit and time.monotonic() - started < 1800:
@@ -77,7 +78,7 @@ def run(
                         factory,
                         card_id,
                         owner_id,
-                        lambda content: vertex_document_embedding(
+                        lambda content: provider.document_embedding(
                             content,
                             project=settings.vertex_project_id,
                             location=settings.vertex_location,
@@ -93,7 +94,10 @@ def run(
             "time_limit_reached": time.monotonic() - started >= 1800,
         }
     finally:
-        engine.dispose()
+        try:
+            provider.close()
+        finally:
+            engine.dispose()
 
 
 def main() -> None:

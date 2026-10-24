@@ -4,13 +4,14 @@ import os
 from concurrent.futures import ThreadPoolExecutor
 from threading import Event
 
+import google.auth
 import pytest
 from sqlalchemy import Engine, MetaData, Table, text
 
 from app import embedding_backfill
 from app.database import create_database_session_factory
 from app.embedding_backfill import run as run_backfill
-from app.embeddings import EmbeddingFailure, process_card
+from app.embeddings import EmbeddingFailure, VertexEmbeddingProvider, process_card
 from app.semantic_text import DIMENSIONS, MODEL_VERSION
 from tests.integration.test_learning_cards import (
     insert_card,
@@ -195,7 +196,7 @@ def test_sanitized_backfill_failure_and_retry_rehearsal(
     def fail(*_args: object, **_kwargs: object) -> list[float]:
         raise EmbeddingFailure("provider_timeout")
 
-    monkeypatch.setattr(embedding_backfill, "vertex_document_embedding", fail)
+    monkeypatch.setattr(VertexEmbeddingProvider, "document_embedding", fail)
     first = run_backfill(owner_id=owner_id, cursor=None, limit=1)
     assert first["counts"] == {"provider_timeout": 1}
     assert embedding_row(engine, card_id)["state"] == "retryable"
@@ -207,10 +208,50 @@ def test_sanitized_backfill_failure_and_retry_rehearsal(
             {"id": card_id},
         )
     monkeypatch.setattr(
-        embedding_backfill,
-        "vertex_document_embedding",
+        VertexEmbeddingProvider,
+        "document_embedding",
         lambda *_args, **_kwargs: [1.0] * DIMENSIONS,
     )
     second = run_backfill(owner_id=owner_id, cursor=None, limit=1)
     assert second["counts"] == {"ready": 1}
     assert embedding_row(engine, card_id)["state"] == "ready"
+
+
+def test_backfill_owns_one_lazy_provider_per_run(
+    migrated_database_engine: Engine, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    owner_id, card_id = fixture_card(migrated_database_engine)
+    monkeypatch.setenv("VERTEX_PROJECT_ID", "synthetic-project")
+    providers = []
+    calls = []
+    closed = []
+
+    def no_adc(**_kwargs: object) -> None:
+        pytest.fail("dry-run or fake provider must not discover credentials")
+
+    class ObservedProvider(VertexEmbeddingProvider):
+        def __init__(self) -> None:
+            super().__init__()
+            providers.append(self)
+
+        def document_embedding(self, _content: str, **_kwargs: object) -> list[float]:
+            calls.append(self)
+            return [1.0] * DIMENSIONS
+
+        def close(self) -> None:
+            closed.append(self)
+            super().close()
+
+    monkeypatch.setattr(google.auth, "default", no_adc)
+    monkeypatch.setattr(embedding_backfill, "VertexEmbeddingProvider", ObservedProvider)
+    first = run_backfill(owner_id=owner_id, cursor=None, limit=1, dry_run=True)
+    assert first["counts"] == {"eligible": 1}
+    assert calls == []
+    assert closed == providers
+    second = run_backfill(owner_id=owner_id, cursor=None, limit=1)
+    assert second["counts"] == {"ready": 1}
+    assert embedding_row(migrated_database_engine, card_id)["state"] == "ready"
+    assert len(providers) == 2
+    assert providers[0] is not providers[1]
+    assert calls == [providers[1]]
+    assert closed == providers

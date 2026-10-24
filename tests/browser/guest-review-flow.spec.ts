@@ -13,6 +13,7 @@ test.beforeEach(({ page, baseURL }, testInfo) => {
 });
 const pending = '{"sentinel":"private pending bytes"}';
 const daily = "private-daily-sentinel";
+const activityKey = "review_practiced_on_v1:private-account";
 const publicPath = "**/guest/cards.json";
 const emptySnapshot = {
   schema_version: 1,
@@ -22,9 +23,10 @@ const emptySnapshot = {
 
 async function seed(page: Page, signedIn = false) {
   await page.addInitScript(
-    ({ pending, daily, signedIn }) => {
+    ({ pending, daily, signedIn, activityKey }) => {
       localStorage.setItem("pending_review_submission_v1", pending);
       localStorage.setItem("isTestedToday", daily);
+      localStorage.setItem(activityKey, daily);
       if (signedIn) {
         const exp = Math.floor(Date.now() / 1000) + 3600;
         const token = `e30.${btoa(JSON.stringify({ sub: "browser-test-empty", exp }))}.test`;
@@ -32,7 +34,7 @@ async function seed(page: Page, signedIn = false) {
         localStorage.setItem("gid_exp", String(exp));
       }
     },
-    { pending, daily, signedIn },
+    { pending, daily, signedIn, activityKey },
   );
 }
 
@@ -110,11 +112,15 @@ for (const width of [1280, 390]) {
     expect(downloads).toHaveLength(1);
     expect(new URL(downloads[0]).pathname).toBe(`${root}/guest/cards.json`);
     expect(
-      await page.evaluate(() => [
-        localStorage.getItem("pending_review_submission_v1"),
-        localStorage.getItem("isTestedToday"),
-      ]),
-    ).toEqual([pending, daily]);
+      await page.evaluate(
+        (activityKey) => [
+          localStorage.getItem("pending_review_submission_v1"),
+          localStorage.getItem("isTestedToday"),
+          localStorage.getItem(activityKey),
+        ],
+        activityKey,
+      ),
+    ).toEqual([pending, daily, daily]);
     expect(
       await page.evaluate(
         () => document.documentElement.scrollWidth <= innerWidth,
@@ -283,7 +289,7 @@ test("a later authenticated submission contains only its newly answered owned ca
     ],
   });
   await expect(
-    page.getByRole("heading", { name: "You've completed today's review!" }),
+    page.getByRole("heading", { name: "Your review batch is saved!" }),
   ).toBeVisible();
 });
 
