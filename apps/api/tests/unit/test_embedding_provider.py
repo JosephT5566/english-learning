@@ -13,6 +13,7 @@ from fastapi.testclient import TestClient
 from google.auth import _helpers
 from google.auth.credentials import Credentials
 from google.auth.exceptions import DefaultCredentialsError, RefreshError
+from google.auth.transport.requests import Request
 
 from app import health, main
 from app.embeddings import EmbeddingFailure, VertexEmbeddingProvider
@@ -319,9 +320,13 @@ def test_close_releases_auth_transport_and_rejects_further_use(
     credentials: FakeCredentials,
     provider: VertexEmbeddingProvider,
 ) -> None:
-    close = Mock()
-    monkeypatch.setattr(requests.Session, "close", close)
+    session = requests.Session()
+    close = Mock(wraps=session.close)
+    monkeypatch.setattr(session, "close", close)
+    monkeypatch.setattr("app.embeddings.AuthRequest", lambda: Request(session=session))
     provider.document_embedding("synthetic", **PROJECT)
+    with requests.Session():
+        pass
     provider.close()
     close.assert_called_once_with()
     with pytest.raises(EmbeddingFailure, match="^provider_unavailable$"):
