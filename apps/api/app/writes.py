@@ -24,7 +24,7 @@ from sqlalchemy.orm import Session
 
 from app.auth import CurrentUserDependency
 from app.database import database_session
-from app.embeddings import process_card, vertex_document_embedding
+from app.embeddings import process_card
 from app.errors import ApiError
 from app.reads import (
     CARD_DETAIL_COLUMNS,
@@ -312,7 +312,7 @@ def _try_embed_after_commit(request: Request, card_id: UUID, owner_id: int) -> N
             request.app.state.database_session_factory,
             card_id,
             owner_id,
-            lambda content: vertex_document_embedding(
+            lambda content: request.app.state.embedding_provider.document_embedding(
                 content,
                 project=settings.vertex_project_id,
                 location=settings.vertex_location,

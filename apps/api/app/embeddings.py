@@ -2,10 +2,15 @@
 
 import json
 import math
+import threading
 from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
+import google.auth
+import requests
+from google.auth.credentials import Credentials, TokenState
+from google.auth.transport.requests import Request as AuthRequest
 from sqlalchemy import text
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -45,87 +50,118 @@ def validate_vector(values: Sequence[float]) -> list[float]:
     return [float(x) for x in values]
 
 
-def _vertex_embedding(
-    content: str, *, task_type: str, project: str, location: str
-) -> list[float]:
-    """Use workload identity via ADC; never log request/response content."""
+class VertexEmbeddingProvider:
+    """Own lazy ADC credentials and auth transport for one application or run."""
 
-    import google.auth
-    import requests
-    from google.auth.transport.requests import Request as AuthRequest
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._credentials: Credentials | None = None
+        self._auth_request: AuthRequest | None = None
+        self._closed = False
 
-    try:
-        credentials, _ = google.auth.default(
-            scopes=["https://www.googleapis.com/auth/cloud-platform"]
+    def _access_token(self) -> str:
+        with self._lock:
+            if self._closed:
+                raise EmbeddingFailure("provider_unavailable")
+            try:
+                if self._credentials is None:
+                    self._credentials, _ = google.auth.default(
+                        scopes=["https://www.googleapis.com/auth/cloud-platform"]
+                    )
+                if self._credentials.token_state is not TokenState.FRESH:
+                    if self._auth_request is None:
+                        self._auth_request = AuthRequest()
+                    self._credentials.refresh(self._auth_request)
+                token = self._credentials.token
+                if not isinstance(token, str) or not token:
+                    raise google.auth.exceptions.RefreshError("Missing access token")
+                return token
+            except google.auth.exceptions.GoogleAuthError:
+                self._credentials = None
+                raise
+
+    def close(self) -> None:
+        with self._lock:
+            if self._closed:
+                return
+            self._closed = True
+            self._credentials = None
+            if self._auth_request is not None:
+                self._auth_request.session.close()
+
+    def document_embedding(
+        self, content: str, *, project: str, location: str
+    ) -> list[float]:
+        return self._embedding(
+            content, task_type="RETRIEVAL_DOCUMENT", project=project, location=location
         )
-        credentials.refresh(AuthRequest())
-        url = (
-            f"https://{location}-aiplatform.googleapis.com/v1/projects/{project}"
-            f"/locations/{location}/publishers/google/models/gemini-embedding-001:predict"
+
+    def query_embedding(
+        self, content: str, *, project: str, location: str
+    ) -> list[float]:
+        return self._embedding(
+            content, task_type="RETRIEVAL_QUERY", project=project, location=location
         )
-        response = requests.post(
-            url,
-            headers={"Authorization": f"Bearer {credentials.token}"},
-            json={
-                "instances": [{"content": content, "task_type": task_type}],
-                "parameters": {
-                    "autoTruncate": False,
-                    "outputDimensionality": DIMENSIONS,
+
+    def _embedding(
+        self, content: str, *, task_type: str, project: str, location: str
+    ) -> list[float]:
+        try:
+            token = self._access_token()
+            url = (
+                f"https://{location}-aiplatform.googleapis.com/v1/projects/{project}"
+                f"/locations/{location}/publishers/google/models/gemini-embedding-001:predict"
+            )
+            response = requests.post(
+                url,
+                headers={"Authorization": f"Bearer {token}"},
+                json={
+                    "instances": [{"content": content, "task_type": task_type}],
+                    "parameters": {
+                        "autoTruncate": False,
+                        "outputDimensionality": DIMENSIONS,
+                    },
                 },
-            },
-            timeout=8,
-        )
-        response.raise_for_status()
-        embedding = response.json()["predictions"][0]["embeddings"]
-        stats = embedding["statistics"]
-        if stats["truncated"] is not False:
-            raise EmbeddingFailure("truncated_input")
-        if (
-            isinstance(stats["token_count"], bool)
-            or not isinstance(stats["token_count"], int)
-            or stats["token_count"] < 0
-        ):
-            raise EmbeddingFailure("invalid_response")
-        return validate_vector(embedding["values"])
-    except EmbeddingFailure:
-        raise
-    except requests.Timeout:
-        raise EmbeddingFailure("provider_timeout") from None
-    except requests.HTTPError as error:
-        status = error.response.status_code if error.response is not None else None
-        if status == 429:
-            raise EmbeddingFailure("provider_rate_limited") from None
-        raise EmbeddingFailure(
-            "provider_unavailable"
-            if status and status >= 500
-            else "provider_http_error"
-        ) from None
-    except requests.RequestException:
-        raise EmbeddingFailure("provider_http_error") from None
-    except (KeyError, IndexError, TypeError, ValueError):
-        raise EmbeddingFailure("invalid_response") from None
-    except google.auth.exceptions.GoogleAuthError:
-        raise EmbeddingFailure("provider_auth_error") from None
-
-
-def vertex_document_embedding(
-    content: str, *, project: str, location: str
-) -> list[float]:
-    return _vertex_embedding(
-        content,
-        task_type="RETRIEVAL_DOCUMENT",
-        project=project,
-        location=location,
-    )
-
-
-def vertex_query_embedding(content: str, *, project: str, location: str) -> list[float]:
-    return _vertex_embedding(
-        content,
-        task_type="RETRIEVAL_QUERY",
-        project=project,
-        location=location,
-    )
+                timeout=8,
+            )
+            response.raise_for_status()
+            embedding = response.json()["predictions"][0]["embeddings"]
+            stats = embedding["statistics"]
+            if stats["truncated"] is not False:
+                raise EmbeddingFailure("truncated_input")
+            if (
+                isinstance(stats["token_count"], bool)
+                or not isinstance(stats["token_count"], int)
+                or stats["token_count"] < 0
+            ):
+                raise EmbeddingFailure("invalid_response")
+            return validate_vector(embedding["values"])
+        except EmbeddingFailure:
+            raise
+        except requests.Timeout:
+            raise EmbeddingFailure("provider_timeout") from None
+        except requests.HTTPError as error:
+            status = error.response.status_code if error.response is not None else None
+            if status == 401:
+                with self._lock:
+                    if (
+                        self._credentials is not None
+                        and self._credentials.token == token
+                    ):
+                        self._credentials.token = None
+            if status == 429:
+                raise EmbeddingFailure("provider_rate_limited") from None
+            raise EmbeddingFailure(
+                "provider_unavailable"
+                if status and status >= 500
+                else "provider_http_error"
+            ) from None
+        except requests.RequestException:
+            raise EmbeddingFailure("provider_http_error") from None
+        except (KeyError, IndexError, TypeError, ValueError):
+            raise EmbeddingFailure("invalid_response") from None
+        except google.auth.exceptions.GoogleAuthError:
+            raise EmbeddingFailure("provider_auth_error") from None
 
 
 def process_card(

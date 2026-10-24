@@ -10,7 +10,6 @@ from fastapi.testclient import TestClient
 from sqlalchemy import Engine, text
 from starlette.types import Message, Receive, Scope, Send
 
-from app import writes
 from app.auth import VerifiedGoogleIdentity
 from app.embeddings import EmbeddingFailure
 from app.main import create_app
@@ -332,7 +331,9 @@ def test_card_create_commits_before_provider_timeout_and_replays_once(
         calls.append(content)
         raise EmbeddingFailure("provider_timeout")
 
-    monkeypatch.setattr(writes, "vertex_document_embedding", timeout)
+    monkeypatch.setattr(
+        api_client.app.state.embedding_provider, "document_embedding", timeout
+    )
     key = str(uuid4())
     payload = {"deck_id": FIXTURE_DECK_ID, "term": "derived", "meaning": "safe card"}
     headers = create_headers("fixture-token", key)
@@ -389,7 +390,9 @@ def test_card_save_sends_response_before_embedding_and_keeps_provider_failure(
         observed.append((list(sent), committed))
         raise EmbeddingFailure("provider_timeout")
 
-    monkeypatch.setattr(writes, "vertex_document_embedding", timeout)
+    monkeypatch.setattr(
+        api_client.app.state.embedding_provider, "document_embedding", timeout
+    )
     client = TestClient(observe_response, raise_server_exceptions=False)
     if operation == "create":
         response = client.post(
@@ -460,7 +463,9 @@ def test_only_semantic_card_edits_call_provider(
         calls.append(content)
         return [1.0] * DIMENSIONS
 
-    monkeypatch.setattr(writes, "vertex_document_embedding", embed)
+    monkeypatch.setattr(
+        api_client.app.state.embedding_provider, "document_embedding", embed
+    )
     headers = bearer("fixture-token")
     original = api_client.get(f"/v1/cards/{FIXTURE_CARD_ID}", headers=headers).json()
     note = api_client.patch(

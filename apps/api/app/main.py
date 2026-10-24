@@ -15,6 +15,7 @@ from app.database import (
     create_database_session_factory,
     dispose_database_engine,
 )
+from app.embeddings import VertexEmbeddingProvider
 from app.errors import register_error_handlers
 from app.guest_export import router as guest_export_router
 from app.health import router as health_router
@@ -40,7 +41,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     database_engine = create_database_engine(settings)
     database_session_factory = create_database_session_factory(database_engine)
 
+    embedding_provider = VertexEmbeddingProvider()
     try:
+        app.state.embedding_provider = embedding_provider
         # Expose application-scoped resources to request handlers.
         app.state.settings = settings
         app.state.guest_export_permit = threading.BoundedSemaphore(1)
@@ -49,7 +52,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         app.state.token_verifier = GoogleTokenVerifier(settings.google_oauth_client_id)
         yield
     finally:
-        dispose_database_engine(database_engine)
+        try:
+            embedding_provider.close()
+        finally:
+            dispose_database_engine(database_engine)
 
 
 def create_app() -> FastAPI:

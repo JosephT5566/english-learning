@@ -7,7 +7,6 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import Engine, MetaData, Table, event, text
 
-from app import semantic_search
 from app.auth import VerifiedGoogleIdentity
 from app.database import create_database_session_factory
 from app.embeddings import EmbeddingFailure, process_card
@@ -165,8 +164,8 @@ def test_ranked_results_are_owner_and_eligibility_scoped(
             {"id": stale},
         )
     monkeypatch.setattr(
-        semantic_search,
-        "vertex_query_embedding",
+        search_client.app.state.embedding_provider,
+        "query_embedding",
         lambda *_args, **_kwargs: [1.0] + [0.0] * (DIMENSIONS - 1),
     )
 
@@ -195,8 +194,8 @@ def test_invalid_auth_and_body_do_not_call_provider(
 ) -> None:
     calls = []
     monkeypatch.setattr(
-        semantic_search,
-        "vertex_query_embedding",
+        search_client.app.state.embedding_provider,
+        "query_embedding",
         lambda *_args, **_kwargs: calls.append(True) or [1.0] * DIMENSIONS,
     )
     unauthenticated = search_client.post(
@@ -229,8 +228,8 @@ def test_provider_failure_is_retryable_not_empty(
         [1.0] + [0.0] * (DIMENSIONS - 1),
     )
     monkeypatch.setattr(
-        semantic_search,
-        "vertex_query_embedding",
+        search_client.app.state.embedding_provider,
+        "query_embedding",
         lambda *_args, **_kwargs: (_ for _ in ()).throw(
             EmbeddingFailure("provider_timeout")
         ),
@@ -294,8 +293,8 @@ def test_corpus_without_current_embeddings_skips_provider_and_ranking(
                 )
     calls: list[str] = []
     monkeypatch.setattr(
-        semantic_search,
-        "vertex_query_embedding",
+        search_client.app.state.embedding_provider,
+        "query_embedding",
         lambda query, **_kwargs: (
             calls.append(query) or [1.0] + [0.0] * (DIMENSIONS - 1)
         ),
@@ -335,8 +334,8 @@ def test_unconfigured_provider_still_reports_unavailable_for_empty_corpus(
     )
     calls: list[str] = []
     monkeypatch.setattr(
-        semantic_search,
-        "vertex_query_embedding",
+        search_client.app.state.embedding_provider,
+        "query_embedding",
         lambda query, **_kwargs: calls.append(query) or [1.0] * DIMENSIONS,
     )
 
@@ -370,8 +369,8 @@ def test_foreign_and_archived_decks_stop_before_provider(
         )
     calls: list[str] = []
     monkeypatch.setattr(
-        semantic_search,
-        "vertex_query_embedding",
+        search_client.app.state.embedding_provider,
+        "query_embedding",
         lambda query, **_kwargs: (
             calls.append(query) or [1.0] + [0.0] * (DIMENSIONS - 1)
         ),

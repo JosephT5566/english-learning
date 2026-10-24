@@ -413,3 +413,12 @@ unchanged.
   replay behavior, note-only exclusion, ready-content no-op, and explicit backfill remain in force.
   Process interruption can leave derived data missing or retryable; no durable queue or provider
   availability requirement was added to card confirmation.
+
+- 2026-10-24: Each application lifespan and explicit embedding backfill run owns one lazy Vertex
+  provider. A lock serializes ADC discovery, stale or expired credential refresh, token snapshots,
+  and auth transport closure. Fresh credentials are reused across document and query embeddings;
+  auth failures permit retry. A provider 401 invalidates only the matching cached token so the next
+  explicit request refreshes it; a delayed rejection cannot invalidate a newer token. Prediction
+  HTTP calls remain independent and retain their eight-second
+  timeout outside the credential lock. Startup, health checks, and dry runs make no ADC or Vertex
+  calls. No process-global credential cache or shared prediction session was added.

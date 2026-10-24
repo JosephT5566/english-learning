@@ -1,6 +1,6 @@
 # Architecture Memory
 
-Last updated: 2026-10-23
+Last updated: 2026-10-24
 
 ## Stack
 
@@ -86,9 +86,17 @@ Last updated: 2026-10-23
 - `apps/api/app/confirmed_imports.py`: approved-snapshot verification, atomic confirmed import,
   exact replay, post-commit reconciliation, safe reports, and the local operator CLI.
 - `apps/api/app/semantic_text.py`: versioned NFC canonical card text and SHA-256 semantic hash.
-- `apps/api/app/embeddings.py`: bounded Vertex document embedding, vector validation, and
-  owner/hash/model-guarded derived-data transactions after confirmed card commits.
+- `apps/api/app/embeddings.py`: an application-lifespan-owned lazy Vertex embedding provider,
+  vector validation, and owner/hash/model-guarded derived-data transactions after confirmed card
+  commits. One lock protects ADC discovery, credential refresh, token snapshots, and auth transport
+  shutdown. Fresh credentials serve both document and query calls; near-expired or expired tokens
+  refresh before use. Discovery and refresh failures remain retryable. Prediction calls use
+  independent `requests.post` operations with the existing eight-second timeout outside the lock.
+  Startup and health checks do not discover credentials or contact Vertex.
 - `apps/api/app/embedding_backfill.py`: explicit owner-bounded, keyset-paged retry and backfill CLI.
+  Each invocation owns and closes one lazy embedding provider. Dry runs never discover credentials
+  or call the provider. Application shutdown closes its provider's auth transport independently of
+  database disposal.
 - `apps/api/openapi.json`: committed deterministic API schema used for frontend type generation and
   contract-drift checks.
 - `apps/api/scripts/export_openapi.py`: deterministic OpenAPI export from the FastAPI application.

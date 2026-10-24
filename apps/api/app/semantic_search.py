@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.auth import CurrentUserDependency
 from app.database import database_session
-from app.embeddings import EmbeddingFailure, vertex_query_embedding
+from app.embeddings import EmbeddingFailure
 from app.errors import ApiError
 from app.semantic_text import MODEL_VERSION
 
@@ -167,7 +167,7 @@ def semantic_search(
                 indexed_count=0,
             )
 
-        query_vector = vertex_query_embedding(
+        query_vector = request.app.state.embedding_provider.query_embedding(
             payload.query,
             project=settings.vertex_project_id,
             location=settings.vertex_location,
