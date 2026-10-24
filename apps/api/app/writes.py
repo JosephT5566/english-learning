@@ -3,7 +3,8 @@
 import hashlib
 import json
 import logging
-from datetime import date
+from dataclasses import dataclass
+from datetime import date, datetime
 from typing import Annotated, Literal
 from uuid import UUID
 
@@ -523,8 +524,36 @@ def create_card(
     return detail
 
 
+@dataclass(frozen=True)
+class _LockedDeck:
+    id: UUID
+    owner_id: int
+    archived_at: datetime | None
+
+
+def _lock_card_deck(session: Session, deck_id: UUID, owner_id: int) -> _LockedDeck:
+    deck = (
+        session.execute(
+            text(
+                "SELECT id, owner_id, archived_at FROM learning_decks WHERE id = :id AND owner_id = :owner_id FOR UPDATE"
+            ),
+            {"id": deck_id, "owner_id": owner_id},
+        )
+        .mappings()
+        .one_or_none()
+    )
+    if deck is None:
+        raise _not_found("deck")
+    return _LockedDeck(**deck)
+
+
 def _create_card_in_transaction(
-    session: Session, payload: CardCreate, owner_id: int, idempotency_key: UUID
+    session: Session,
+    payload: CardCreate,
+    owner_id: int,
+    idempotency_key: UUID,
+    *,
+    locked_deck: _LockedDeck | None = None,
 ) -> CardDetail:
     """Create or replay a card without committing the caller's transaction."""
     request_hash = _creation_request_hash(payload)
@@ -548,15 +577,10 @@ def _create_card_in_transaction(
             raise _idempotency_key_reused()
         detail = _card_detail(session, existing.id, owner_id)
         return detail
-    deck_archived = session.execute(
-        text(
-            "SELECT archived_at FROM learning_decks WHERE id = :id AND owner_id = :owner_id FOR UPDATE"
-        ),
-        {"id": payload.deck_id, "owner_id": owner_id},
-    ).one_or_none()
-    if deck_archived is None:
-        raise _not_found("deck")
-    if deck_archived[0] is not None:
+    deck = locked_deck or _lock_card_deck(session, payload.deck_id, owner_id)
+    if deck.id != payload.deck_id or deck.owner_id != owner_id:
+        raise ValueError("Locked deck does not match the card owner and deck.")
+    if deck.archived_at is not None:
         raise ApiError(
             status_code=409,
             code="deck_archived",
@@ -663,19 +687,12 @@ def create_cards(
     _reject_unknown_filters(request, set())
     # Serialize writes against deck archival. Sort keys to prevent deadlocks with
     # overlapping concurrent requests, including keys previously used in other decks.
-    deck = session.execute(
-        text(
-            "SELECT id FROM learning_decks WHERE id = :id AND owner_id = :owner_id FOR UPDATE"
-        ),
-        {"id": deck_id, "owner_id": user.id},
-    ).scalar_one_or_none()
-    if deck is None:
-        raise _not_found("deck")
+    deck = _lock_card_deck(session, deck_id, user.id)
     results = {}
     for item in sorted(payload.cards, key=lambda item: item.idempotency_key):
         command = CardCreate(deck_id=deck_id, **item.fields.model_dump())
         results[item.idempotency_key] = _create_card_in_transaction(
-            session, command, user.id, item.idempotency_key
+            session, command, user.id, item.idempotency_key, locked_deck=deck
         )
     response = CardBulkResult(
         cards=[

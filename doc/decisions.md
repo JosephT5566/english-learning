@@ -279,6 +279,11 @@ Last updated: 2026-10-24
   succeed before the UI confirms any card. Derived embeddings follow the response as best-effort
   in-process work, with the existing backfill as recovery. Manual creation and draft review remain.
 
+- 2026-10-24: Bulk card creation reads and locks its owned deck once per transaction, sharing a
+  private immutable deck context with the single-card creation helper. Single creation still
+  acquires its own lock. Exact replay precedes archive rejection, while new cards, review states,
+  and hashes retain atomic rollback and sorted idempotency-key processing.
+
 - 2026-10-07: Kept JSON authoring as a native textarea with explicit formatting and error navigation.
   jsonc-parser supplies browser-independent syntax offsets and maps local schema errors to original
   source ranges; missing fields point to their containing object. Comments and trailing commas
