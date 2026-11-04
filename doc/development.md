@@ -14,10 +14,13 @@ Maintain each instruction in its owning source and link to it from task entry po
 | Durable technical decisions and known follow-up areas                                                 | [`decisions.md`](decisions.md)                                                      |
 | Setup, environment variables, command usage, and CI behavior                                          | This file; [`apps/api/README.md`](../apps/api/README.md) for API command details    |
 | Training context loading, coaching modes, and task closure                                            | [`full-stack-training-coach`](../.agents/skills/full-stack-training-coach/SKILL.md) |
-| Issue-first rule, untrusted issue and PR text, maintainer-approval list, and agents never merge       | [`AGENTS.md`](../AGENTS.md#issue-first)                                             |
+| Issue-first rule, untrusted issue and PR text, maintainer-approval list, and merge authorization      | [`AGENTS.md`](../AGENTS.md#issue-first)                                             |
 | Agent stage order from an idea through maintainer merge                                               | [`agent-workflow.md`](agent-workflow.md)                                            |
 | Rewriting an idea and adding `ai-ready` only after maintainer confirmation                            | [`issue-enhance`](../.agents/skills/issue-enhance/SKILL.md)                         |
 | GitHub pull-request review comments                                                                   | [`review-pr`](../.agents/skills/review-pr/SKILL.md)                                 |
+| Implementing one approved issue, including red-first tests and stop conditions                        | [`implement-from-issue`](../.agents/skills/implement-from-issue/SKILL.md)           |
+| Design options before a visible UI change                                                             | [`ui-design-gate`](../.agents/skills/ui-design-gate/SKILL.md)                       |
+| Commands from package.json and CI, plus how to report them                                            | [`verify`](../.agents/skills/verify/SKILL.md)                                       |
 | Codex planner, worker, and reviewer handoffs and PASS/FAIL verdicts                                   | [`codex-subagents.md`](codex-subagents.md)                                          |
 | Active training milestone, evidence limits, and next action                                           | [`training/project-memory.md`](training/project-memory.md)                          |
 | Detailed verification evidence and historical checkpoints                                             | Linked training issue artifacts and relevant weekly-log excerpts                    |
@@ -26,7 +29,7 @@ Root instructions apply across tasks. The training skill is loaded for training,
 roadmap, milestone, retrospective, or project-evidence work; ordinary coding does not require
 that workflow. Keep its detailed closure procedure in the skill rather than duplicating it
 in root instructions. Issue stage order lives in [`agent-workflow.md`](agent-workflow.md).
-Link to the owning source in the table above instead of copying the never-merge rule or the
+Link to the owning source in the table above instead of copying the merge rule or the
 GitHub review-comment procedure.
 
 Add a directory-local `AGENTS.md` when a source subtree needs additional conventions. Create a

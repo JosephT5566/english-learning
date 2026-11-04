@@ -69,7 +69,8 @@ secret is configured, the file applies as documented in
 issue, the workflow would guard the output, verify a candidate commit, and open a draft pull
 request. An empty diff would create no PR. Failure or cancellation would be recorded in the Actions
 summary without claiming issue completion. Human acceptance review and any pending PR workflow
-approval would still be required. Merging is defined in [`../../AGENTS.md`](../../AGENTS.md#issue-first).
+approval would still be required. Agents do not merge without explicit maintainer authorization
+([`../../AGENTS.md`](../../AGENTS.md#issue-first)).
 
 Add `ai-ready` only through [issue-enhance](../../.agents/skills/issue-enhance/SKILL.md) after the
 maintainer confirms the spec. It is not the default training path because it reduces the design and
