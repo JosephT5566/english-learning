@@ -62,17 +62,18 @@ and create a draft PR that closes #4.
 
 ## Automated `ai-ready` mode
 
-Adding the `ai-ready` label triggers `.github/workflows/ai-agent.yml`. It asks Codex to implement the
-entire issue, then the workflow guards the output, creates a local candidate commit, and runs the
-full verification gate before pushing a branch and opening a draft pull request. An empty diff
-creates no PR; failure or cancellation is recorded in the Actions summary without claiming issue
-completion. Human acceptance review and any pending PR workflow approval remain required.
+`.github/workflows/ai-agent.yml` is in the repository and is not enabled. The maintainer reports
+that `OPENAI_API_KEY` is not configured, so adding `ai-ready` does not start a run. After that
+secret is configured, the file applies as documented in
+[`../development.md`](../development.md#automated-issue-verification): Codex would implement the
+issue, the workflow would guard the output, verify a candidate commit, and open a draft pull
+request. An empty diff would create no PR. Failure or cancellation would be recorded in the Actions
+summary without claiming issue completion. Human acceptance review and any pending PR workflow
+approval would still be required. Merging is defined in [`../../AGENTS.md`](../../AGENTS.md#issue-first).
 
-The environment, checks, and candidate-commit ordering are documented in
-[`../development.md`](../development.md#automated-issue-verification).
+Add `ai-ready` only through [issue-enhance](../../.agents/skills/issue-enhance/SKILL.md) after the
+maintainer confirms the spec. It is not the default training path because it reduces the design and
+implementation work Joseph performs.
 
-Use `ai-ready` only when intentionally delegating a well-understood task or boilerplate. It is not
-the default training path because it reduces the design and implementation work Joseph performs.
-
-Before using the workflow, commit and push `AGENTS.md`, `.agents/skills/`, and `doc/training/`; the
-remote agent cannot read local-only files.
+Before a future enabled run can see local instruction changes, commit and push `AGENTS.md`,
+`.agents/skills/`, and `doc/training/`. The remote agent cannot read local-only files.

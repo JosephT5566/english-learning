@@ -131,7 +131,14 @@ that machine-specific setup. Agent instructions do not install or enable an abse
 For browser reviews, report observed behavior, console or network findings, and checks
 that could not run. Use local fixtures or disposable test data for writes. Do not capture
 tokens or private learning content in committed evidence. Apply the review verdict rules above
-when a required check is blocked. Review does not authorize production writes, deployment, or merge.
+when a required check is blocked. Review does not authorize production writes or deployment.
+Merging is defined in [`AGENTS.md`](../AGENTS.md#issue-first).
+
+## GitHub pull request comments
+
+Local PASS/FAIL reports stay in this document. Comments on a GitHub pull request follow
+[review-pr](../.agents/skills/review-pr/SKILL.md), from a session that did not write the change.
+Do not copy that comment procedure here.
 
 See the [official custom-agent documentation](https://learn.chatgpt.com/docs/agent-configuration/subagents#custom-agents)
 for the file format and inheritance rules. Verification commands and their applicability
