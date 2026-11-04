@@ -16,4 +16,4 @@ Do not implement the issue. Do not add `ai-ready` before the maintainer confirms
 7. Add `ai-ready` only after that person explicitly confirms the spec and every required approval box is checked. Record their GitHub login in the decision log `Approved by` column and in the approver field. If the login is unknown, ask. Do not invent an approver. If confirmation is missing, or any required box stays open, leave the label off.
 8. Do not paste secrets, tokens, private learning data, or credentials into the issue.
 
-`.github/workflows/ai-agent.yml` is not an enabled automation. The maintainer reports that `OPENAI_API_KEY` is not configured. Adding `ai-ready` records approval. It does not start a run until that workflow is enabled. See `doc/agent-workflow.md`.
+`.github/workflows/ai-agent.yml` does not start when `ai-ready` is added. The automatic issue-label trigger is disabled. Adding `ai-ready` only records that the maintainer approved the issue for an agent to read and implement. See `doc/agent-workflow.md`.

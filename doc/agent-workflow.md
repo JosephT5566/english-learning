@@ -4,9 +4,9 @@ How an idea becomes a merged change. The rules live in [AGENTS.md](../AGENTS.md#
 
 ## What is not running
 
-`.github/workflows/ai-agent.yml` is in the repository. The maintainer reports that `OPENAI_API_KEY` is not configured, so the workflow is not enabled. Adding `ai-ready` does not start an agent run. After that secret is configured, the behavior in [development.md](development.md#automated-issue-verification) applies.
+`.github/workflows/ai-agent.yml` is in the repository. Its automatic issue-label trigger is disabled. `ai-ready` currently only means the maintainer approved that spec for an agent to read and implement. Adding the label does not automatically trigger any workflow. Manual `workflow_dispatch` remains. The behavior of the remaining file is in [development.md](development.md#automated-issue-verification).
 
-The workflow file checks the label name. It does not check the approval boxes. That gate stays in `AGENTS.md` until a separately approved workflow change adds a mechanical check.
+The commented `issues` trigger is the disabled automatic entry. The job `if` still names `ai-ready` beside `workflow_dispatch`. The file does not check the approval boxes. That gate stays in `AGENTS.md` until a separately approved workflow change adds a mechanical check.
 
 Branch protection and required status checks are not visible from the files in this repository. Do not claim they are configured.
 
@@ -39,7 +39,7 @@ Proposal: at most two issues are in progress at once, and not when they edit the
 | Local investigation, implementation, and PASS/FAIL                              | `.codex/agents/` planner, worker, and reviewer. Verdict rules stay in `doc/codex-subagents.md` |
 | GitHub review comments                                                          | `.agents/skills/review-pr/`. The procedure is not copied into `reviewer.toml`                  |
 | Training and evidence                                                           | `.agents/skills/full-stack-training-coach/`                                                    |
-| Commands and CI behavior, including the workflow file once it is enabled        | `doc/development.md`                                                                           |
+| Commands and CI behavior, including the disabled `ai-agent.yml` trigger         | `doc/development.md`                                                                           |
 
 ## Where skills live
 
@@ -60,4 +60,4 @@ Say one of these. Replace the number. The prompt names the skill or role; the ru
 
 ## Status
 
-An open idea has no `ai-ready` label. `ai-ready` means the maintainer approved that spec. An open pull request is waiting for review. Agents do not merge without explicit maintainer authorization. Labels are not a lock. Comment on the issue before starting when another branch might already exist.
+An open idea has no `ai-ready` label. `ai-ready` means the maintainer approved that spec for an agent to read and implement. It does not automatically trigger any workflow. An open pull request is waiting for review. Agents do not merge without explicit maintainer authorization. Labels are not a lock. Comment on the issue before starting when another branch might already exist.

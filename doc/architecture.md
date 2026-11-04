@@ -119,10 +119,11 @@ Last updated: 2026-11-04
 - `compose.yaml`: verified local `postgres:17-alpine` service with persistent development volume and
   health check, run through OrbStack's Docker-compatible engine.
 - `.github/workflows/ci.yml`: independent frontend and PostgreSQL-backed backend verification jobs.
-- `.github/workflows/ai-agent.yml`: checked-in issue-driven Codex workflow. The maintainer reports
-  that `OPENAI_API_KEY` is not configured, so the workflow is not enabled. Once enabled, it prepares
-  disposable full-stack test dependencies, guards workflow and HEAD changes, and requires candidate
-  verification before draft PR publication. See
+- `.github/workflows/ai-agent.yml`: checked-in Codex workflow. The automatic `issues` labeled
+  trigger is disabled. `ai-ready` currently only means an issue is approved for an agent to read
+  and implement. It does not automatically trigger this workflow. Manual `workflow_dispatch`
+  remains, and the file still prepares disposable full-stack test dependencies, guards workflow
+  and HEAD changes, and requires candidate verification before draft PR publication. See
   [`development.md`](development.md#automated-issue-verification).
 - `.github/workflows/publish-api-image.yml`: protected manual WIF workflow that builds and publishes
   an immutable commit-tagged API image through an Artifact-Registry-only identity.

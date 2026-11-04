@@ -46,7 +46,7 @@ Maintainer approval is required before changing any of the following:
 
 Agents do not merge without explicit maintainer authorization. `.codex/agents/worker.toml`, `.codex/agents/reviewer.toml`, and `doc/codex-subagents.md` use this same sentence.
 
-`.github/workflows/ai-agent.yml` is present. The maintainer reports that `OPENAI_API_KEY` is not configured, so the workflow is not enabled. Until then, `ai-ready` records approval and does not start a run. Behavior after enablement is in [`doc/development.md`](doc/development.md#automated-issue-verification). Stage order is in [`doc/agent-workflow.md`](doc/agent-workflow.md).
+`.github/workflows/ai-agent.yml` is present. Its automatic issue-label trigger is disabled. `ai-ready` currently only means the issue is approved for an agent to read and implement. It does not automatically trigger any workflow. The file still has manual `workflow_dispatch` and its existing job guards. Details are in [`doc/development.md`](doc/development.md#automated-issue-verification). Stage order is in [`doc/agent-workflow.md`](doc/agent-workflow.md).
 
 ## Working rules
 
