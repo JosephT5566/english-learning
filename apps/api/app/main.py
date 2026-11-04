@@ -17,6 +17,7 @@ from app.database import (
 )
 from app.embeddings import VertexEmbeddingProvider
 from app.errors import register_error_handlers
+from app.genai_consent import router as genai_consent_router
 from app.guest_export import router as guest_export_router
 from app.health import router as health_router
 from app.reads import router as reads_router
@@ -72,6 +73,7 @@ def create_app() -> FastAPI:
     app.include_router(health_router)
     app.include_router(guest_export_router)
     app.include_router(auth_router)
+    app.include_router(genai_consent_router)
     app.include_router(reads_router)
     app.include_router(writes_router)
     app.include_router(reviews_router)

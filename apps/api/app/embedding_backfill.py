@@ -43,6 +43,7 @@ def run(
                         text("""
                     SELECT c.id FROM learning_cards c
                     JOIN learning_decks d ON (d.id, d.owner_id) = (c.deck_id, c.owner_id)
+                    JOIN users u ON u.id = c.owner_id AND u.genai_consent_at IS NOT NULL
                     LEFT JOIN card_embeddings e ON (e.card_id, e.owner_id) = (c.id, c.owner_id)
                       AND e.model_version = :model
                     WHERE c.owner_id = :owner_id AND c.archived_at IS NULL

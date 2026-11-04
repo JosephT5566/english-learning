@@ -15,6 +15,7 @@ from app.auth import CurrentUserDependency
 from app.database import database_session
 from app.embeddings import EmbeddingFailure
 from app.errors import ApiError
+from app.genai_consent import require_genai_consent
 from app.semantic_text import MODEL_VERSION
 
 router = APIRouter(prefix="/v1/cards")
@@ -84,6 +85,8 @@ def semantic_search(
     user: CurrentUserDependency,
 ) -> SemanticSearchResponse:
     """Rank only current embeddings belonging to the authenticated owner."""
+
+    require_genai_consent(session, user.id)
 
     if payload.deck_id is not None:
         try:

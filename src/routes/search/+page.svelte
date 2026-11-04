@@ -1,11 +1,20 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
+	import { authSession } from '$lib/stores/auth';
 	import { resolve } from '$app/paths';
 	import TextSearchIcon from '@lucide/svelte/icons/text-search';
 	import LightbulbIcon from '@lucide/svelte/icons/lightbulb';
 	import SearchIcon from '@lucide/svelte/icons/search';
 	import LoaderCircleIcon from '@lucide/svelte/icons/loader-circle';
 	import RotateCcwIcon from '@lucide/svelte/icons/rotate-ccw';
-	import { ApiClientError, keywordSearch, semanticSearch } from '$lib/api/client';
+	import {
+		ApiClientError,
+		keywordSearch,
+		semanticSearch,
+		getGenAIConsent,
+		grantGenAIConsent,
+		withdrawGenAIConsent
+	} from '$lib/api/client';
 	import type { CardSummary, Page, SemanticSearchResponse } from '$lib/api/contracts';
 
 	type SearchMode = 'keyword' | 'semantic';
@@ -17,15 +26,91 @@
 	let semanticResult: SemanticSearchResponse | null = $state(null);
 	let busy = $state(false);
 	let error: { message: string; retryable: boolean; auth: boolean } | null = $state(null);
+	let consent: 'unknown' | 'required' | 'granted' | 'confirm-withdraw' = $state('unknown');
+	let busyMessage = $state('');
 	let maximumLength = $derived(mode === 'keyword' ? 200 : 500);
 
-	function selectMode(nextMode: SearchMode): void {
+	let sessionVersion = 0;
+	$effect(() => {
+		const session = $authSession;
+		untrack(() => {
+			sessionVersion++;
+			consent = 'unknown';
+			keywordResult = null;
+			semanticResult = null;
+			query = '';
+			submittedQuery = '';
+			error = null;
+			busy = false;
+			if (session.kind === 'authenticated' && mode === 'semantic') void updateConsent('read');
+		});
+	});
+
+	async function selectMode(nextMode: SearchMode): Promise<void> {
 		if (busy || mode === nextMode) return;
 		mode = nextMode;
 		keywordResult = null;
 		semanticResult = null;
 		error = null;
 		submittedQuery = '';
+		if (mode === 'semantic') await updateConsent('read');
+	}
+
+	function showError(cause: unknown, retryable = true): void {
+		if (
+			cause instanceof ApiClientError &&
+			cause.status === 403 &&
+			cause.code === 'genai_consent_required'
+		) {
+			consent = 'required';
+			error = null;
+			semanticResult = null;
+			return;
+		}
+		error =
+			cause instanceof ApiClientError
+				? {
+						message: cause.message,
+						retryable: retryable && cause.retryable,
+						auth: cause.kind === 'authentication'
+					}
+				: {
+						message: 'The request failed unexpectedly.',
+						retryable,
+						auth: false
+					};
+	}
+
+	async function updateConsent(action: 'read' | 'grant' | 'withdraw'): Promise<void> {
+		if (busy) return;
+		const version = sessionVersion;
+		busy = true;
+		busyMessage =
+			action === 'read'
+				? 'Checking consent…'
+				: action === 'grant'
+					? 'Saving consent…'
+					: 'Withdrawing consent…';
+		error = null;
+		if (action === 'read') consent = 'unknown';
+		try {
+			const result = await (action === 'read'
+				? getGenAIConsent()
+				: action === 'grant'
+					? grantGenAIConsent()
+					: withdrawGenAIConsent());
+			if (version !== sessionVersion) return;
+			consent = result.genai_consent_at === null ? 'required' : 'granted';
+			if (action === 'withdraw') {
+				semanticResult = null;
+				submittedQuery = '';
+			}
+		} catch (cause) {
+			if (version !== sessionVersion) return;
+			showError(cause, false);
+		} finally {
+			if (version === sessionVersion) busy = false;
+		}
 	}
 
 	function cardHref(cardId: string, language: 'en' | 'ja'): string {
@@ -42,38 +127,32 @@
 		event?.preventDefault();
 		const normalized = query.normalize('NFC').trim();
 		if (normalized.length < 2 || normalized.length > maximumLength || busy) return;
+		if (mode === 'semantic' && consent !== 'granted') return;
 		query = normalized;
 		submittedQuery = normalized;
+		const version = sessionVersion;
 		busy = true;
+		busyMessage = 'Searching your cards…';
 		error = null;
 		keywordResult = null;
 		semanticResult = null;
 		try {
 			if (mode === 'keyword') {
-				keywordResult = await keywordSearch(normalized);
+				const result = await keywordSearch(normalized);
+				if (version === sessionVersion) keywordResult = result;
 			} else {
-				semanticResult = await semanticSearch({
+				const result = await semanticSearch({
 					query: normalized,
 					target_language: 'en',
-					limit: 10,
+					limit: 10
 				});
+				if (version === sessionVersion) semanticResult = result;
 			}
 		} catch (cause) {
-			if (cause instanceof ApiClientError) {
-				error = {
-					message: cause.message,
-					retryable: cause.retryable,
-					auth: cause.kind === 'authentication',
-				};
-			} else {
-				error = {
-					message: 'Search failed unexpectedly.',
-					retryable: true,
-					auth: false,
-				};
-			}
+			if (version !== sessionVersion) return;
+			showError(cause);
 		} finally {
-			busy = false;
+			if (version === sessionVersion) busy = false;
 		}
 	}
 </script>
@@ -111,6 +190,52 @@
 	</div>
 	{#if mode === 'semantic'}
 		<p class="scope-label">Meaning search currently uses English cards only.</p>
+		<section class="consent" aria-label="AI consent" aria-busy={busy}>
+			{#if consent === 'required'}
+				<h2>Allow AI meaning search?</h2>
+				<p>
+					Your card text and search queries are sent to Google Vertex AI for semantic search. You
+					can withdraw consent here at any time.
+				</p>
+				<button type="button" disabled={busy} onclick={() => updateConsent('grant')}
+					>Grant consent</button
+				>
+			{:else if consent === 'granted'}
+				<p>AI meaning search is allowed.</p>
+				<button
+					type="button"
+					class="secondary"
+					disabled={busy}
+					onclick={() => {
+						consent = 'confirm-withdraw';
+					}}>Withdraw consent</button
+				>
+			{:else if consent === 'confirm-withdraw'}
+				<h2>Withdraw AI consent?</h2>
+				<p>
+					Withdrawing consent deletes your existing embeddings and stops AI meaning search. It
+					cannot recall card text or search queries already sent to Google Vertex AI.
+				</p>
+				<div class="consent-actions">
+					<button
+						type="button"
+						class="danger"
+						disabled={busy}
+						onclick={() => updateConsent('withdraw')}>Confirm withdrawal</button
+					>
+					<button
+						type="button"
+						class="secondary"
+						disabled={busy}
+						onclick={() => {
+							consent = 'granted';
+						}}>Keep consent</button
+					>
+				</div>
+			{:else if !busy}
+				<button type="button" onclick={() => updateConsent('read')}>Retry consent check</button>
+			{/if}
+		</section>
 	{/if}
 
 	<form onsubmit={search} aria-busy={busy}>
@@ -133,7 +258,7 @@
 				type="submit"
 				aria-label={busy ? 'Searching…' : 'Search cards'}
 				title={busy ? 'Searching…' : 'Search cards'}
-				disabled={busy || query.trim().length < 2}
+				disabled={busy || query.trim().length < 2 || (mode === 'semantic' && consent !== 'granted')}
 			>
 				{#if busy}<LoaderCircleIcon
 						size={20}
@@ -150,7 +275,7 @@
 	</form>
 
 	{#if busy}
-		<p class="state" aria-live="polite">Searching your cards…</p>
+		<p class="state" aria-live="polite">{busyMessage}</p>
 	{:else if error}
 		<section class="state error" role="alert">
 			<h2>{error.auth ? 'Sign in again' : 'Search is unavailable'}</h2>
@@ -176,7 +301,8 @@
 			<div class="results-heading" aria-live="polite">
 				<h2>Results for “{submittedQuery}”</h2>
 				<span
-					>{keywordResult.items.length} {keywordResult.items.length === 1 ? 'card' : 'cards'}</span
+					>{keywordResult.items.length}
+					{keywordResult.items.length === 1 ? 'card' : 'cards'}</span
 				>
 			</div>
 			<ol class="results">
@@ -303,6 +429,37 @@
 		color: #526b7f;
 		font-size: 0.82rem;
 	}
+	.consent {
+		margin-top: 1rem;
+		padding: 1rem 1.1rem;
+		border: 1px solid rgba(64, 117, 166, 0.22);
+		border-radius: 0.9rem;
+		background: rgba(255, 255, 255, 0.65);
+	}
+	.consent h2 {
+		margin: 0;
+		font-size: 1.08rem;
+	}
+	.consent p {
+		margin: 0 0 0.8rem;
+	}
+	.consent h2 + p {
+		margin-top: 0.5rem;
+	}
+	.consent-actions {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.65rem;
+	}
+	.consent button.secondary {
+		background: rgba(255, 255, 255, 0.72);
+		color: #315f89;
+	}
+	.consent button.danger {
+		background: #fff3f1;
+		border-color: #a34646;
+		color: #a34646;
+	}
 	form {
 		margin-top: 1.75rem;
 	}
@@ -333,6 +490,7 @@
 		outline-offset: 2px;
 		border-color: #4075a6;
 	}
+	.consent button,
 	.search-controls button,
 	.state button {
 		display: inline-flex;
@@ -353,6 +511,7 @@
 	.state button:hover {
 		background: #294f73;
 	}
+	.consent button:disabled,
 	.search-controls button:disabled {
 		cursor: not-allowed;
 		opacity: 0.55;
@@ -499,6 +658,9 @@
 			grid-template-columns: 1fr 1fr;
 			width: 100%;
 			box-sizing: border-box;
+		}
+		.consent-actions {
+			flex-direction: column;
 		}
 		.search-controls {
 			flex-direction: column;

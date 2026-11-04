@@ -75,6 +75,19 @@ Last updated: 2026-11-04
 - `apps/api/app/writes.py`: server-owned deck/card create, optimistic edit, and archive operations.
 - `apps/api/app/reviews.py`: authenticated atomic review submissions, scheduling transitions,
   idempotent replay, and deterministic row-lock concurrency control.
+- `apps/api/app/genai_consent.py`: authenticated `GET`, `PUT`, and `DELETE`
+  `/v1/me/genai-consent` routes and reusable fresh consent checks. Only the authenticated
+  owner is addressable. Responses contain nullable `genai_consent_at`; PUT retains an existing
+  grant time. DELETE clears consent and deletes every owned embedding in one transaction.
+  Semantic search returns `403 genai_consent_required` before coverage or provider work when
+  consent is absent. Its shared user-row lock lasts through the request transaction.
+  Card embedding claim and final-result transactions acquire the same shared user-row lock
+  before card locks. Withdrawal's user update serializes with both. Provider document calls
+  stay outside transactions; a running call cannot restore deleted claims, even after regrant.
+  Backfill scans only consented owners and processing rechecks consent independently.
+  Revision `20261105_0007` adds nullable `users.genai_consent_at` with no default or inferred
+  grants and drops it on downgrade. The frontend prompt is pending owner design selection;
+  this backend change alone is not the completed consent feature.
 - `apps/api/app/semantic_search.py`: bounded query validation and owner-scoped index coverage before
   one Vertex query embedding and exact pgvector ranking. Zero current embeddings skip both provider
   and ranking work after deck and provider-configuration checks. Coverage and ranking apply

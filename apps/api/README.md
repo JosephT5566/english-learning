@@ -385,3 +385,21 @@ Supporting backend commit `34c7560` is optional when real cards are needed befor
 publication. It retains anonymous compatibility for the old frontend. Restore compatible backend
 support before rolling back to that frontend.
 Live IAM setup, real-card export and deployment are not established by local test results.
+
+### GenAI consent
+
+`GET /v1/me/genai-consent` returns `{"genai_consent_at": null}` until the authenticated
+user grants consent through `PUT` at the same path. The response then contains a timezone-aware
+ISO timestamp. Repeated grants retain that timestamp. No route accepts another user's ID.
+`DELETE` clears consent and deletes all owned `card_embeddings`, including pending and failed
+attempts across all model versions, in one transaction. Confirmed cards and review state remain.
+
+Without consent, semantic search returns `403` with `error.code = genai_consent_required`,
+and card-write background embedding work skips the provider while the card write succeeds.
+The owner-bounded backfill also skips unconsented users, including in dry runs. Granting consent
+does not automatically enqueue old cards; the existing explicit backfill can repair coverage.
+Withdrawal cannot recall content already sent to a provider. A running document embedding result
+cannot recreate a deleted claim after withdrawal, even if the user subsequently grants consent.
+
+The consent UI is pending owner design selection in Issue #74. Ship the prompt and withdrawal
+entry point together with this backend boundary before treating the feature as complete.
