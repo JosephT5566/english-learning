@@ -183,35 +183,36 @@ must pass their checks now; unrelated baseline failures do not exempt newly chan
 
 ## Automated Issue Verification
 
-`.github/workflows/ai-agent.yml` is checked in. The maintainer reports that `OPENAI_API_KEY` is
-not configured, so the workflow is not enabled. An `ai-ready` label or a manual issue-number
-dispatch does not start an agent run until that secret is configured. This section describes the
-file and applies after enablement. Until then, `ai-ready` is the approval label in
+`.github/workflows/ai-agent.yml` is checked in. Its automatic `issues` labeled trigger is
+disabled. `ai-ready` currently only means the issue is approved for an agent to read and implement.
+Adding the label does not automatically trigger any workflow. The maintainer reports that
+`OPENAI_API_KEY` is not configured. Manual `workflow_dispatch` remains, and the job guards stay in
+the file. This section describes that remaining file. `ai-ready` is the approval label in
 [`AGENTS.md`](../AGENTS.md#issue-first).
 
-Once enabled, the workflow runs on an `ai-ready` issue label or a manual issue-number dispatch.
-It checks out the default branch and prepares Node 22, Python 3.12, locked npm/uv dependencies,
-Chrome, and disposable PostgreSQL 17 with pgvector. Public frontend values are placeholders;
-backend configuration uses test mode and local database credentials, with no production provider
-configuration. Browser/system dependencies are installed before Codex removes sudo access.
+The file no longer starts from an issue label. Its job `if` still accepts `workflow_dispatch` and
+still names `ai-ready`, so restoring the commented `issues` trigger is a small edit. A manual
+issue-number dispatch checks out the default branch and prepares Node 22, Python 3.12, locked
+npm/uv dependencies, Chrome, and disposable PostgreSQL 17 with pgvector. Public frontend values
+are placeholders; backend configuration uses test mode and local database credentials, with no
+production provider configuration. Browser/system dependencies are installed before Codex removes
+sudo access.
 
-The file checks that the label name is `ai-ready`. The approval checklist and decision log stay
-with the Issue-first rule in [`AGENTS.md`](../AGENTS.md#issue-first). A mechanical checklist check
-inside the workflow is a separate change and needs maintainer approval.
+The approval checklist and decision log stay with the Issue-first rule in
+[`AGENTS.md`](../AGENTS.md#issue-first). A mechanical checklist check inside the workflow is a
+separate change and needs maintainer approval.
 
-Once enabled, Codex follows `AGENTS.md` and leaves changes for the workflow. It must not modify
-workflows or Git HEAD, publish, or deploy. The workflow guards those outputs, then creates a local
-candidate commit so `api:check` compares generated artifacts with the proposed version rather than
-the starting commit. It refreshes locked candidate dependencies and requires changed-file lint,
-contract drift, frontend types/tests/subpath build/browser flows, backend Ruff and full PostgreSQL
-tests, and API container verification. The verified commit and working tree must remain unchanged
-before push.
+Codex follows `AGENTS.md` and leaves changes for the workflow. It must not modify workflows or Git
+HEAD, publish, or deploy. The workflow guards those outputs, then creates a local candidate commit
+so `api:check` compares generated artifacts with the proposed version rather than the starting
+commit. It refreshes locked candidate dependencies and requires changed-file lint, contract drift,
+frontend types/tests/subpath build/browser flows, backend Ruff and full PostgreSQL tests, and API
+container verification. The verified commit and working tree must remain unchanged before push.
 
-Once enabled, only a passing candidate is pushed and opened as a draft PR with a verification
-summary and run link. Failure or cancellation is reported in the Actions summary; an empty diff
-creates no PR and makes no completion claim. The job is bounded to 60 minutes, with 30 minutes for
-Codex itself. The workflow does not automatically retry failed verification or declare acceptance
-criteria met.
+Only a passing candidate is pushed and opened as a draft PR with a verification summary and run
+link. Failure or cancellation is reported in the Actions summary; an empty diff creates no PR and
+makes no completion claim. The job is bounded to 60 minutes, with 30 minutes for Codex itself. The
+workflow does not automatically retry failed verification or declare acceptance criteria met.
 
 Draft PRs require human acceptance review. Merging is defined in
 [`AGENTS.md`](../AGENTS.md#issue-first). PR workflows started by `GITHUB_TOKEN` may await a

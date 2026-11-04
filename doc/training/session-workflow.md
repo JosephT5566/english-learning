@@ -62,19 +62,16 @@ and create a draft PR that closes #4.
 
 ## Automated `ai-ready` mode
 
-`.github/workflows/ai-agent.yml` is in the repository and is not enabled. The maintainer reports
-that `OPENAI_API_KEY` is not configured, so adding `ai-ready` does not start a run. After that
-secret is configured, the file applies as documented in
-[`../development.md`](../development.md#automated-issue-verification): Codex would implement the
-issue, the workflow would guard the output, verify a candidate commit, and open a draft pull
-request. An empty diff would create no PR. Failure or cancellation would be recorded in the Actions
-summary without claiming issue completion. Human acceptance review and any pending PR workflow
-approval would still be required. Agents do not merge without explicit maintainer authorization
+`.github/workflows/ai-agent.yml` remains in the repository. Its automatic issue-label trigger is
+disabled. `ai-ready` currently only means the issue is approved for an agent to read and implement.
+Adding the label does not automatically trigger any workflow. Manual `workflow_dispatch`, the job
+guards, and the verification steps stay in the file. See
+[`../development.md`](../development.md#automated-issue-verification). Agents do not merge without explicit maintainer authorization
 ([`../../AGENTS.md`](../../AGENTS.md#issue-first)).
 
 Add `ai-ready` only through [issue-enhance](../../.agents/skills/issue-enhance/SKILL.md) after the
 maintainer confirms the spec. It is not the default training path because it reduces the design and
 implementation work Joseph performs.
 
-Before a future enabled run can see local instruction changes, commit and push `AGENTS.md`,
-`.agents/skills/`, and `doc/training/`. The remote agent cannot read local-only files.
+Commit and push `AGENTS.md`, `.agents/skills/`, and `doc/training/` before a remote agent reads
+those instruction changes. The remote agent cannot read local-only files.
