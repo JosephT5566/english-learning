@@ -1,0 +1,6 @@
+# Request maintainer review for automation and schema history.
+# This file does not show whether branch protection or required checks are enabled.
+
+/.github/workflows/ @JosephT5566
+/.github/CODEOWNERS @JosephT5566
+/apps/api/migrations/ @JosephT5566
