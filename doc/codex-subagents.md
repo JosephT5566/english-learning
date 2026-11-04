@@ -131,8 +131,7 @@ that machine-specific setup. Agent instructions do not install or enable an abse
 For browser reviews, report observed behavior, console or network findings, and checks
 that could not run. Use local fixtures or disposable test data for writes. Do not capture
 tokens or private learning content in committed evidence. Apply the review verdict rules above
-when a required check is blocked. Review does not authorize production writes or deployment.
-Merging is defined in [`AGENTS.md`](../AGENTS.md#issue-first).
+when a required check is blocked. Review does not authorize production writes, deployment, or merge.
 
 ## GitHub pull request comments
 

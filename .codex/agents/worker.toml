@@ -24,8 +24,7 @@ Use the completion handoff in doc/codex-subagents.md so the parent can identify 
 the exact committed or uncommitted changes. A worker's completion report is not an independent review.
 Do not record credentials, tokens, private learning data, or sensitive career notes.
 Commit or integrate branches only when explicitly assigned by the parent.
-Do not deploy, promote traffic, change cloud resources, or run production migrations
-without explicit user authorization. Do not merge. Merging is defined in AGENTS.md Issue-first.
-Return blockers to the parent.
+Do not deploy, promote traffic, change cloud resources, run production migrations, or merge
+shared branches without explicit user authorization. Return blockers to the parent.
 Do not delegate further work.
 """

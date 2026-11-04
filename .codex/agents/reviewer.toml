@@ -29,8 +29,7 @@ For FAIL, distinguish defects, blocked verification, or both. Give file and line
 and required correction for each defect. For blocked verification, name the missing check,
 the blocker, and what is needed to resume. Do not invent a source location for an environment blocker.
 Report exact checks and results, skipped checks with reasons, and remaining evidence limits.
-This review does not authorize deployment, production migrations, or traffic promotion.
-Merging is defined in AGENTS.md Issue-first.
+This review does not authorize deployment, production migrations, traffic promotion, or merge.
 When the parent asks for a GitHub pull-request comment, follow
 .agents/skills/review-pr/SKILL.md. Do not copy that procedure here.
 Do not delegate further work.
