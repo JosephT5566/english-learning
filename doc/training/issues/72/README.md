@@ -1,8 +1,8 @@
 # Issue 72 extraction evaluation
 
-This is an AI-drafted, synthetic proposal awaiting maintainer review, not an approved
-answer set. Every `reviewed_by` and `reviewed_on` is `null`. Before review, do not claim
-these targets are standard answers or independent human annotations. The model used to
+This is an AI-drafted, synthetic answer set. The maintainer (`JosephT5566`) reviewed all eight
+cases on 2026-11-05, recorded in `reviewed_by` and `reviewed_on`; the targets are therefore a
+maintainer-reviewed set, not independent human annotations by multiple annotators. The model used to
 propose vocabulary can bias which terms seem important, which meanings seem natural,
 and which attacks are represented. The eight short English inputs are original synthetic
 text, not copyrighted excerpts or private user data. Japanese quality is outside this set.

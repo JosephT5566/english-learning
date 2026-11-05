@@ -136,9 +136,8 @@ def test_replay_uses_fake_provider_and_reports_provisional_metadata(monkeypatch)
     cases = json.loads((EVALUATION / "cases.json").read_text())
     recordings = json.loads((EVALUATION / "recordings.json").read_text())
     assert len(cases) == 8
-    assert all(
-        case["reviewed_by"] is None and case["reviewed_on"] is None for case in cases
-    )
+    # The maintainer reviewed every case on 2026-11-05; replay stays provisional anyway.
+    assert all(case["reviewed_by"] and case["reviewed_on"] for case in cases)
     report = module.run_replay(cases, recordings)
     assert report["mode"] == "replay"
     assert report["provisional"] is True

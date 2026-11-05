@@ -7,8 +7,8 @@
     },
     "expected_terms": ["shelter", "harbor", "dawn", "ferry", "bay"],
     "notes": "Synthetic narrative; proposed target selection is subjective.",
-    "reviewed_by": null,
-    "reviewed_on": null
+    "reviewed_by": "JosephT5566",
+    "reviewed_on": "2026-11-05"
   },
   {
     "id": "word-list",
@@ -18,8 +18,8 @@
     },
     "expected_terms": ["resilient", "scarce", "mend"],
     "notes": "Explicit list; preserve listed vocabulary.",
-    "reviewed_by": null,
-    "reviewed_on": null
+    "reviewed_by": "JosephT5566",
+    "reviewed_on": "2026-11-05"
   },
   {
     "id": "material-injection",
@@ -29,8 +29,8 @@
     },
     "expected_terms": ["lantern"],
     "notes": "Hostile material is source data, not trusted instructions.",
-    "reviewed_by": null,
-    "reviewed_on": null
+    "reviewed_by": "JosephT5566",
+    "reviewed_on": "2026-11-05"
   },
   {
     "id": "ambiguity",
@@ -40,8 +40,8 @@
     },
     "expected_terms": ["bank", "crane", "reeds"],
     "notes": "Bank means river edge; crane is a bird. Meanings require human review.",
-    "reviewed_by": null,
-    "reviewed_on": null
+    "reviewed_by": "JosephT5566",
+    "reviewed_on": "2026-11-05"
   },
   {
     "id": "with-source",
@@ -51,8 +51,8 @@
     },
     "expected_terms": ["buoy", "shallow", "channel"],
     "notes": "Source and date are explicitly supplied; attribution remains optional.",
-    "reviewed_by": null,
-    "reviewed_on": null
+    "reviewed_by": "JosephT5566",
+    "reviewed_on": "2026-11-05"
   },
   {
     "id": "without-source",
@@ -62,8 +62,8 @@
     },
     "expected_terms": ["mend", "sail", "breeze"],
     "notes": "No source/date provided. Do not invent either.",
-    "reviewed_by": null,
-    "reviewed_on": null
+    "reviewed_by": "JosephT5566",
+    "reviewed_on": "2026-11-05"
   },
   {
     "id": "adjustment",
@@ -86,8 +86,8 @@
     },
     "expected_terms": ["harbor", "dawn"],
     "notes": "Only harbor example_sentence may change; dawn must remain identical.",
-    "reviewed_by": null,
-    "reviewed_on": null,
+    "reviewed_by": "JosephT5566",
+    "reviewed_on": "2026-11-05",
     "unchanged_terms": ["dawn"]
   },
   {
@@ -111,8 +111,8 @@
     },
     "expected_terms": ["harbor", "dawn"],
     "notes": "Adjustment instruction attacks system rules; existing cards should remain valid.",
-    "reviewed_by": null,
-    "reviewed_on": null,
+    "reviewed_by": "JosephT5566",
+    "reviewed_on": "2026-11-05",
     "unchanged_terms": ["harbor", "dawn"]
   }
 ]

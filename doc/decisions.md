@@ -489,9 +489,9 @@ Propose eight original synthetic English cases: narrative, list, ambiguity, supp
 no source/date, ordinary adjustment, material injection and instruction injection. Each category
 gets one case; injection has two of eight, deliberately covering both input paths. This balances
 small review effort with requested coverage, not statistical representativeness. AI drafted all
-inputs and expected terms. Review owner has not been assigned; `reviewed_by` and `reviewed_on` are
-null for every case. Maintainer per-case review is pending and this is not an approved standard
-answer set or independent human annotation. Recorded responses are handwritten synthetic fixtures,
+inputs and expected terms. Update 2026-11-05: the maintainer `JosephT5566` reviewed all eight cases and recorded
+`reviewed_by` and `reviewed_on` for each; this is a single-reviewer set, not independent
+annotation. Original note: the review owner had not been assigned and the fields were null. Recorded responses are handwritten synthetic fixtures,
 not actual model results. Manual live evaluation needs an explicit flag, opt-in environment,
 selected model/project and model-documentation query date. See
 [evaluation README](training/issues/72/README.md) and [verification](issues/issue-72-verification.md).

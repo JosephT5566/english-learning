@@ -174,7 +174,9 @@ def make_report(
 
     return {
         "mode": mode,
-        "provisional": any(
+        # Replay uses handwritten fixtures, so it is always provisional.
+        "provisional": mode == "replay"
+        or any(
             case["reviewed_by"] is None or case["reviewed_on"] is None for case in cases
         ),
         "executed_on": datetime.now(UTC).isoformat(),
