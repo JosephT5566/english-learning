@@ -543,3 +543,25 @@ The maintainer's uncommitted cases.json edits are explicitly outside this change
 byte-for-byte and never stage them. The existing replay test assumes all case review fields are
 null and already fails against that working copy; do not weaken its assertions or reset owner data
 to make verification appear green. See [follow-up evidence](issues/issue-72-verification.md#generation-location-and-http-diagnostics-follow-up).
+
+## 2026-11-05: Omit provider array-count keywords after a narrow Vertex bisect
+
+The maintainer reported a one-occasion Vertex bisect on gemini-3.8-flash/global: a schema with
+minItems/maxItems returned HTTP 400 (Request contains an invalid argument); removing only both
+keywords together, retaining the rest, returned 200; removing all constraints also returned 200.
+Removing another keyword group alone left the array-count keywords present and still returned 400. That observation does not implicate those other groups. Individual minItems vs maxItems
+causation remains untested. The agent made no model call or online documentation lookup.
+
+Remove both keywords conservatively from the generation provider schema projection at every
+level. Retain other supported keywords, including minLength/maxLength, minimum/maximum, enum,
+format, nullable, required and description. The successful request establishes acceptance of
+that remaining supplied schema combination for this one model/run; it does not prove semantic
+constraint enforcement, all output cases, other models/versions, or output quality. The latter
+has not been evaluated. Preserve complete CardDrafts server validation, including 1-20 cards,
+field limits and cross-field rules. Keep the prompt unchanged because it already says 1-20 cards.
+
+The former unit assertion that provider cards.maxItems equals 20 was an empirically disproved
+provider-compatibility assumption. Replace it with assertions that minItems/maxItems are absent,
+add recursive/nested conversion coverage, and keep server zero/over-limit output rejection checks.
+This changes only the provider projection, not the public JSON Schema/OpenAPI or validation
+contract. Cases.json remains untouched. See [fix #3 evidence](issues/issue-72-verification.md#provider-array-count-keyword-bisect-fix-3).

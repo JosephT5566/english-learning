@@ -95,7 +95,9 @@ def test_schema_conversion_and_handwritten_contract():
     ):
         assert keyword not in encoded
     cards = schema["properties"]["cards"]
-    assert cards["maxItems"] == 20
+    # The maintainer's Vertex bisect disproved this provider-schema assumption.
+    assert "minItems" not in cards
+    assert "maxItems" not in cards
     assert cards["items"]["properties"]["term"]["maxLength"] == 255
     assert cards["items"]["properties"]["learned_on"]["nullable"] is True
     payload = build_vertex_request(request(), max_output_tokens=8192)

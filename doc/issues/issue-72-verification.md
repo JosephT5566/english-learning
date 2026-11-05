@@ -370,3 +370,113 @@ without maintainer investigation. The public API model, original embedding setti
 workflows, migrations, public environment handling, static paths, scheduling and dependencies are
 unchanged. No push, amend, rebase, online documentation lookup, model call or production access
 was performed by this agent.
+
+## Provider array-count keyword bisect, fix #3
+
+Comparison base: `db746eeda06ad6f7438dacf1d59377886caee587`, 2026-11-05. This includes the
+maintainer's intervening case-review/replay reconciliation commit. This fix does not alter
+cases.json or that reconciliation. No model call, network documentation lookup or GitHub change
+was made by the agent.
+
+### Operator evidence and decision limits
+
+The maintainer's 2026-11-05 live bisect used gemini-3.8-flash/global on one occasion:
+
+| Variant                                                                                                                                 | Reported result                                |
+| --------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
+| Original responseSchema contains minItems/maxItems                                                                                      | HTTP 400, Request contains an invalid argument |
+| Remove only both minItems/maxItems, retaining other schema content                                                                      | HTTP 200                                       |
+| Remove all constraints                                                                                                                  | HTTP 200                                       |
+| Remove only minimum/maximum, minLength/maxLength, format, nullable, description, enum or required, leaving array-count keywords present | HTTP 400                                       |
+
+These are maintainer-reported live observations, not independently rerun by this agent. The final
+row does not establish rejection of the other keywords. Retaining the rest in one accepted
+request establishes acceptance of that supplied combination, not independent enforcement of each
+keyword or correctness across all outputs. MinItems vs maxItems was not isolated; both are omitted
+conservatively. No general model/version compatibility or model-output quality has been established.
+
+### Local implementation and test coverage
+
+[vertex_response_schema:74](../../apps/api/app/generation.py#L74) removes only minItems/maxItems
+from the supported projection keys and documents the narrow evidence. Complete server validation
+remains at [CardDrafts:180](../../apps/api/app/writes.py#L180), with 1-20 cards and all other rules.
+The prompt already contains Return 1-20 cards at [extraction.py:80](../../apps/api/app/extraction.py#L80)
+and was not edited. The public draft JSON Schema, API response model and OpenAPI are unchanged.
+
+- Updated the single disproved assertion in
+  [test_schema_conversion_and_handwritten_contract:98](../../apps/api/tests/unit/test_generation.py#L98):
+  formerly `cards["maxItems"] == 20`; now both keys must be absent from the provider cards schema.
+  This was explicitly authorized because live evidence disproved that provider assumption. All
+  other assertions remain intact; server cardinality was not weakened.
+- [test_card_draft_provider_schema_omits_array_limits_at_every_level:23](../../apps/api/tests/unit/test_generation_schema_limits.py#L23)
+  recursively checks every projected level and retains actual CardDrafts string/date/enum/required rules.
+- [test_nested_references_drop_only_array_limits_and_keep_other_supported_keywords:36](../../apps/api/tests/unit/test_generation_schema_limits.py#L36)
+  covers referenced objects and nested arrays, verifies retained minLength/maxLength,
+  minimum/maximum, enum, format, nullable, required and description, and leaves source schema bounds intact.
+- [test_full_card_drafts_model_still_rejects_out_of_range_output:108](../../apps/api/tests/unit/test_generation_schema_limits.py#L108)
+  checks strict JSON output rejection for exactly 0 and 21 cards. Existing validate-route coverage
+  is also retained in [test_card_draft_validation.py:82](../../apps/api/tests/unit/test_card_draft_validation.py#L82).
+- [test_prompt_already_states_card_count_boundary:120](../../apps/api/tests/unit/test_generation_schema_limits.py#L120)
+  confirms the existing prompt's count instruction without changing prompt semantics.
+- [test_extraction_count_bounds_survive_provider_schema_projection:29](../../apps/api/tests/integration/test_generation_schema_limits.py#L29)
+  checks 0/21 output returns 502 extraction_invalid_output (non-retryable, no drafts returned),
+  while 1/20 returns 200; all four inspect the actual provider request for absent count keys,
+  exactly one provider call and unchanged learning-data counts. Existing 21-card extraction
+  rejection remains unchanged at [test_card_extraction.py:140](../../apps/api/tests/integration/test_card_extraction.py#L140).
+
+### Red-first and green evidence
+
+All uv commands used `UV_CACHE_DIR=/tmp/codex-72/uv-cache`.
+Before implementation, after changing the authorized expectation and adding regression tests:
+
+| Directory | Command                                                                                                | Exit | Observed result                                                                                                      |
+| --------- | ------------------------------------------------------------------------------------------------------ | ---- | -------------------------------------------------------------------------------------------------------------------- |
+| apps/api  | `uv run pytest tests/unit/test_generation.py tests/unit/test_generation_schema_limits.py -q`           | 1    | 3 failed, 28 passed; original projection still contained minItems/maxItems in actual/nested schemas                  |
+| apps/api  | `RUN_POSTGRES_INTEGRATION_TESTS=1 uv run pytest tests/integration/test_generation_schema_limits.py -q` | 1    | 4 failed; projected request still contained count keywords. Server already correctly accepted 1/20 and rejected 0/21 |
+
+Logs: `/tmp/codex-72/fix3-red-unit.log`, `fix3-red-http.log`. These are executed assertion failures.
+An earlier root-cwd uv invocation could not spawn pytest (exit 2); it was corrected to API cwd
+and is not the red-first behavioral evidence above.
+
+After removing the two supported keys, API focused unit command
+`uv run pytest tests/unit/test_generation.py tests/unit/test_generation_schema_limits.py tests/unit/test_card_draft_validation.py -q`
+returned exit 0, 56 passed (`fix3-green-unit.log`). The same focused PostgreSQL command above
+returned exit 0, 4 passed (`fix3-green-http.log`). Each had one existing Starlette warning.
+
+### Final checks
+
+All uv commands used the task cache above; PostgreSQL checks used the existing pg72 service
+and unchanged restricted-role fixtures.
+
+| Directory | Command                                                               | Exit | Observed result                             |
+| --------- | --------------------------------------------------------------------- | ---- | ------------------------------------------- |
+| apps/api  | `uv run ruff check .`                                                 | 0    | All checks passed                           |
+| apps/api  | `uv run ruff format --check .`                                        | 0    | 100 files already formatted                 |
+| apps/api  | `uv run pytest tests/unit -q`                                         | 0    | 306 passed, 1 existing Starlette warning    |
+| apps/api  | `RUN_POSTGRES_INTEGRATION_TESTS=1 uv run pytest tests/integration -q` | 0    | 325 passed, 51 existing warnings, no skips  |
+| apps/api  | `RUN_POSTGRES_INTEGRATION_TESTS=1 uv run pytest tests/eval -q`        | 0    | 10 passed, no skips                         |
+| root      | `npm run lint:changed -- origin/main`                                 | 0    | Changed-file Prettier/ESLint passed         |
+| root      | `npm run api:check`                                                   | 0    | Internal regeneration had no artifact drift |
+| root      | `git diff --check`                                                    | 0    | No whitespace errors                        |
+
+Logs under `/tmp/codex-72/`: `fix3-ruff-check.log`, `fix3-ruff-format.log`, `fix3-unit.log`,
+`fix3-integration.log`, `fix3-eval.log`, `fix3-lint.log`, `fix3-api-check.log`,
+`fix3-diff-check.log`. Integration warnings are one existing Starlette deprecation and 50
+pgvector reflection warnings. No requested check was skipped. API check includes regeneration;
+no separate api:generate was needed. Frontend/build/browser/container checks were not repeated
+because no corresponding public model, frontend, route, environment or lifecycle behavior changed.
+
+Independent reviewer verdict: PASS for the frozen four-file code/test scope; independently ran
+all 306 unit tests and scoped Ruff check/format plus diff check successfully. The reviewer also
+inspected both red logs and the server-boundary tests. PostgreSQL results above are the parent's
+actual runs, not an independent second run. No source edits followed the frozen code review.
+
+### Scope and remaining unverified work
+
+The live acceptance evidence is limited to the maintainer's one-model, one-occasion paired-keyword
+bisect. Independent minItems/maxItems tests, other models/versions, all remaining-keyword output
+enforcement scenarios, real output correctness/quality and broader true-provider contracts remain
+unverified. The agent used local synthetic/scripted tests only and did not rerun real evaluation.
+No cases.json, prompt, validation model, public schema, dependency, auth, migration, workflow,
+environment, location, deployment or scheduling change was made. One local commit only; no push,
+amend or rebase. Compare cases.json bytes against `/tmp/codex-72/fix3-cases.sha256` at delivery.

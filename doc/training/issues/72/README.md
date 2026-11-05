@@ -67,9 +67,10 @@ scripted-provider integration tests exercise the HTTP and PostgreSQL boundaries.
 
 ## Manual Vertex mode
 
-The REST request format, response format, schema subset, current model names and IAM are
-**unverified against the real API**. No documentation query was performed because network model
-calls and online documentation lookup were prohibited in this task. A maintainer must check the
+The maintainer's narrow response-schema bisect is recorded below. Other REST request/response
+contracts, model availability and IAM are **unverified by this agent**; the bisect is not a general
+compatibility guarantee. No documentation query or model call was performed by this agent because
+this task prohibits them. A maintainer must check the
 current Vertex contract/model availability and runtime ADC permissions before executing this mode.
 The code does not default to any model. It reuses installed `requests` and ADC, adding no packages.
 
@@ -122,3 +123,30 @@ Malformed JSON and content/chunk decoding failures are non-retryable invalid res
 while connection failures retain their availability classification. Real requests.Response.json()
 and synthetic raw-body errors cover this distinction locally. No dataset review fields or real
 model results were changed. See [review-fix evidence](../../../issues/issue-72-verification.md#pr-85-review-fixes).
+
+## Maintainer array-limit bisect, 2026-11-05
+
+The maintainer reported a live Vertex bisect for **gemini-3.8-flash at global**, on one occasion.
+This agent did not repeat the calls or inspect online documentation. Reported observations:
+
+| Schema change                                                                                                                                           | HTTP result                               |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------- |
+| Original responseSchema, including minItems/maxItems                                                                                                    | 400, Request contains an invalid argument |
+| Remove only minItems and maxItems together, retain the rest                                                                                             | 200                                       |
+| Remove all constraints                                                                                                                                  | 200                                       |
+| Remove only another group (minimum/maximum, minLength/maxLength, format, nullable, description, enum or required), with minItems/maxItems still present | 400                                       |
+
+The last row does not show that those other keywords are rejected. The successful paired-removal
+request retained the rest of that supplied schema, so that combination was accepted in this one
+reported run. It does not establish keyword-by-keyword enforcement, every output scenario, other
+models or future model versions. Neither minItems nor maxItems was tested alone; do not claim
+which individually caused rejection. Model output quality has not been evaluated.
+
+The provider projection now conservatively removes both array-count keywords at every schema
+level, including referenced/nested arrays. It keeps minLength/maxLength, minimum/maximum, enum,
+format, nullable, required and description when supplied. Local tests prove projection behavior;
+the operator report supplies the narrow live payload-acceptance evidence. The full CardDrafts
+server schema is unchanged: it still enforces 1-20 cards and all other field/list/cross-field rules.
+The prompt already says Return 1-20 cards and was not changed. Model output is always strictly
+validated, with 0/21-card output rejected as extraction_invalid_output; no retry or write occurs.
+See [fix #3 verification](../../../issues/issue-72-verification.md#provider-array-count-keyword-bisect-fix-3).

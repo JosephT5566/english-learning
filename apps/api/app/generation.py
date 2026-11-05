@@ -72,10 +72,14 @@ class GenerationProvider(Protocol):
 
 
 def vertex_response_schema(schema: dict) -> dict:
-    """Resolve refs and project onto an explicit, unverified Vertex schema subset.
+    """Resolve refs and project onto the generation provider schema subset.
 
-    Drop additionalProperties, conditionals, defaults and annotation keywords.
-    CardDrafts validation remains authoritative for all omitted constraints.
+    The maintainer's 2026-11-05 gemini-3.8-flash/global Vertex bisect rejected
+    array cardinality keywords together; omit both minItems and maxItems.
+    Other retained keywords were present in one accepted request, not verified
+    across all outputs/models. Drop extra-property rules, conditionals, defaults
+    and annotations. Full CardDrafts server validation enforces 1-20 cards and
+    all other constraints; provider schema acceptance is not output validation.
     """
     definitions = schema.get("$defs", {})
     supported = {
@@ -87,8 +91,6 @@ def vertex_response_schema(schema: dict) -> dict:
         "maximum",
         "minLength",
         "maxLength",
-        "minItems",
-        "maxItems",
         "required",
     }
 
