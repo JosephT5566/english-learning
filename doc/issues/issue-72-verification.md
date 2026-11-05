@@ -155,3 +155,114 @@ The original issue asks for a current documentation lookup and a reviewed standa
 The owner's task instructions instead prohibit that lookup and require null reviewer/date fields.
 The conservative result is an unverified adapter and explicitly provisional set, with manual
 maintainer steps documented rather than fabricated evidence.
+
+## PR #85 review fixes
+
+Review-fix comparison base: `71b66f7016297ecf8fe1af468ae266a2d9f6bc91`, 2026-11-05.
+The maintainer supplied two code defects and reserved the other two blocking items (answer-set
+review and real-model evaluation) for themselves. No GitHub query or mutation was performed.
+The earlier local PASS verdicts above describe the original review scope and do not establish
+that its handwritten response fixtures covered these newly reproduced cases.
+
+### Defects and decisions
+
+1. [generation.py:132](../../apps/api/app/generation.py#L132) now explicitly permits only text,
+   thought and thoughtSignature keys in text parts. Metadata types are checked; thought=true
+   summaries and signatures never enter the final answer. Every part, including excluded thoughts,
+   must still be text-only under that allowlist. Unknown keys and mixed tool/media fields fail
+   closed. This is based on the review-cited Vertex Content REST reference, which remains
+   unverified because this task prohibits online documentation lookup or real model calls.
+2. [generation.py:253](../../apps/api/app/generation.py#L253) now catches requests JSONDecodeError,
+   ContentDecodingError and ChunkedEncodingError before generic RequestException handling. The
+   endpoint maps invalid_response to non-retryable 502 generation_invalid_response. Ordinary
+   connection errors and HTTPError status classification retain existing behavior.
+
+Local installed requests 2.34.2 inspection established that Response.json() wraps JSON failures
+in requests.JSONDecodeError, which inherits both RequestException and ValueError. Response
+iter_content translates underlying decode/protocol errors into ContentDecodingError and
+ChunkedEncodingError; Session.send consumes response.content by default before returning a
+non-streamed response. The new handler covers these body errors whether raised during post or
+while reading JSON. Other connection/read/SSL transport behavior was not broadened; the existing
+connection-error tests remain in place. Audit: `/tmp/codex-72/fix-requests-audit.log`.
+No actual malformed HTTP server, compression stream or live Vertex response was used.
+
+### Red-first evidence
+
+Before changing generation.py:
+
+| Working directory | Command (with UV_CACHE_DIR=/tmp/codex-72/uv-cache)                                                     | Exit | Observed failure                                                                                                                                                                              |
+| ----------------- | ------------------------------------------------------------------------------------------------------ | ---- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| root              | `uv run --project apps/api pytest apps/api/tests/unit/test_generation_response_parts.py -q`            | 1    | 6 failed, 27 passed: 3 valid metadata/final-text cases incorrectly raised invalid_response; real JSON decode and 2 body-read failures raised provider_unavailable instead of invalid_response |
+| apps/api          | `RUN_POSTGRES_INTEGRATION_TESTS=1 uv run pytest tests/integration/test_generation_response_http.py -q` | 1    | 4 failed: signed final answer returned 502 instead of 200; malformed JSON/content/chunk bodies returned 503 instead of 502                                                                    |
+
+Logs: `/tmp/codex-72/fix-red-unit.log` and `fix-red-http.log`. These are executed behavior
+failures, not collection/setup failures. Existing assertions/tests were not changed or weakened.
+
+### Green behavior evidence
+
+- [test_final_text_accepts_review_documented_metadata:37](../../apps/api/tests/unit/test_generation_response_parts.py#L37)
+  checks text plus signature with absent/false thought;
+  [test_only_final_text_parts_are_combined_in_order:44](../../apps/api/tests/unit/test_generation_response_parts.py#L44)
+  excludes interleaved thought summaries and preserves final answer order.
+- [test_non_text_content_and_unknown_keys_are_rejected:76](../../apps/api/tests/unit/test_generation_response_parts.py#L76)
+  covers functionCall, functionResponse, inlineData, fileData, executableCode,
+  codeExecutionResult and unknown keys, both with and without text. Additional tests reject
+  malformed metadata, thought-only output, empty/non-string text, mixed thought/tool content,
+  multiple candidates and unsupported finish reasons. Existing MAX_TOKENS rejection is retained.
+- [test_real_requests_json_decode_error_is_invalid_response:127](../../apps/api/tests/unit/test_generation_response_parts.py#L127)
+  calls actual Response.json() on a synthetic HTTP 200 non-JSON body, asserts the actual exception
+  inheritance and provider invalid_response without retry/message leakage. The prior general
+  ValueError test remains unchanged in test_generation.py.
+- [test_body_decoding_or_chunk_failure_is_invalid_response:155](../../apps/api/tests/unit/test_generation_response_parts.py#L155)
+  uses real Response.json()/iter_content with synthetic raw.stream errors to exercise requests'
+  actual decode/chunk exception translation. This is local exception-path evidence only.
+- [test_signed_final_text_reaches_endpoint_as_valid_cards:44](../../apps/api/tests/integration/test_generation_response_http.py#L44)
+  uses the real adapter/parser with fake HTTP and ADC, returns 200 with validated cards, excludes
+  thought/signature values and preserves learning-data counts.
+- [test_malformed_provider_body_is_502_nonretryable:89](../../apps/api/tests/integration/test_generation_response_http.py#L89)
+  covers all three body failures, checks 502 generation_invalid_response, retryable=false, one
+  call, no provider-body leakage and unchanged learning-data counts.
+
+Focused green commands: root `uv run --project apps/api pytest apps/api/tests/unit/test_generation.py apps/api/tests/unit/test_generation_response_parts.py -q`
+returned exit 0, 59 passed; API `RUN_POSTGRES_INTEGRATION_TESTS=1 uv run pytest tests/integration/test_generation_response_http.py -q`
+returned exit 0, 4 passed. Both used the task uv cache; logs `fix-green-unit.log`, `fix-green-http.log`.
+
+### Final review-fix verification
+
+All commands below ran with `UV_CACHE_DIR=/tmp/codex-72/uv-cache` for uv; PostgreSQL checks
+used the existing localhost disposable service and unchanged restricted-role fixture.
+
+| Working directory | Command                                                               | Exit | Observed result                            |
+| ----------------- | --------------------------------------------------------------------- | ---- | ------------------------------------------ |
+| apps/api          | `uv run ruff check .`                                                 | 0    | All checks passed                          |
+| apps/api          | `uv run ruff format --check .`                                        | 0    | 96 files already formatted                 |
+| apps/api          | `uv run pytest tests/unit -q`                                         | 0    | 272 passed, 1 existing Starlette warning   |
+| apps/api          | `RUN_POSTGRES_INTEGRATION_TESTS=1 uv run pytest tests/integration -q` | 0    | 316 passed, 51 existing warnings, no skips |
+| apps/api          | `RUN_POSTGRES_INTEGRATION_TESTS=1 uv run pytest tests/eval -q`        | 0    | 10 passed, no skips                        |
+| root              | `npm run lint:changed -- origin/main`                                 | 0    | Changed-file Prettier/ESLint passed        |
+| root              | `git diff --check`                                                    | 0    | No whitespace errors                       |
+| root              | `npm run api:check`                                                   | 0    | Internal regeneration produced no drift    |
+
+Logs under `/tmp/codex-72/`: `fix-ruff-check.log`, `fix-ruff-format.log`, `fix-unit.log`,
+`fix-integration.log`, `fix-eval.log`, `fix-lint.log`, `fix-diff-check.log`, `fix-api-check.log`.
+Integration warnings are the existing Starlette deprecation and 50 pgvector reflection warnings.
+A scoped independent reviewer returned PASS against the frozen three-file code/test change,
+re-ran 59 focused unit tests, Ruff check/format and diff check successfully, and inspected both
+red logs. This does not establish true-provider compatibility. No source edits followed that review.
+
+An intermediate Ruff check returned exit 1 because an earlier root-cwd autofix sorted the two new
+test imports differently from API-cwd rules. The chained full unit command did not run on that
+attempt. Corrected only the new imports from apps/api and ran the successful checks above.
+No frontend, route, public-model or runtime lifecycle change occurred, so frontend/build/browser/
+container suites were not repeated. API check internally regenerates artifacts; no separate
+api:generate invocation was necessary.
+
+### Limits and maintainer-owned blockers
+
+Vertex Content REST documentation, request/response/schema compatibility, model IDs/IAM and all
+real-model quality/cost/latency remain unverified. No online lookup, model call or production
+access occurred. Unknown metadata can still be rejected intentionally; extensions require review.
+No request/response model changed. API check regenerates internally and confirmed no artifact drift.
+The answer-set cases and all review fields are unchanged; per-case review and true-model evaluation
+remain outstanding maintainer work. No dependency, workflow, migration, environment/auth/static-path
+or scheduling change was made. No push, amend or rebase was performed.

@@ -91,3 +91,19 @@ The tool uses `Settings(_env_file=None)` and never reads `.env`. The report incl
 model, returned model versions when available, model query date and execution timestamp. Keep
 real reports local until reviewed for safe publication. A provisional answer set remains provisional
 even if the API calls succeed. Do not report any real-model metric until this mode actually runs.
+
+## Review-derived response parsing, still unverified
+
+PR #85's review cited Vertex Content REST metadata on text parts. That reference was not fetched
+or verified for this work. The local parser now allows only text, thought and thoughtSignature
+keys; text/signature must be strings and thought must be a boolean when present. It concatenates
+only final text, excluding thought=true summaries and all signature metadata. All parts are
+validated first; tool/media fields, unknown keys, malformed metadata and thought-only responses
+are rejected. The unknown-key policy deliberately fails closed, so future provider metadata can
+require a reviewed extension. This behavior is covered by handwritten synthetic contracts and a
+fake-HTTP endpoint test, not actual model responses.
+
+Malformed JSON and content/chunk decoding failures are non-retryable invalid responses (502),
+while connection failures retain their availability classification. Real requests.Response.json()
+and synthetic raw-body errors cover this distinction locally. No dataset review fields or real
+model results were changed. See [review-fix evidence](../../../issues/issue-72-verification.md#pr-85-review-fixes).

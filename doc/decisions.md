@@ -495,3 +495,25 @@ answer set or independent human annotation. Recorded responses are handwritten s
 not actual model results. Manual live evaluation needs an explicit flag, opt-in environment,
 selected model/project and model-documentation query date. See
 [evaluation README](training/issues/72/README.md) and [verification](issues/issue-72-verification.md).
+
+## 2026-11-05: Preserve final text and classify malformed generation bodies
+
+PR #85 review identified two defects at head `71b66f7`: text parts with thoughtSignature were
+rejected, and requests.JSONDecodeError was classified as a retryable transport failure.
+Use an explicit text-part key allowlist: text, thought and thoughtSignature. Require string text,
+boolean thought when supplied, and string thoughtSignature when supplied. Treat signatures as
+opaque metadata and exclude thought=true text from the final answer. Validate every part before
+excluding thoughts so mixed tool/media content cannot hide in a thought part. Reject all unknown
+keys conservatively, including future metadata, until separately reviewed. No final answer text
+still fails. The basis is the review-cited Vertex Content REST reference, which was not fetched or
+verified; these contracts have only handwritten/local synthetic response evidence.
+
+Classify JSONDecodeError, ContentDecodingError and ChunkedEncodingError as invalid_response
+before the generic RequestException catch. A malformed JSON/decoded/chunked body is invalid
+output, so the endpoint returns non-retryable 502 generation_invalid_response rather than a
+retryable service outage. Local installed requests source confirms these body errors share
+RequestException; real Response.json() tests exercise JSON and synthetic raw body-read errors.
+Keep ordinary connection failures as provider_unavailable and retain existing HTTPError status
+classification. This does not establish real Vertex wire compatibility or all network failure
+behavior. Dataset review and true-model evaluation remain maintainer tasks, untouched by this fix.
+See [review-fix evidence](issues/issue-72-verification.md#pr-85-review-fixes).
