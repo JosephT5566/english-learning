@@ -514,3 +514,65 @@ response parsing and schema subset are **unverified against the real API**; hand
 only establish the intended adapter contract. No model name or IAM configuration is asserted valid.
 See [evaluation instructions](../../doc/training/issues/72/README.md) and
 [verification evidence](../../doc/issues/issue-72-verification.md).
+
+## Stateless readonly learning assistant
+
+`POST /v1/assistant/messages` accepts `{ "messages": [{ "role": "user", "content": "What is due?" }] }`.
+Only plain-text `user` and `assistant` messages are accepted; extra fields and `tool` roles
+return 422. Authentication precedes validation, configured input limits precede consent,
+and `require_genai_consent` precedes generation. Missing consent is 403
+`genai_consent_required`; missing model/project is 503 `generation_not_configured`.
+The endpoint reuses #72's `GENERATION_MODEL`, generation location and generation provider.
+No model is configured by default. Nothing persists conversation or tool output.
+
+The non-streaming response contains `reply`, `tool_calls` with validated arguments, status
+and duration, `stop_reason` of `completed`, `max_steps` or `timeout`, and nullable summed
+`usage`. Invalid arguments are omitted from summaries. Unknown names are shown as `unknown`
+to avoid reflecting hostile names. Summaries contain no tool-result/card text. The answer
+can discuss the owner's card content. There are exactly three readonly tools:
+`search_cards` for English semantic retrieval, `get_due_cards` for an English/Japanese first
+page, and `get_review_stats` for active/due counts with optional deck/language filters.
+Owners come from the authenticated session, never model arguments. Search uses the existing
+embedding provider and does not treat an embedding failure as a successful empty search.
+
+| Server-only variable          | Default | Allowed range | Reason                                  |
+| ----------------------------- | ------- | ------------- | --------------------------------------- |
+| `ASSISTANT_MAX_STEPS`         | 3       | 1-3           | One model call per step, bounded loop   |
+| `ASSISTANT_TIMEOUT_SECONDS`   | 60      | 1-120         | Bound the orchestration wait budget     |
+| `ASSISTANT_MAX_OUTPUT_TOKENS` | 2048    | 1-8192        | Short answers with bounded output       |
+| `ASSISTANT_MAX_MESSAGES`      | 20      | 1-100         | Short client-supplied history           |
+| `ASSISTANT_MAX_CHARS`         | 12000   | 1-100000      | Total message characters, not bytes     |
+| `ASSISTANT_MAX_TOOL_CALLS`    | 3       | 1-10          | Small batches; oversized batch rejected |
+| `ASSISTANT_TOOL_LIMIT`        | 10      | 1-20          | Search/due limit clamped to 1..this cap |
+
+Search/due default to five results, clamped by the configured cap even when it is below
+five. Statistics has no `limit` argument; it returns two counts. Request models also enforce
+absolute 100-message and 100000-character-per-message caps. Token limits go into every
+provider call; reported output counts above the limit fail with non-retryable 502
+`generation_truncated_output`. Missing provider usage stays null, never an invented count.
+
+The final step retains declarations and sends `toolConfig.functionCallingConfig.mode=NONE`.
+This is explicit intent, not verified Vertex behavior. If the provider still requests tools,
+none execute, and the response uses a fixed fallback with `max_steps`. Provider timeouts and
+late results return the fixed fallback with `timeout`. Other safe #72 provider codes retain
+502/503 classification. No provider retry occurs. Each model step emits one JSON
+`assistant_step` with request ID, step, allowlisted tool names, bounded status, duration and
+tokens, without message text, arguments, reasoning, card data or signatures.
+
+Authentication, request validation and completion of the existing auth transaction precede
+the assistant budget. One absolute deadline then covers initial/repeated consent, pool waits,
+tool SQL and provider waits. A worker exclusively owns a separate session bound to the same
+authenticated owner. Caller timeout never closes a session used by a worker. A late worker
+checks the shared deadline before subsequent work and closes its own session. On the outer
+watchdog timeout, partial summaries/usage are unavailable and the response has an empty
+`tool_calls` list and null `usage`.
+
+Generation and assistant query embedding run outside database transactions. Each readonly
+tool transaction rebinds the existing RLS identity and rolls back on completion. Due and stats
+share the due predicate and a request snapshot. PostgreSQL statement timeouts bound tool SQL.
+Provider-only workers bound ADC/HTTP waits and never receive database sessions. Python
+cannot cancel running HTTP calls, so in-flight requests can finish after timeout; their
+results are discarded and cannot trigger another model or tool call. This is not a remote cancellation or billing guarantee. Consent withdrawal
+cannot recall already-transmitted text. Streaming and Neon pooled `set_config` behavior remain
+unverified. See [verification](../../doc/issues/issue-70-verification.md) and the
+[provisional evaluation](../../doc/training/issues/70/README.md).

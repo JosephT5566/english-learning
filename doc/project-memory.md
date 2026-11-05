@@ -8,6 +8,21 @@ verification records belong in the linked issue artifacts. Implementation and te
 precedence over stale documentation. Deployment statements below summarize recorded evidence, not
 a fresh inspection of the live services.
 
+## Stateless readonly assistant backend (2026-11-05)
+
+Issue #70 adds a backend-only non-streaming `POST /v1/assistant/messages` with consent,
+text-only history limits, a maximum of three generated turns and exactly three readonly
+owner-bound tools. Tool summaries omit card results; no conversation persists. Search/due
+queries are shared with existing endpoints; statistics reuses the same due predicate.
+Model and assistant query-embedding waits release database transactions; new transactions
+retain existing RLS binding. Settings bound turns, time, output, history and tool batches.
+Frontend work remains deferred under ui-design-gate; only generated API types change.
+[Verification](issues/issue-70-verification.md) distinguishes deterministic local results
+from unverified Vertex function-calling/signature/schema/NONE compatibility. Eight
+[AI-drafted synthetic cases](training/issues/70/README.md) await per-case maintainer review;
+replay is provisional and no real-model evaluation was executed. Production, streaming and
+Neon pooled behavior remain unverified.
+
 ## Stateless card extraction (2026-11-05)
 
 Issue #72 adds a backend-only, consent-gated extraction/adjustment preview endpoint with strict
