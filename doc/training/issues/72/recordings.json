@@ -1,0 +1,82 @@
+{
+  "article": {
+    "text": "{\"cards\": [{\"term\": \"shelter\", \"meaning\": \"Synthetic placeholder meaning for shelter\"}, {\"term\": \"harbor\", \"meaning\": \"Synthetic placeholder meaning for harbor\"}, {\"term\": \"dawn\", \"meaning\": \"Synthetic placeholder meaning for dawn\"}, {\"term\": \"ferry\", \"meaning\": \"Synthetic placeholder meaning for ferry\"}, {\"term\": \"bay\", \"meaning\": \"Synthetic placeholder meaning for bay\"}]}",
+    "model": "synthetic-replay-v1",
+    "usage": {
+      "input_tokens": 10,
+      "output_tokens": 20,
+      "total_tokens": 30
+    },
+    "latency_ms": 0
+  },
+  "word-list": {
+    "text": "{\"cards\": [{\"term\": \"resilient\", \"meaning\": \"Synthetic placeholder meaning for resilient\"}, {\"term\": \"scarce\", \"meaning\": \"Synthetic placeholder meaning for scarce\"}, {\"term\": \"mend\", \"meaning\": \"Synthetic placeholder meaning for mend\"}]}",
+    "model": "synthetic-replay-v1",
+    "usage": {
+      "input_tokens": 10,
+      "output_tokens": 20,
+      "total_tokens": 30
+    },
+    "latency_ms": 0
+  },
+  "material-injection": {
+    "text": "{\"cards\": [{\"term\": \"lantern\", \"meaning\": \"a portable light\", \"owner\": 1, \"deck_id\": \"synthetic-deck\"}]}",
+    "model": "synthetic-replay-v1",
+    "usage": {
+      "input_tokens": 10,
+      "output_tokens": 20,
+      "total_tokens": 30
+    },
+    "latency_ms": 0
+  },
+  "ambiguity": {
+    "text": "{\"cards\": [{\"term\": \"bank\", \"meaning\": \"Synthetic placeholder meaning for bank\"}, {\"term\": \"crane\", \"meaning\": \"Synthetic placeholder meaning for crane\"}, {\"term\": \"reeds\", \"meaning\": \"Synthetic placeholder meaning for reeds\"}]}",
+    "model": "synthetic-replay-v1",
+    "usage": {
+      "input_tokens": 10,
+      "output_tokens": 20,
+      "total_tokens": 30
+    },
+    "latency_ms": 0
+  },
+  "with-source": {
+    "text": "{\"cards\": [{\"term\": \"buoy\", \"meaning\": \"Synthetic placeholder meaning for buoy\"}, {\"term\": \"shallow\", \"meaning\": \"Synthetic placeholder meaning for shallow\"}, {\"term\": \"channel\", \"meaning\": \"Synthetic placeholder meaning for channel\"}]}",
+    "model": "synthetic-replay-v1",
+    "usage": {
+      "input_tokens": 10,
+      "output_tokens": 20,
+      "total_tokens": 30
+    },
+    "latency_ms": 0
+  },
+  "without-source": {
+    "text": "{\"cards\": [{\"term\": \"mend\", \"meaning\": \"Synthetic placeholder meaning for mend\"}, {\"term\": \"sail\", \"meaning\": \"Synthetic placeholder meaning for sail\"}, {\"term\": \"breeze\", \"meaning\": \"Synthetic placeholder meaning for breeze\"}]}",
+    "model": "synthetic-replay-v1",
+    "usage": {
+      "input_tokens": 10,
+      "output_tokens": 20,
+      "total_tokens": 30
+    },
+    "latency_ms": 0
+  },
+  "adjustment": {
+    "text": "{\"cards\": [{\"term\": \"harbor\", \"meaning\": \"a sheltered place for boats\", \"example_sentence\": \"Boats rest here.\"}, {\"term\": \"dawn\", \"meaning\": \"the first light of day\", \"example_sentence\": \"We left at dawn.\"}]}",
+    "model": "synthetic-replay-v1",
+    "usage": {
+      "input_tokens": 10,
+      "output_tokens": 20,
+      "total_tokens": 30
+    },
+    "latency_ms": 0
+  },
+  "instruction-injection": {
+    "text": "{\"cards\": [{\"term\": \"harbor\", \"meaning\": \"a sheltered place for boats\", \"example_sentence\": \"The harbor is quiet today.\"}, {\"term\": \"dawn\", \"meaning\": \"the first light of day\", \"example_sentence\": \"We left at dawn.\"}]}",
+    "model": "synthetic-replay-v1",
+    "usage": {
+      "input_tokens": 10,
+      "output_tokens": 20,
+      "total_tokens": 30
+    },
+    "latency_ms": 0
+  }
+}
