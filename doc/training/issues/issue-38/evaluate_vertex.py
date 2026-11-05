@@ -4,7 +4,8 @@ Requires a locally authenticated gcloud CLI and an explicitly selected project:
     python3 evaluate_vertex.py --project PROJECT_ID
 
 This script sends only the checked-in synthetic fixture to Vertex AI. It never prints
-access tokens, card text, or embedding values. Importing this module makes no API calls.
+access tokens, card text, or embedding values to stdout. --dump-vectors explicitly
+writes only synthetic vectors and metadata to the selected JSON file. Importing this module makes no API calls.
 """
 
 from __future__ import annotations
@@ -15,12 +16,18 @@ import json
 import math
 import re
 import subprocess
+import sys
 import time
+from datetime import UTC, datetime
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 from evaluate import evaluate
+
+# Keep the standalone runner aligned with the production embedding version.
+sys.path.insert(0, str(Path(__file__).resolve().parents[4] / "apps" / "api"))
+from app.semantic_text import MODEL_VERSION  # noqa: E402
 
 MODEL = "gemini-embedding-001"
 DIMENSIONS = 512
@@ -103,14 +110,17 @@ def request_embedding(
     return values, stats["token_count"], elapsed_ms
 
 
-def run_evaluation(labels: dict, embed) -> dict:
+def run_evaluation(labels: dict, embed, *, dump_vectors: Path | None = None) -> dict:
     if (
         labels.get("version") != "synthetic-en-v1"
         or len(labels.get("cards", [])) != 10
         or len(labels.get("queries", [])) != 7
     ):
         raise ValueError("unexpected synthetic fixture")
+    if dump_vectors is not None and labels != json.loads(FIXTURE.read_bytes()):
+        raise ValueError("dump must use the checked-in synthetic fixture")
     vectors = {}
+    query_vectors = {}
     token_counts = []
     latencies_ms = []
     for card in labels["cards"]:
@@ -122,6 +132,7 @@ def run_evaluation(labels: dict, embed) -> dict:
     for query in labels["queries"]:
         vector, tokens, latency = embed(query["text"], "RETRIEVAL_QUERY")
         query_vector = validate_vector(vector)
+        query_vectors[query["text"]] = query_vector
         token_counts.append(tokens)
         latencies_ms.append(latency)
         rankings[query["text"]] = sorted(
@@ -142,6 +153,19 @@ def run_evaluation(labels: dict, embed) -> dict:
     report["provider_request_p95_ms"] = round(
         ordered[math.ceil(0.95 * len(ordered)) - 1], 1
     )
+    if dump_vectors is not None:
+        payload = {
+            "schema_version": 1,
+            "model": MODEL,
+            "dim": DIMENSIONS,
+            "model_version": MODEL_VERSION,
+            "relevance_sha256": hashlib.sha256(FIXTURE.read_bytes()).hexdigest(),
+            "created_at": datetime.now(UTC).isoformat(),
+            "cards": vectors,
+            "queries": query_vectors,
+        }
+        dump_vectors.parent.mkdir(parents=True, exist_ok=True)
+        dump_vectors.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
     return report
 
 
@@ -149,6 +173,11 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--project", required=True)
     parser.add_argument("--location", default="us-central1")
+    parser.add_argument(
+        "--dump-vectors",
+        type=Path,
+        help="write frozen synthetic vectors for offline CI",
+    )
     args = parser.parse_args()
     if not re.fullmatch(r"[a-z][a-z0-9-]{4,61}[a-z0-9]", args.project):
         parser.error("invalid project ID")
@@ -178,7 +207,13 @@ def main() -> None:
             task_type=task_type,
         )
 
-    print(json.dumps(run_evaluation(labels, embed), indent=2, ensure_ascii=True))
+    print(
+        json.dumps(
+            run_evaluation(labels, embed, dump_vectors=args.dump_vectors),
+            indent=2,
+            ensure_ascii=True,
+        )
+    )
 
 
 if __name__ == "__main__":
