@@ -461,3 +461,37 @@ superuser/BYPASSRLS privileges. Retired import tools remain unbound/disabled und
 older code. This exception requires operator sequencing because existing release automation was
 not changed. Neon pooled behavior and production execution remain unverified. See
 [Issue #75 verification](issues/issue-75-verification.md).
+
+## 2026-11-05: Add stateless card extraction with provisional evaluation
+
+Issue #72's supplied approved spec and maintainer implementation instructions authorize REST with
+existing `requests` and ADC. No dependency, workflow, migration, auth/GIS, public environment,
+static-path or scheduling changes are needed. No online documentation was queried, per the task's
+explicit prohibition; Vertex generation request/response formats and response-schema subset are
+unverified and require maintainer live evaluation. No model is selected by default.
+
+Implementation defaults are engineering choices, not benchmark results: model `None` prevents
+accidental live use; HTTP timeout 30 seconds limits transport waiting; 8192 output tokens gives
+short 1-20 card drafts room while bounding output; 20000 material characters covers a short passage
+or word list; 2000 instruction characters covers focused edits. Configured maxima are 120 seconds,
+32768 tokens, 100000 material characters and 10000 instruction characters. The transport timeout
+is requests' connect/read timeout, not an end-to-end billing or streaming deadline. Output also
+retains the existing 100000-byte JSON authoring cap. Settings remain server-only.
+
+Keep generation outside the request transaction after ownership/archive/consent checks. Releasing
+the shared consent lock avoids blocking withdrawal during provider latency; a later withdrawal
+cannot recall transmitted input. Return only strict `CardDrafts` previews and never persist them.
+Reject explicit null adjustment fields conservatively, requiring a real drafts/instruction pair.
+No retry masks invalid output. The provider schema removes unsupported keywords, while server
+validation retains extra-field and cross-field enforcement.
+
+Propose eight original synthetic English cases: narrative, list, ambiguity, supplied source/date,
+no source/date, ordinary adjustment, material injection and instruction injection. Each category
+gets one case; injection has two of eight, deliberately covering both input paths. This balances
+small review effort with requested coverage, not statistical representativeness. AI drafted all
+inputs and expected terms. Review owner has not been assigned; `reviewed_by` and `reviewed_on` are
+null for every case. Maintainer per-case review is pending and this is not an approved standard
+answer set or independent human annotation. Recorded responses are handwritten synthetic fixtures,
+not actual model results. Manual live evaluation needs an explicit flag, opt-in environment,
+selected model/project and model-documentation query date. See
+[evaluation README](training/issues/72/README.md) and [verification](issues/issue-72-verification.md).
