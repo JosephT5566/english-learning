@@ -8,6 +8,17 @@ verification records belong in the linked issue artifacts. Implementation and te
 precedence over stale documentation. Deployment statements below summarize recorded evidence, not
 a fresh inspection of the live services.
 
+## Stateless card extraction (2026-11-05)
+
+Issue #72 adds a backend-only, consent-gated extraction/adjustment preview endpoint with strict
+`CardDrafts` validation. Deck languages come from owned rows; external generation runs after
+releasing the transaction/consent lock. No cards or drafts are persisted and hand-pasted JSON
+remains unchanged. Generation is disabled until an explicit model and project are configured.
+REST/schema compatibility, model/IAM and real quality are unverified; eight AI-drafted synthetic
+cases await maintainer review. Local evidence is in
+[Issue #72 verification](issues/issue-72-verification.md); evaluation tooling is in
+[the evaluation README](training/issues/72/README.md). No live model or production call occurred.
+
 ## Owner isolation through RLS (2026-11-05)
 
 Issue #75 adds fail-closed RLS for 11 owner-bearing tables. Authentication binds the internal

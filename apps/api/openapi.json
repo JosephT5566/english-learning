@@ -1720,6 +1720,89 @@
         "title": "ErrorResponse",
         "type": "object"
       },
+      "ExtractionRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "drafts": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/CardFields"
+                },
+                "maxItems": 20,
+                "minItems": 1,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Drafts"
+          },
+          "instruction": {
+            "anyOf": [
+              {
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Instruction"
+          },
+          "material": {
+            "minLength": 1,
+            "title": "Material",
+            "type": "string"
+          }
+        },
+        "required": [
+          "material"
+        ],
+        "title": "ExtractionRequest",
+        "type": "object"
+      },
+      "ExtractionResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "cards": {
+            "items": {
+              "$ref": "#/components/schemas/CardFields"
+            },
+            "maxItems": 20,
+            "minItems": 1,
+            "title": "Cards",
+            "type": "array"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "usage": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GenerationUsage"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "cards"
+        ],
+        "title": "ExtractionResponse",
+        "type": "object"
+      },
       "GenAIConsentResponse": {
         "properties": {
           "genai_consent_at": {
@@ -1739,6 +1822,49 @@
           "genai_consent_at"
         ],
         "title": "GenAIConsentResponse",
+        "type": "object"
+      },
+      "GenerationUsage": {
+        "additionalProperties": false,
+        "properties": {
+          "input_tokens": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Input Tokens"
+          },
+          "output_tokens": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output Tokens"
+          },
+          "total_tokens": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Tokens"
+          }
+        },
+        "title": "GenerationUsage",
         "type": "object"
       },
       "GuestSnapshot": {
@@ -3271,6 +3397,61 @@
           }
         ],
         "summary": "Update Deck"
+      }
+    },
+    "/v1/decks/{deck_id}/card-drafts/extract": {
+      "post": {
+        "operationId": "extract_card_drafts_v1_decks__deck_id__card_drafts_extract_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "deck_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Deck Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExtractionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExtractionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Extract Card Drafts"
       }
     },
     "/v1/decks/{deck_id}/card-drafts/validate": {

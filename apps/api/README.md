@@ -459,3 +459,58 @@ CI's ordinary integration fixtures now use restricted runtime engines for HTTP, 
 backfill and guest export sessions by default; owner connections still seed/inspect data and
 exercise retired import maintenance. No new environment switch or workflow edit is required.
 See [verification](../../doc/issues/issue-75-verification.md) for exact checks and remaining limits.
+
+## Stateless card extraction
+
+`POST /v1/decks/{deck_id}/card-drafts/extract` accepts `material`, with optional paired
+`drafts` (1-20 `CardFields` objects) and nonblank `instruction` for adjustments. Explicit null
+adjustment fields are rejected. Client-supplied languages and unknown fields are rejected.
+Deck ownership/archive and GenAI consent are checked before generation; languages come only
+from the deck. This endpoint returns an editable `CardDrafts` envelope plus nullable `model`
+and `usage` (input/output/total tokens). It never creates cards. Confirmation still uses existing
+bulk create. The frontend hand-pasted JSON workflow is unchanged.
+
+Server-only environment settings, validated at startup:
+
+| Setting                            | Default | Allowed range                   | Purpose                                                 |
+| ---------------------------------- | ------- | ------------------------------- | ------------------------------------------------------- |
+| `GENERATION_MODEL`                 | unset   | model identifier, max 128 chars | Explicit maintainer-selected Vertex model               |
+| `GENERATION_LOCATION`              | unset   | global or regional location     | Generation-only override; falls back to VERTEX_LOCATION |
+| `GENERATION_TIMEOUT_SECONDS`       | 30      | 1-120                           | HTTP transport timeout                                  |
+| `GENERATION_MAX_OUTPUT_TOKENS`     | 8192    | 1-32768                         | Bound generated output                                  |
+| `GENERATION_MATERIAL_MAX_CHARS`    | 20000   | 1-100000                        | Unicode characters after trimming outer whitespace      |
+| `GENERATION_INSTRUCTION_MAX_CHARS` | 2000    | 1-10000                         | Unicode characters after trimming outer whitespace      |
+
+Reuse `VERTEX_PROJECT_ID`. `GENERATION_LOCATION` accepts `global` or the existing regional
+format; when unset, generation uses `VERTEX_LOCATION` (default `us-central1`). Embedding continues
+to use only regional `VERTEX_LOCATION`, whose validation/default and routing are unchanged.
+Generation global routing uses host `aiplatform.googleapis.com` and path `locations/global`;
+regional generation retains the region-prefixed host. This global format is prior knowledge,
+**unverified against the live API**, and does not establish model availability in any location.
+Missing model or project returns stable
+503 `generation_not_configured` with no provider call or ADC lookup, after the access/consent
+checks. Provider construction is lazy and app-scoped. Input limit failures return 413
+`input_too_large`; request shape failures return 422. Timeout returns 504
+`generation_provider_timeout`; quota, availability and authentication return 503 with respective
+`generation_provider_rate_limited`, `generation_provider_unavailable`, `generation_provider_auth_error`.
+Bad provider envelopes/truncation return 502 `generation_invalid_response`/
+`generation_truncated_output`. Invalid generated JSON/card fields return 502
+`extraction_invalid_output`. Provider messages are never returned and no generation is retried.
+
+The route commits authentication/deck/consent checks before external processing, releasing the
+connection and consent lock. Withdrawal or archive after that snapshot cannot recall transmitted
+material; no final data write occurs. Each request emits a `card_extraction_completed` JSON event
+with request ID, bounded deck UUID, adjustment flag, duration, optional token usage and result code,
+including rejected requests. HTTP provider failures additionally log a safe numeric `http_status`
+when available; it is never added to the public error envelope. `GenerationFailure` retains only
+that bounded status (100-599), not the provider body, token or user text. HTTP 400/404 still return
+502 `generation_invalid_response`; this diagnostic does not change retryability or API codes.
+Events exclude material, instructions and card content.
+
+The response schema is derived from `CardDrafts.model_json_schema()`, with references expanded,
+nullable unions converted and unsupported conditionals/extra-property restrictions omitted from
+the provider schema. Strict server validation enforces these rules again. The Vertex REST format,
+response parsing and schema subset are **unverified against the real API**; handwritten fixtures
+only establish the intended adapter contract. No model name or IAM configuration is asserted valid.
+See [evaluation instructions](../../doc/training/issues/72/README.md) and
+[verification evidence](../../doc/issues/issue-72-verification.md).

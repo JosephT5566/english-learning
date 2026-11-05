@@ -157,6 +157,23 @@ export interface paths {
         patch: operations["update_deck_v1_decks__deck_id__patch"];
         trace?: never;
     };
+    "/v1/decks/{deck_id}/card-drafts/extract": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Extract Card Drafts */
+        post: operations["extract_card_drafts_v1_decks__deck_id__card_drafts_extract_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/decks/{deck_id}/card-drafts/validate": {
         parameters: {
             query?: never;
@@ -717,10 +734,36 @@ export interface components {
         ErrorResponse: {
             error: components["schemas"]["ErrorBody"];
         };
+        /** ExtractionRequest */
+        ExtractionRequest: {
+            /** Drafts */
+            drafts?: components["schemas"]["CardFields"][] | null;
+            /** Instruction */
+            instruction?: string | null;
+            /** Material */
+            material: string;
+        };
+        /** ExtractionResponse */
+        ExtractionResponse: {
+            /** Cards */
+            cards: components["schemas"]["CardFields"][];
+            /** Model */
+            model?: string | null;
+            usage?: components["schemas"]["GenerationUsage"] | null;
+        };
         /** GenAIConsentResponse */
         GenAIConsentResponse: {
             /** Genai Consent At */
             genai_consent_at: string | null;
+        };
+        /** GenerationUsage */
+        GenerationUsage: {
+            /** Input Tokens */
+            input_tokens?: number | null;
+            /** Output Tokens */
+            output_tokens?: number | null;
+            /** Total Tokens */
+            total_tokens?: number | null;
         };
         /** GuestSnapshot */
         GuestSnapshot: {
@@ -1411,6 +1454,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Deck"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    extract_card_drafts_v1_decks__deck_id__card_drafts_extract_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                deck_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExtractionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExtractionResponse"];
                 };
             };
             /** @description Validation Error */

@@ -461,3 +461,107 @@ superuser/BYPASSRLS privileges. Retired import tools remain unbound/disabled und
 older code. This exception requires operator sequencing because existing release automation was
 not changed. Neon pooled behavior and production execution remain unverified. See
 [Issue #75 verification](issues/issue-75-verification.md).
+
+## 2026-11-05: Add stateless card extraction with provisional evaluation
+
+Issue #72's supplied approved spec and maintainer implementation instructions authorize REST with
+existing `requests` and ADC. No dependency, workflow, migration, auth/GIS, public environment,
+static-path or scheduling changes are needed. No online documentation was queried, per the task's
+explicit prohibition; Vertex generation request/response formats and response-schema subset are
+unverified and require maintainer live evaluation. No model is selected by default.
+
+Implementation defaults are engineering choices, not benchmark results: model `None` prevents
+accidental live use; HTTP timeout 30 seconds limits transport waiting; 8192 output tokens gives
+short 1-20 card drafts room while bounding output; 20000 material characters covers a short passage
+or word list; 2000 instruction characters covers focused edits. Configured maxima are 120 seconds,
+32768 tokens, 100000 material characters and 10000 instruction characters. The transport timeout
+is requests' connect/read timeout, not an end-to-end billing or streaming deadline. Output also
+retains the existing 100000-byte JSON authoring cap. Settings remain server-only.
+
+Keep generation outside the request transaction after ownership/archive/consent checks. Releasing
+the shared consent lock avoids blocking withdrawal during provider latency; a later withdrawal
+cannot recall transmitted input. Return only strict `CardDrafts` previews and never persist them.
+Reject explicit null adjustment fields conservatively, requiring a real drafts/instruction pair.
+No retry masks invalid output. The provider schema removes unsupported keywords, while server
+validation retains extra-field and cross-field enforcement.
+
+Propose eight original synthetic English cases: narrative, list, ambiguity, supplied source/date,
+no source/date, ordinary adjustment, material injection and instruction injection. Each category
+gets one case; injection has two of eight, deliberately covering both input paths. This balances
+small review effort with requested coverage, not statistical representativeness. AI drafted all
+inputs and expected terms. Update 2026-11-05: the maintainer `JosephT5566` reviewed all eight cases and recorded
+`reviewed_by` and `reviewed_on` for each; this is a single-reviewer set, not independent
+annotation. Original note: the review owner had not been assigned and the fields were null. Recorded responses are handwritten synthetic fixtures,
+not actual model results. Manual live evaluation needs an explicit flag, opt-in environment,
+selected model/project and model-documentation query date. See
+[evaluation README](training/issues/72/README.md) and [verification](issues/issue-72-verification.md).
+
+## 2026-11-05: Preserve final text and classify malformed generation bodies
+
+PR #85 review identified two defects at head `71b66f7`: text parts with thoughtSignature were
+rejected, and requests.JSONDecodeError was classified as a retryable transport failure.
+Use an explicit text-part key allowlist: text, thought and thoughtSignature. Require string text,
+boolean thought when supplied, and string thoughtSignature when supplied. Treat signatures as
+opaque metadata and exclude thought=true text from the final answer. Validate every part before
+excluding thoughts so mixed tool/media content cannot hide in a thought part. Reject all unknown
+keys conservatively, including future metadata, until separately reviewed. No final answer text
+still fails. The basis is the review-cited Vertex Content REST reference, which was not fetched or
+verified; these contracts have only handwritten/local synthetic response evidence.
+
+Classify JSONDecodeError, ContentDecodingError and ChunkedEncodingError as invalid_response
+before the generic RequestException catch. A malformed JSON/decoded/chunked body is invalid
+output, so the endpoint returns non-retryable 502 generation_invalid_response rather than a
+retryable service outage. Local installed requests source confirms these body errors share
+RequestException; real Response.json() tests exercise JSON and synthetic raw body-read errors.
+Keep ordinary connection failures as provider_unavailable and retain existing HTTPError status
+classification. This does not establish real Vertex wire compatibility or all network failure
+behavior. Dataset review and true-model evaluation remain maintainer tasks, untouched by this fix.
+See [review-fix evidence](issues/issue-72-verification.md#pr-85-review-fixes).
+
+## 2026-11-05: Separate generation location and retain safe HTTP diagnostics
+
+PR #85's maintainer reported eight live evaluation cases classified invalid_response with a
+model selected for global. This is an operator report, not a model run or report independently
+inspected by this agent. It does not prove all failures share one cause. Local source confirms
+the original shared setting rejects global and the generation URL always used a regional host.
+
+Add server-only GENERATION_LOCATION, default None, accepting global or the same regional format.
+Resolve None to the unchanged VERTEX_LOCATION so existing deployments retain their region.
+Embedding configuration and routing remain regional and unchanged. A generation-only URL builder
+uses aiplatform.googleapis.com for global, with locations/global in the path; other regions retain
+the prefixed host. This global URL format comes from prior knowledge and is unverified against
+the real API; no model name, model/location availability or IAM permission is asserted valid.
+
+Keep external ApiError codes, retryability and OpenAPI unchanged. GenerationFailure retains an
+optional integer HTTP status (100-599, excluding booleans/non-integers) for internal diagnosis,
+never the response body, input or token. All HTTPError classifications remain unchanged, including
+400/404 as invalid_response. Record effective location at the top of manual evaluation reports
+and nullable provider_http_status per case. Record http_status in the existing private extraction
+completion event only when available. No new logging system or public diagnostic field is added.
+
+The maintainer's uncommitted cases.json edits are explicitly outside this change. Preserve them
+byte-for-byte and never stage them. The existing replay test assumes all case review fields are
+null and already fails against that working copy; do not weaken its assertions or reset owner data
+to make verification appear green. See [follow-up evidence](issues/issue-72-verification.md#generation-location-and-http-diagnostics-follow-up).
+
+## 2026-11-05: Omit provider array-count keywords after a narrow Vertex bisect
+
+The maintainer reported a one-occasion Vertex bisect on gemini-3.8-flash/global: a schema with
+minItems/maxItems returned HTTP 400 (Request contains an invalid argument); removing only both
+keywords together, retaining the rest, returned 200; removing all constraints also returned 200.
+Removing another keyword group alone left the array-count keywords present and still returned 400. That observation does not implicate those other groups. Individual minItems vs maxItems
+causation remains untested. The agent made no model call or online documentation lookup.
+
+Remove both keywords conservatively from the generation provider schema projection at every
+level. Retain other supported keywords, including minLength/maxLength, minimum/maximum, enum,
+format, nullable, required and description. The successful request establishes acceptance of
+that remaining supplied schema combination for this one model/run; it does not prove semantic
+constraint enforcement, all output cases, other models/versions, or output quality. The latter
+has not been evaluated. Preserve complete CardDrafts server validation, including 1-20 cards,
+field limits and cross-field rules. Keep the prompt unchanged because it already says 1-20 cards.
+
+The former unit assertion that provider cards.maxItems equals 20 was an empirically disproved
+provider-compatibility assumption. Replace it with assertions that minItems/maxItems are absent,
+add recursive/nested conversion coverage, and keep server zero/over-limit output rejection checks.
+This changes only the provider projection, not the public JSON Schema/OpenAPI or validation
+contract. Cases.json remains untouched. See [fix #3 evidence](issues/issue-72-verification.md#provider-array-count-keyword-bisect-fix-3).

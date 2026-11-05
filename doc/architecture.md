@@ -631,3 +631,26 @@ For this migration, override the ordinary migrate-before-app release sequence ab
 These are operator instructions, not an executed rollout. Existing release workflows/scripts were
 not changed and still require a separately reviewed operational sequence for this exception.
 See [Issue #75 verification](issues/issue-75-verification.md) for local evidence and limits.
+
+## Stateless card extraction (2026-11-05)
+
+`app/extraction.py` registers `POST /v1/decks/{deck_id}/card-drafts/extract` alongside the
+unchanged draft validation/bulk creation routes. It shares the authenticated RLS-bound session,
+reads only the owned active deck's languages, then calls `require_genai_consent`. It explicitly
+commits this short transaction before invoking the app-scoped generation provider. No connection
+or consent lock spans model latency; a later consent withdrawal cannot recall in-flight data.
+There is no draft storage or generated-card write, so there is no derived persistence to reconcile.
+
+`app/generation.py` owns a general generation Protocol, lazy ADC REST adapter, bounded error codes,
+request/response contract functions and schema conversion. Structured JSON is an optional request
+capability, leaving future tool calling to #70. Extraction uses the existing `CardDrafts` schema,
+projects it to an explicit provider subset and strictly validates returned JSON with the complete
+server model. Material, instruction and existing drafts stay in a JSON data message; fixed prompt
+rules are separate. Prompt alignment tests compare frontend/server key rules. No frontend flow,
+auth contract, migration, scheduling or bulk-create behavior changes.
+
+Vertex request/response/schema compatibility is unverified; tests use handwritten and scripted
+responses only. Missing explicit model/project configuration fails closed with 503. Structured
+completion logs contain identifiers, adjustment, timing, tokens and result code only. The eight
+AI-drafted synthetic evaluation cases remain unreviewed. See
+[Issue #72 verification](issues/issue-72-verification.md) for acceptance evidence and limits.
