@@ -581,3 +581,53 @@ CI validates the source snapshot before building. Browser fixtures replace only 
 output after compilation, preserving the tracked source. The local validator and browser/export
 transports share the generated strict schema, duplicate-ID check and 512 KiB streaming limit.
 Live WIF, Actions PR creation and deployment are not verified by repository tests.
+
+## Transaction-local row level security (2026-11-05)
+
+Migration `20261105_0008` enables fail-closed RLS on all 11 owner-bearing tables.
+The owner policy uses `owner_id = NULLIF(current_setting('app.user_id', true), '')::bigint`
+for both visibility and writes. Missing, empty, or unknown owner context exposes no rows.
+Existing application owner predicates remain required. `users` stays outside RLS so authentication
+can resolve the internal owner before accessing private tables.
+
+`database.bind_owner` validates a positive integer and stores it in the short-lived session's
+`info`. The SQLAlchemy `Session.after_begin` listener parameterizes
+`SELECT set_config('app.user_id', :owner_id, true)` on every transaction, including after a
+mid-request commit or rollback. Binding after authentication's first query also applies it to the
+active transaction. An identity cannot change within one session. Request sessions bind in
+`auth.current_user`; `database_transaction(owner_id=...)` binds embedding claim/final-write
+transactions and backfill scans. Consent locks and document-provider calls outside transactions
+retain their existing boundaries.
+
+Guest export opens a separate unowned session, executes `SET TRANSACTION READ ONLY` first,
+then `database.bind_public_deck` sets only `app.public_deck_id` to the configured UUID.
+The two public SELECT policies expose only that deck and its cards; they grant no writes and no
+access to the other nine tables. Owner and public identities cannot coexist in an app session.
+All identity settings are transaction-local (`true`); pooled physical connections retain neither
+identity after commit/rollback. Local PostgreSQL pool reuse is tested. Neon pooled transaction
+mode, production pooling behavior and per-transaction latency remain unverified.
+
+RLS is not forced: table owners and superusers/BYPASSRLS roles intentionally bypass it for
+migration and maintenance. Runtime must use a non-owner role with neither elevated flag.
+Operator report (2026-11-05), not programmatically verified: production runtime uses
+`app_runtime_limited`, whose `rolsuper` and `rolbypassrls` are false; all 11 tables are owned by
+`neondb_owner`. No production connection was inspected by this implementation.
+
+The old `imports.py` and `confirmed_imports.py` tools are considered disabled under runtime RLS;
+they do not bind an owner and cannot access the protected import tables. Their historical tests
+use explicit owner maintenance sessions. `import_items` lacks `owner_id` and remains a known RLS
+gap; its logical ownership is through `import_runs`. Removing retired tools/tables is separate work.
+
+For this migration, override the ordinary migrate-before-app release sequence above:
+
+1. Deploy and verify the app revision that binds `app.user_id` while the previous schema is still
+   active. Ensure every serving runtime revision supports transaction identity before migration.
+2. Apply migration 0008, then verify authenticated reads/writes, embedding, backfill and export
+   with the restricted runtime role before completing rollout.
+3. Before rolling back to an app without identity binding, first disable RLS on all 11 tables
+   (`ALTER TABLE ... DISABLE ROW LEVEL SECURITY`) or explicitly downgrade 0008 using the migration
+   role. Only then roll back application traffic. An ordinary application-only rollback is unsafe.
+
+These are operator instructions, not an executed rollout. Existing release workflows/scripts were
+not changed and still require a separately reviewed operational sequence for this exception.
+See [Issue #75 verification](issues/issue-75-verification.md) for local evidence and limits.

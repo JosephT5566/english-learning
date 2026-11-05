@@ -449,3 +449,15 @@ that warns about deleting existing embeddings and cannot recall already-transmit
 A consent-required 403 returns to the prompt. No dialog, account-menu entry, or public config
 was added. See [Issue #74 verification](issues/issue-74-verification.md) for local evidence
 and deployment limits.
+
+## 2026-11-05: Bind transaction identities before enabling fail-closed RLS
+
+Issue #75 keeps explicit app owner filters and adds database owner policies on all 11 owner-bearing
+tables. The app binds positive internal owners centrally and reapplies transaction-local settings
+after every commit/rollback. Guest export uses an exclusive public-deck UUID context after setting
+the transaction read-only. Owners intentionally bypass RLS; runtime must not own tables or have
+superuser/BYPASSRLS privileges. Retired import tools remain unbound/disabled under runtime RLS;
+`import_items` is a known gap. Deploy binding code before 0008; disable RLS before rolling back to
+older code. This exception requires operator sequencing because existing release automation was
+not changed. Neon pooled behavior and production execution remain unverified. See
+[Issue #75 verification](issues/issue-75-verification.md).

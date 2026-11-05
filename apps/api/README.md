@@ -414,3 +414,48 @@ transaction ends. The provider call runs outside any transaction
 start can therefore still send that one card's text to the provider. The final write recheck
 ([embeddings.py:268](app/embeddings.py#L268)) prevents storing the result. The maintainer accepted
 this limit and rejected holding a database lock across a network call.
+
+## Row level security and release order
+
+Migration `20261105_0008` enables fail-closed RLS on 11 owner-bearing tables. Without a valid
+transaction-local `app.user_id`, runtime reads return zero rows and writes are rejected or affect
+zero rows. Explicit application ownership filters remain in place. `users` has no RLS because
+sign-in must resolve the internal ID first.
+
+Use `app.database.bind_owner(session, owner_id)` with a positive integer. Authentication calls it
+after resolving `users`; it sets the active transaction and `Session.after_begin` reapplies
+parameterized `set_config('app.user_id', :owner_id, true)` on each new transaction after commit or
+rollback. Background embedding uses `database_transaction(factory, owner_id=...)` for both claim
+and final write, preserving consent locks and the provider call outside transactions. Backfill
+uses its explicit owner for each scan and processor transaction. Do not use session-level GUCs.
+
+Only guest export uses `bind_public_deck`: its separate session first executes
+`SET TRANSACTION READ ONLY`, then sets `app.public_deck_id` to the configured deck UUID, without
+setting `app.user_id`. The public policies allow SELECT only on the selected deck/cards. App
+sessions reject mixed identities. Local PostgreSQL reused-connection tests verify identity cleanup;
+Neon pooled transaction mode and production pooled behavior remain unverified.
+
+`FORCE ROW LEVEL SECURITY` is intentionally not used: table owners and superusers/BYPASSRLS roles
+bypass policies for migrations/maintenance. Use a non-owner runtime role without these privileges.
+Operator report (2026-11-05), not programmatically verified: runtime role is `app_runtime_limited`,
+`rolsuper`/`rolbypassrls` are false, and all 11 table owners are `neondb_owner`.
+
+The historical CSV tools `imports.py` and `confirmed_imports.py` are considered disabled under
+runtime RLS. They intentionally do not bind an owner; the protected import tables deny access.
+The earlier import instructions describe historical owner maintenance behavior, not supported
+runtime usage. `import_items` has no owner column and remains a known RLS gap through its logical
+parent `import_runs`. Their removal is separate work.
+
+Release exception for 0008 (the existing workflows/scripts do not implement this exception):
+
+1. First deploy the identity-binding code and verify all serving revisions support it, before
+   enabling RLS. Do not follow the ordinary migrate-before-app order for this migration.
+2. Then apply 0008 and verify all app paths with the restricted runtime role.
+3. Before rolling back to older code, disable RLS on all 11 tables with
+   `ALTER TABLE ... DISABLE ROW LEVEL SECURITY`, or explicitly downgrade 0008 with the migration
+   role. Only then roll back the app. Application-only rollback would leave private queries empty.
+
+CI's ordinary integration fixtures now use restricted runtime engines for HTTP, embedding,
+backfill and guest export sessions by default; owner connections still seed/inspect data and
+exercise retired import maintenance. No new environment switch or workflow edit is required.
+See [verification](../../doc/issues/issue-75-verification.md) for exact checks and remaining limits.
