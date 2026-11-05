@@ -2,7 +2,11 @@
 
 ## Scope and status
 
-Work is uncommitted on `issue-74-genai-consent`. `gh` is unavailable, so the user-supplied
+Work is committed as `1d3ca15` on branch `issue-74-genai-consent` and opened as PR #81.
+Commands in the log were observed before that commit; entries saying "uncommitted" describe
+the state at the time.
+
+`gh` is unavailable, so the user-supplied
 issue mirror and JosephT5566 approval record are the implementation source. Live issue labels,
 approval boxes, and post-approval edits could not be independently inspected.
 The supplied approval includes the new migration and backend ownership boundary.
@@ -202,3 +206,19 @@ edits were not independently verified; `gh` remains unavailable. The UI selectio
 resolved by the maintainer's 2026-11-05 chat instruction. Keyword search is assumed to remain
 outside the AI consent gate. Granting consent enables an explicit search rather than silently
 submitting a query. Production rollout and live provider behavior are outside this task.
+
+## Review follow-up
+
+- The review found a race window between claim commit and provider call start in
+  `process_card` ([embeddings.py:179](../../apps/api/app/embeddings.py#L179),
+  [embeddings.py:260](../../apps/api/app/embeddings.py#L260)). The maintainer accepted it as a
+  known limit; the final write recheck
+  ([embeddings.py:268](../../apps/api/app/embeddings.py#L268)) prevents storing the result.
+  Holding a database lock across a network call was rejected.
+- Updated the consent sections in [architecture](../architecture.md#L78) and the
+  [API README](../../apps/api/README.md#L389) to describe the delivered inline prompt and
+  withdrawal confirmation and record the known limit.
+- Corrected the status above to record commit `1d3ca15` and PR #81 and explain that
+  "uncommitted" entries describe the state when the logged commands ran. The historical log
+  is otherwise unchanged.
+- No code or tests changed in this follow-up.
