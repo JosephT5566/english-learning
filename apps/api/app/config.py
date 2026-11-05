@@ -119,6 +119,14 @@ class Settings(BaseSettings):
     vertex_location: Annotated[
         str, StringConstraints(pattern=r"^[a-z]+-[a-z]+[0-9]$")
     ] = "us-central1"
+    generation_model: (
+        Annotated[str, StringConstraints(pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")]
+        | None
+    ) = None
+    generation_timeout_seconds: Annotated[int, Field(gt=0, le=120)] = 30
+    generation_max_output_tokens: Annotated[int, Field(gt=0, le=32768)] = 8192
+    generation_material_max_chars: Annotated[int, Field(gt=0, le=100000)] = 20000
+    generation_instruction_max_chars: Annotated[int, Field(gt=0, le=10000)] = 2000
     cors_allowed_origins: Annotated[tuple[str, ...], Field(min_length=1)] = (
         DEFAULT_CORS_ALLOWED_ORIGINS
     )

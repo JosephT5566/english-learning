@@ -109,5 +109,25 @@ async def add_request_id(
         )
     response.headers["X-Request-ID"] = str(request_id)
     elapsed_ms = max(0, round((time.perf_counter() - started_at) * 1000))
+    if _route_template(request) == "/v1/decks/{deck_id}/card-drafts/extract":
+        try:
+            from uuid import UUID
+
+            deck_id = str(UUID(str(request.path_params.get("deck_id"))))
+        except ValueError:
+            deck_id = None
+        event = {
+            "event": "card_extraction_completed",
+            "request_id": str(request_id),
+            "deck_id": deck_id,
+            "adjustment": getattr(request.state, "extraction_adjustment", False),
+            "duration_ms": elapsed_ms,
+            "usage": getattr(request.state, "extraction_usage", None),
+            "result_code": getattr(request.state, "error_code", "ok"),
+        }
+        try:
+            print(json.dumps(event, separators=(",", ":")), flush=True)
+        except OSError:
+            pass
     _emit_request_event(request, response, elapsed_ms)
     return response
