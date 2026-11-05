@@ -13,11 +13,13 @@ from sqlalchemy import Engine, text
 from sqlalchemy.orm import Session
 
 from app.confirmed_imports import apply_confirmed_import
-from app.database import create_database_session_factory
 from app.imports import (
     VALIDATOR_VERSION,
     persist_dry_run,
     read_validated_csv_snapshot,
+)
+from tests.integration.rls import (
+    owner_session_factory as create_database_session_factory,
 )
 
 pytestmark = [

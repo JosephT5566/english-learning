@@ -11,7 +11,7 @@ from google.oauth2 import id_token as google_id_token
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app.database import database_session
+from app.database import bind_owner, database_session
 from app.errors import ApiError
 
 router = APIRouter(prefix="/v1")
@@ -187,6 +187,7 @@ def current_user(
                 .mappings()
                 .one()
             )
+    bind_owner(session, row.id)
     return AuthenticatedUser(
         id=row.id,
         google_subject=row.google_subject,

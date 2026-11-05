@@ -516,3 +516,95 @@ def test_named_access_patterns_use_their_deliberate_indexes(
             f"{name!r} did not use {expected_index!r}; "
             f"observed indexes: {sorted(observed[name])}"
         )
+
+
+def test_semantic_queries_keep_owner_indexes_under_rls(migrated_database_engine):
+    import json
+    from types import SimpleNamespace
+
+    from sqlalchemy import event
+    from starlette.requests import Request
+
+    from app.auth import AuthenticatedUser
+    from app.database import bind_owner, create_database_session_factory
+    from app.semantic_search import SemanticSearchRequest, semantic_search
+    from app.semantic_text import DIMENSIONS, MODEL_VERSION
+
+    engine = migrated_database_engine
+    seed_representative_dataset(engine)
+    vector = json.dumps([1.0] + [0.0] * (DIMENSIONS - 1))
+    with engine.begin() as connection:
+        connection.execute(text("UPDATE users SET genai_consent_at = now()"))
+        connection.execute(
+            text("UPDATE learning_cards SET semantic_content_hash = repeat('a', 64)")
+        )
+        connection.execute(
+            text("""
+            INSERT INTO card_embeddings
+                (card_id, owner_id, model_version, content_hash, state, embedding)
+            SELECT id, owner_id, :model, semantic_content_hash,
+                   CASE WHEN owner_id = 1 THEN 'ready' ELSE 'pending' END,
+                   CASE WHEN owner_id = 1 THEN CAST(:vector AS vector(512)) END
+            FROM learning_cards
+        """),
+            {"model": MODEL_VERSION, "vector": vector},
+        )
+        connection.exec_driver_sql("ANALYZE learning_cards, card_embeddings")
+    factory = create_database_session_factory(engine)
+    statements = []
+
+    def capture(_connection, _cursor, statement, _parameters, context, _many):
+        if (
+            statement.lstrip().startswith("SELECT")
+            and "FROM learning_cards c" in statement
+            and "card_embeddings" in statement
+        ):
+            statements.append(
+                (context.compiled.statement.text, context.compiled_parameters[0])
+            )
+
+    event.listen(factory.kw["bind"], "before_cursor_execute", capture)
+    provider = SimpleNamespace(query_embedding=lambda *a, **kw: json.loads(vector))
+    app = SimpleNamespace(
+        state=SimpleNamespace(
+            settings=SimpleNamespace(
+                vertex_project_id="offline", vertex_location="offline"
+            ),
+            embedding_provider=provider,
+        )
+    )
+    with factory() as session:
+        bind_owner(session, 1)
+        assert session.scalar(text("SELECT current_user")) == "app_rls_test"
+        result = semantic_search(
+            SemanticSearchRequest(query="synthetic idea", target_language="en"),
+            Request({"type": "http", "app": app}),
+            session,
+            AuthenticatedUser(1, "plan-user-1", "plan-user-1@example.test"),
+        )
+        assert result.index_status == "complete" and result.items
+        assert len(statements) == 2
+        plans = [
+            used_indexes(explain(session.connection(), sql, params))
+            for sql, params in statements
+        ]
+    with engine.connect() as connection:
+        owner_plans = [
+            used_indexes(explain(connection, sql, params)) for sql, params in statements
+        ]
+    print(
+        "Owner semantic coverage/ranking indexes:",
+        [sorted(indexes) for indexes in owner_plans],
+    )
+    print(
+        "Restricted semantic coverage/ranking indexes:",
+        [sorted(indexes) for indexes in plans],
+    )
+    # Exact ranking keeps the retry/owner index in both roles. Under RLS,
+    # coverage instead probes embedding primary keys after selecting owned cards.
+    assert "ix_card_embeddings_owner_state_retry" in owner_plans[0]
+    assert "ix_card_embeddings_owner_state_retry" in owner_plans[1]
+    assert "ix_card_embeddings_owner_state_retry" in plans[1]
+    assert "uq_learning_cards_id_owner_id" in plans[1]
+    assert "pk_card_embeddings" in plans[0]
+    assert "ix_learning_cards_owner_updated_id" in plans[0]

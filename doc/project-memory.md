@@ -1,12 +1,23 @@
 # Project Memory
 
-Last updated: 2026-10-24
+Last updated: 2026-11-05
 
 This file is the current product-state index. Training milestones, evidence limits, and the next
 training action belong in [`training/project-memory.md`](training/project-memory.md); detailed
 verification records belong in the linked issue artifacts. Implementation and test results take
 precedence over stale documentation. Deployment statements below summarize recorded evidence, not
 a fresh inspection of the live services.
+
+## Owner isolation through RLS (2026-11-05)
+
+Issue #75 adds fail-closed RLS for 11 owner-bearing tables. Authentication binds the internal
+owner to every request transaction; embedding and backfill bind explicit owners. Guest export
+uses only its configured public deck UUID in a separate read-only transaction. Owner connections
+intentionally bypass policies. Retired import tools are disabled under runtime RLS; `import_items`
+remains a known gap. Deploy identity-binding code before migration 0008; disable RLS before
+rolling back to older code. Existing release automation does not implement this exception.
+Local evidence and production/Neon limits are in [Issue #75 verification](issues/issue-75-verification.md).
+No production deployment or external model call was performed.
 
 ## Guest review implementation (2026-10-22)
 

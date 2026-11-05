@@ -175,7 +175,7 @@ def process_card(
 ) -> str:
     """Claim once, call provider outside transactions, then reject stale results."""
 
-    with database_transaction(session_factory) as session:
+    with database_transaction(session_factory, owner_id=owner_id) as session:
         if not has_genai_consent(session, owner_id, lock=True):
             return "skipped"
         row = (
@@ -264,7 +264,7 @@ def process_card(
     except Exception:  # noqa: BLE001 - provider adapters are untrusted
         vector, error_code = None, "provider_error"
 
-    with database_transaction(session_factory) as session:
+    with database_transaction(session_factory, owner_id=owner_id) as session:
         if not has_genai_consent(session, owner_id, lock=True):
             return "skipped"
         current = (
