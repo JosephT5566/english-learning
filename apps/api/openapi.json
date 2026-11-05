@@ -1,6 +1,66 @@
 {
   "components": {
     "schemas": {
+      "AssistantRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "messages": {
+            "items": {
+              "$ref": "#/components/schemas/Message"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "title": "Messages",
+            "type": "array"
+          }
+        },
+        "required": [
+          "messages"
+        ],
+        "title": "AssistantRequest",
+        "type": "object"
+      },
+      "AssistantResponse": {
+        "properties": {
+          "reply": {
+            "title": "Reply",
+            "type": "string"
+          },
+          "stop_reason": {
+            "enum": [
+              "completed",
+              "max_steps",
+              "timeout"
+            ],
+            "title": "Stop Reason",
+            "type": "string"
+          },
+          "tool_calls": {
+            "items": {
+              "$ref": "#/components/schemas/ToolCallSummary"
+            },
+            "title": "Tool Calls",
+            "type": "array"
+          },
+          "usage": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GenerationUsage"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "reply",
+          "tool_calls",
+          "stop_reason"
+        ],
+        "title": "AssistantResponse",
+        "type": "object"
+      },
       "CardBulkCreate": {
         "additionalProperties": false,
         "properties": {
@@ -1923,6 +1983,31 @@
         "title": "LivenessResponse",
         "type": "object"
       },
+      "Message": {
+        "additionalProperties": false,
+        "properties": {
+          "content": {
+            "maxLength": 100000,
+            "minLength": 1,
+            "title": "Content",
+            "type": "string"
+          },
+          "role": {
+            "enum": [
+              "user",
+              "assistant"
+            ],
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "role",
+          "content"
+        ],
+        "title": "Message",
+        "type": "object"
+      },
       "Page_CardSummary_": {
         "properties": {
           "items": {
@@ -2558,6 +2643,50 @@
         "title": "TagSummary",
         "type": "object"
       },
+      "ToolCallSummary": {
+        "properties": {
+          "arguments": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Arguments"
+          },
+          "duration_ms": {
+            "title": "Duration Ms",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "ok",
+              "invalid_call",
+              "too_many_calls",
+              "tool_unavailable",
+              "tools_disabled",
+              "timeout"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "arguments",
+          "status",
+          "duration_ms"
+        ],
+        "title": "ToolCallSummary",
+        "type": "object"
+      },
       "TransitionState": {
         "properties": {
           "ease_factor": {
@@ -2702,6 +2831,49 @@
         "tags": [
           "health"
         ]
+      }
+    },
+    "/v1/assistant/messages": {
+      "post": {
+        "operationId": "assistant_messages_v1_assistant_messages_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssistantRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssistantResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Assistant Messages"
       }
     },
     "/v1/cards": {
