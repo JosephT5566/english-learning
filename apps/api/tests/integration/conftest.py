@@ -10,7 +10,14 @@ from alembic.config import Config
 from sqlalchemy import create_engine
 from sqlalchemy.engine import URL, Engine, make_url
 
+import app.embedding_backfill as backfill
+from app import confirmed_imports, database, imports, main
 from app.config import DEFAULT_DATABASE_URL
+from tests.integration.rls import (
+    grant_restricted_role,
+    owner_session_factory,
+    restrict_engine,
+)
 
 ALEMBIC_CONFIG_PATH = Path(__file__).parents[2] / "alembic.ini"
 
@@ -58,7 +65,40 @@ def migrated_database_engine(
     command.upgrade(Config(ALEMBIC_CONFIG_PATH), "head")
     engine = create_engine(temporary_database_url)
 
+    grant_restricted_role(engine)
+    runtime_engines = []
+    original_sessionmaker = database.sessionmaker
+    original_create_engine = database.create_database_engine
+
+    def restricted_sessionmaker(*, bind, **options):
+        if bind not in runtime_engines:
+            # Seed, schema and inspection operations keep using the owner engine.
+            runtime = create_engine(bind.url, pool_size=1, max_overflow=0)
+            restrict_engine(runtime)
+            runtime_engines.append(runtime)
+            bind = runtime
+        return original_sessionmaker(bind=bind, **options)
+
+    def runtime_engine(settings):
+        runtime = original_create_engine(settings)
+        restrict_engine(runtime)
+        runtime_engines.append(runtime)
+        return runtime
+
+    monkeypatch.setattr(main, "create_database_engine", runtime_engine)
+    monkeypatch.setattr(backfill, "create_database_engine", runtime_engine)
+    # Retired operator imports are tested only as owner maintenance operations.
+    monkeypatch.setattr(
+        confirmed_imports, "create_database_session_factory", owner_session_factory
+    )
+    monkeypatch.setattr(
+        imports, "create_database_session_factory", owner_session_factory
+    )
+
+    monkeypatch.setattr(database, "sessionmaker", restricted_sessionmaker)
     try:
         yield engine
     finally:
+        for runtime in runtime_engines:
+            runtime.dispose()
         engine.dispose()

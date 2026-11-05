@@ -208,3 +208,9 @@ def test_database_engine_lifecycle_uses_fastapi_lifespan(
         ("session_factory_created", engine),
         ("engine_disposed", engine),
     ]
+
+
+@pytest.mark.parametrize("owner", [0, -1, True, False, "1", 1.5, None])
+def test_owner_binding_rejects_nonpositive_or_noninteger_owner(owner):
+    with pytest.raises(ValueError, match="positive integer"):
+        database_module.bind_owner(Session(), owner)

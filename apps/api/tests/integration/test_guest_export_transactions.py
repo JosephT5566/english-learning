@@ -6,11 +6,11 @@ from uuid import UUID, uuid4
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, event, text
 
 from app import guest_export
 from app.config import Settings
-from app.database import create_database_session_factory
+from app.database import create_database_session_factory, database_transaction
 from app.main import create_app
 from tests.integration.test_multilingual_domain_fixture import load_multilingual_fixture
 from tests.unit.test_guest_export import CONFIG, PATH, claims
@@ -70,7 +70,28 @@ def test_export_scope_archive_and_unchanged_tables(
         browser_verifier = Mock()
         client.app.state.token_verifier = browser_verifier
         headers = {"Authorization": "Bearer synthetic"}
+        contexts = []
+
+        def observe_context(connection, _cursor, statement, _params, _context, _many):
+            if "FROM learning_decks WHERE id" in statement:
+                contexts.append(
+                    connection.execute(
+                        text("""
+                    SELECT current_user, current_setting('app.user_id', true),
+                           current_setting('app.public_deck_id', true),
+                           current_setting('transaction_read_only')
+                """)
+                    ).one()
+                )
+
+        event.listen(
+            client.app.state.database_engine, "before_cursor_execute", observe_context
+        )
         response = client.get(PATH, headers=headers)
+        assert len(contexts) == 1
+        assert contexts[0][0] == "app_rls_test"
+        assert not contexts[0][1]
+        assert contexts[0][2:] == (str(EN), "on")
         assert response.status_code == 200
         data = response.json()
         assert set(data) == {"schema_version", "generated_at", "items"}
@@ -138,7 +159,12 @@ def test_export_readonly_timeout_and_permit_cleanup(
             client.app.state.settings = Settings(
                 **{**CONFIG, "guest_export_deck_id": EN}
             )
+            runtime_factory = client.app.state.database_session_factory
+            runtime = runtime_factory.kw["bind"]
             headers = {"Authorization": "Bearer synthetic"}
+            with runtime.connect() as connection:
+                assert connection.scalar(text("SELECT current_user")) == "app_rls_test"
+                backend = connection.scalar(text("SELECT pg_backend_pid()"))
             before = snapshot(engine)
             monkeypatch.setattr(
                 guest_export,
@@ -156,12 +182,22 @@ def test_export_readonly_timeout_and_permit_cleanup(
             assert client.get(PATH, headers=headers).status_code == 503
             assert client.app.state.guest_export_permit.acquire(blocking=False)
             client.app.state.guest_export_permit.release()
-            with pooled.begin() as connection:
-                connection.execute(
+            with runtime.connect() as connection:
+                assert connection.scalar(text("SELECT pg_backend_pid()")) == backend
+                assert not connection.scalar(
+                    text("SELECT current_setting('app.user_id', true)")
+                )
+                assert not connection.scalar(
+                    text("SELECT current_setting('app.public_deck_id', true)")
+                )
+                assert connection.scalar(text("SHOW transaction_read_only")) == "off"
+            with database_transaction(runtime_factory, owner_id=1) as session:
+                result = session.execute(
                     text(
                         "UPDATE learning_cards SET meaning = 'private writes still work' WHERE deck_id = :id"
                     ),
                     {"id": EN},
                 )
+                assert result.rowcount > 0
     finally:
         pooled.dispose()

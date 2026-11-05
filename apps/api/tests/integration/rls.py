@@ -4,7 +4,8 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from uuid import UUID
 
-from sqlalchemy import Connection, Engine, text
+from sqlalchemy import Connection, Engine, event, text
+from sqlalchemy.orm import Session, sessionmaker
 
 RLS_TABLES = (
     "learning_decks",
@@ -80,3 +81,19 @@ def restricted_connection(
             connection, owner_id=owner_id, public_deck_id=public_deck_id
         )
         yield connection
+
+
+def restrict_engine(engine: Engine) -> None:
+    """Keep every physical test connection in the non-owner role across commits."""
+
+    @event.listens_for(engine, "connect")
+    def set_role(dbapi_connection, _record):
+        with dbapi_connection.cursor() as cursor:
+            cursor.execute("SET ROLE app_rls_test")
+        dbapi_connection.commit()
+
+
+def owner_session_factory(engine: Engine) -> sessionmaker[Session]:
+    """Keep retired import-tool tests on an explicit owner-only maintenance path."""
+
+    return sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)

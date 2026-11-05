@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from starlette.requests import Request
 
 from app.auth import AuthenticatedUser
-from app.database import create_database_session_factory
+from app.database import bind_owner, create_database_session_factory
 from app.embeddings import process_card
 from app.semantic_search import SemanticSearchRequest, semantic_search
 from app.semantic_text import canonical_text
@@ -82,8 +82,9 @@ def retrieve_rankings(engine, labels: dict, vectors: dict) -> dict:
     )
     request = Request({"type": "http", "app": app})
     user = AuthenticatedUser(owner, "synthetic-eval", "eval@example.invalid")
-    rankings = {}
-    with Session(engine) as session:
+
+    def search(session):
+        rankings = {}
         for query in labels["queries"]:
             result = semantic_search(
                 SemanticSearchRequest(
@@ -96,6 +97,15 @@ def retrieve_rankings(engine, labels: dict, vectors: dict) -> dict:
             assert result.index_status == "complete"
             assert result.indexed_count == result.eligible_count == 10
             rankings[query["text"]] = [id_map[item.id] for item in result.items]
+        return rankings
+
+    with Session(engine) as session:
+        owner_rankings = search(session)
+    with factory() as session:
+        bind_owner(session, owner)
+        assert session.scalar(text("SELECT current_user")) == "app_rls_test"
+        rankings = search(session)
+    assert rankings == owner_rankings
     return rankings
 
 
