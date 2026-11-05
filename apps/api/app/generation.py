@@ -19,8 +19,14 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 class GenerationFailure(Exception):
     """A safe provider failure code; never retain provider messages."""
 
-    def __init__(self, code: str):
+    def __init__(self, code: str, *, http_status: int | None = None):
         self.code = code
+        # Only a bounded HTTP status may cross into internal logs/eval reports.
+        self.http_status = (
+            http_status
+            if type(http_status) is int and 100 <= http_status <= 599
+            else None
+        )
         super().__init__(code)
 
 
@@ -105,6 +111,23 @@ def vertex_response_schema(schema: dict) -> dict:
         return result
 
     return convert(schema)
+
+
+def build_generation_url(*, project: str, location: str, model: str) -> str:
+    """Build generation-only routing; the global Vertex URL is unverified live.
+
+    Global host/path format comes from prior knowledge, not online documentation
+    or a successful model call. Regional embedding routing is intentionally separate.
+    """
+    host = (
+        "aiplatform.googleapis.com"
+        if location == "global"
+        else f"{location}-aiplatform.googleapis.com"
+    )
+    return (
+        f"https://{host}/v1/projects/{project}/locations/{location}"
+        f"/publishers/google/models/{model}:generateContent"
+    )
 
 
 def build_vertex_request(request: GenerationRequest, *, max_output_tokens: int) -> dict:
@@ -243,7 +266,7 @@ class VertexGenerationProvider:
         token = self._access_token()
         try:
             response = requests.post(
-                f"https://{location}-aiplatform.googleapis.com/v1/projects/{project}/locations/{location}/publishers/google/models/{model}:generateContent",
+                build_generation_url(project=project, location=location, model=model),
                 headers={"Authorization": f"Bearer {token}"},
                 json=build_vertex_request(request, max_output_tokens=max_output_tokens),
                 timeout=timeout_seconds,
@@ -276,7 +299,7 @@ class VertexGenerationProvider:
                 code = "provider_rate_limited"
             elif status and status >= 500:
                 code = "provider_unavailable"
-            raise GenerationFailure(code) from None
+            raise GenerationFailure(code, http_status=status) from None
         except requests.RequestException:
             raise GenerationFailure("provider_unavailable") from None
         except (ValueError, TypeError):

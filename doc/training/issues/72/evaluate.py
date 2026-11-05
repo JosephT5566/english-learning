@@ -228,6 +228,7 @@ def require_vertex_opt_in(model_query_date: str | None) -> Settings:
 
 def run_vertex(cases: list[dict], *, model_query_date: str | None) -> dict:
     settings = require_vertex_opt_in(model_query_date)
+    location = settings.effective_generation_location
     provider = VertexGenerationProvider()
     scores = []
     try:
@@ -241,17 +242,19 @@ def run_vertex(cases: list[dict], *, model_query_date: str | None) -> dict:
                 raise ValueError("evaluation input exceeds configured limits")
             started = time.perf_counter()
             failure_code = None
+            provider_http_status = None
             try:
                 result = provider.generate(
                     request,
                     model=settings.generation_model,
                     project=settings.vertex_project_id,
-                    location=settings.vertex_location,
+                    location=location,
                     timeout_seconds=settings.generation_timeout_seconds,
                     max_output_tokens=settings.generation_max_output_tokens,
                 )
             except GenerationFailure as error:
                 failure_code = error.code
+                provider_http_status = error.http_status
                 result = GenerationResult(text="", model=settings.generation_model)
             score = score_case(
                 case,
@@ -259,6 +262,7 @@ def run_vertex(cases: list[dict], *, model_query_date: str | None) -> dict:
                 elapsed_ms=round((time.perf_counter() - started) * 1000, 3),
             )
             score["provider_failure"] = failure_code
+            score["provider_http_status"] = provider_http_status
             scores.append(score)
     finally:
         provider.close()
@@ -266,6 +270,7 @@ def run_vertex(cases: list[dict], *, model_query_date: str | None) -> dict:
         cases, scores, mode="vertex", model_query_date=model_query_date
     )
     report["configured_model"] = settings.generation_model
+    report["location"] = location
     return report
 
 

@@ -144,11 +144,12 @@ def extract_card_drafts(
             ),
             model=settings.generation_model,
             project=settings.vertex_project_id,
-            location=settings.vertex_location,
+            location=settings.effective_generation_location,
             timeout_seconds=settings.generation_timeout_seconds,
             max_output_tokens=settings.generation_max_output_tokens,
         )
     except GenerationFailure as failure:
+        request.state.generation_http_status = failure.http_status
         statuses = {
             "provider_timeout": 504,
             "provider_rate_limited": 503,

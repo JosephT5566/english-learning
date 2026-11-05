@@ -119,6 +119,16 @@ class Settings(BaseSettings):
     vertex_location: Annotated[
         str, StringConstraints(pattern=r"^[a-z]+-[a-z]+[0-9]$")
     ] = "us-central1"
+    generation_location: (
+        Annotated[str, StringConstraints(pattern=r"^(global|[a-z]+-[a-z]+[0-9])$")]
+        | None
+    ) = None
+
+    @property
+    def effective_generation_location(self) -> str:
+        """Keep regional embedding settings independent of generation overrides."""
+        return self.generation_location or self.vertex_location
+
     generation_model: (
         Annotated[str, StringConstraints(pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")]
         | None

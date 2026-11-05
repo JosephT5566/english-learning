@@ -125,6 +125,9 @@ async def add_request_id(
             "usage": getattr(request.state, "extraction_usage", None),
             "result_code": getattr(request.state, "error_code", "ok"),
         }
+        http_status = getattr(request.state, "generation_http_status", None)
+        if http_status is not None:
+            event["http_status"] = http_status
         try:
             print(json.dumps(event, separators=(",", ":")), flush=True)
         except OSError:
