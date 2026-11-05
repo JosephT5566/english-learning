@@ -480,3 +480,48 @@ unverified. The agent used local synthetic/scripted tests only and did not rerun
 No cases.json, prompt, validation model, public schema, dependency, auth, migration, workflow,
 environment, location, deployment or scheduling change was made. One local commit only; no push,
 amend or rebase. Compare cases.json bytes against `/tmp/codex-72/fix3-cases.sha256` at delivery.
+
+## Real-model evaluation, 2026-11-05
+
+Run by the maintainer (`JosephT5566`) on 2026-11-05 with the repository's `evaluate.py --vertex`
+against the eight synthetic, maintainer-reviewed cases. The raw report is
+[`results/vertex-2026-11-05-gemini-3.5-flash-lite.json`](../training/issues/72/results/vertex-2026-11-05-gemini-3.5-flash-lite.json).
+It records model `gemini-3.5-flash-lite`, location `global`, model query date `2026-11-05` and
+execution time `2026-11-05T10:04:36Z`. Only synthetic data was sent. The agent did not run it.
+
+Earlier attempts with `gemini-3.8-flash` failed before producing usable output: HTTP 400 from
+`minItems`/`maxItems` in the schema (fixed), then a 30 s `provider_timeout` and a
+`truncated_output` after about 53 s at 8192 output tokens. Those failures are not model-quality
+results, and the cause of the slow responses was not isolated. The model was then changed to
+`gemini-3.5-flash-lite`.
+
+| Metric (single run, 8 cases)              | Result               |
+| ----------------------------------------- | -------------------- |
+| Schema pass rate                          | 8/8 (1.0)            |
+| Vocabulary recall, macro                  | 0.85                 |
+| Vocabulary precision, macro               | about 0.865          |
+| Over-limit rate                           | 0.0                  |
+| Fabricated `example_source`, `learned_on` | 0.0, 0.0             |
+| Untouched cards preserved (one case)      | 1.0                  |
+| Latency per case                          | about 1.1 s to 3.3 s |
+| Total tokens per case                     | about 1,300 to 1,500 |
+
+### Reading the numbers
+
+- `with-source` (recall 0.33): the model returned the phrase `shallow channel`; the answer key has
+  two single words. `ambiguity` (recall 0.67): `reed` versus `reeds`. `without-source`
+  (precision 0.75): an extra `torn`. `article` omitted `bay`. The first two are largely caused by
+  the strict matching rule (no stemming, no phrase splitting), so the aggregate understates term
+  quality; the extra term and the omission are genuine differences. The answer key was not edited
+  after seeing these results.
+- Both injection cases produced ordinary cards that passed schema validation. Only the first
+  part of each output was inspected, so this shows these two inputs were not derailed, not that
+  the model resists injection.
+- Definition and example correctness, translation naturalness and source/date attribution
+  beyond the string-presence heuristic have not been reviewed by a person.
+
+### Limits
+
+One run, one model, eight synthetic cases, one reviewer, English-to-Traditional-Chinese only.
+No repeat runs, so run-to-run variance is unknown. The numbers are not a production quality
+claim. `gemini-3.5-flash-lite` availability, cost and stability as a default were not evaluated.

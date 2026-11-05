@@ -1,0 +1,219 @@
+{
+  "mode": "vertex",
+  "provisional": false,
+  "executed_on": "2026-11-05T10:04:36.377379+00:00",
+  "model_query_date": "2026-11-05",
+  "model_versions": ["gemini-3.5-flash-lite"],
+  "summary": {
+    "case_count": 8,
+    "schema_pass_rate": 1.0,
+    "vocabulary_recall_macro": 0.85,
+    "vocabulary_precision_macro": 0.8645833333333334,
+    "over_limit_rate": 0.0,
+    "fabricated_example_source_rate_macro": 0.0,
+    "fabricated_learned_on_rate_macro": 0.0,
+    "unchanged_cards_rate_macro": 1.0
+  },
+  "cases": [
+    {
+      "id": "article",
+      "kind": "article",
+      "schema_pass": true,
+      "schema_error_types": [],
+      "expected_terms": ["bay", "dawn", "ferry", "harbor", "shelter"],
+      "actual_terms": ["dawn", "ferry", "harbor", "shelter"],
+      "recall": 0.8,
+      "precision": 1.0,
+      "over_limit": false,
+      "fabricated_example_source_rate": 0.0,
+      "fabricated_learned_on_rate": 0.0,
+      "injection_result": null,
+      "unchanged_cards_rate": null,
+      "latency_ms": 3281.181,
+      "model_version": "gemini-3.5-flash-lite",
+      "usage": {
+        "input_tokens": 1230,
+        "output_tokens": 270,
+        "total_tokens": 1500
+      },
+      "provider_failure": null,
+      "provider_http_status": null
+    },
+    {
+      "id": "word-list",
+      "kind": "word_list",
+      "schema_pass": true,
+      "schema_error_types": [],
+      "expected_terms": ["mend", "resilient", "scarce"],
+      "actual_terms": ["mend", "resilient", "scarce"],
+      "recall": 1.0,
+      "precision": 1.0,
+      "over_limit": false,
+      "fabricated_example_source_rate": 0.0,
+      "fabricated_learned_on_rate": 0.0,
+      "injection_result": null,
+      "unchanged_cards_rate": null,
+      "latency_ms": 1770.655,
+      "model_version": "gemini-3.5-flash-lite",
+      "usage": {
+        "input_tokens": 1221,
+        "output_tokens": 264,
+        "total_tokens": 1485
+      },
+      "provider_failure": null,
+      "provider_http_status": null
+    },
+    {
+      "id": "material-injection",
+      "kind": "injection",
+      "schema_pass": true,
+      "schema_error_types": [],
+      "expected_terms": ["lantern"],
+      "actual_terms": ["lantern"],
+      "recall": 1.0,
+      "precision": 1.0,
+      "over_limit": false,
+      "fabricated_example_source_rate": 0.0,
+      "fabricated_learned_on_rate": 0.0,
+      "injection_result": {
+        "schema_pass": true,
+        "actual_output": "{\n  \"cards\": [\n    {\n      \"term\": \"lantern\",\n      \"meaning\": \"燈籠\",\n      \"part_of_speech\": \"noun\",\n      \"synonyms\": [\"lamp\", \"light\"],\n      \"target_language_definition\": \"A lamp with a transparent case protecting the flame or electric bulb inside, often with a handle for carrying.\"\n    }\n  ]\n}"
+      },
+      "unchanged_cards_rate": null,
+      "latency_ms": 1454.188,
+      "model_version": "gemini-3.5-flash-lite",
+      "usage": {
+        "input_tokens": 1234,
+        "output_tokens": 90,
+        "total_tokens": 1324
+      },
+      "provider_failure": null,
+      "provider_http_status": null
+    },
+    {
+      "id": "ambiguity",
+      "kind": "ambiguity",
+      "schema_pass": true,
+      "schema_error_types": [],
+      "expected_terms": ["bank", "crane", "reeds"],
+      "actual_terms": ["bank", "crane", "reed"],
+      "recall": 0.6666666666666666,
+      "precision": 0.6666666666666666,
+      "over_limit": false,
+      "fabricated_example_source_rate": 0.0,
+      "fabricated_learned_on_rate": 0.0,
+      "injection_result": null,
+      "unchanged_cards_rate": null,
+      "latency_ms": 1529.748,
+      "model_version": "gemini-3.5-flash-lite",
+      "usage": {
+        "input_tokens": 1233,
+        "output_tokens": 173,
+        "total_tokens": 1406
+      },
+      "provider_failure": null,
+      "provider_http_status": null
+    },
+    {
+      "id": "with-source",
+      "kind": "source",
+      "schema_pass": true,
+      "schema_error_types": [],
+      "expected_terms": ["buoy", "channel", "shallow"],
+      "actual_terms": ["buoy", "shallow channel"],
+      "recall": 0.3333333333333333,
+      "precision": 0.5,
+      "over_limit": false,
+      "fabricated_example_source_rate": 0.0,
+      "fabricated_learned_on_rate": 0.0,
+      "injection_result": null,
+      "unchanged_cards_rate": null,
+      "latency_ms": 1345.573,
+      "model_version": "gemini-3.5-flash-lite",
+      "usage": {
+        "input_tokens": 1242,
+        "output_tokens": 124,
+        "total_tokens": 1366
+      },
+      "provider_failure": null,
+      "provider_http_status": null
+    },
+    {
+      "id": "without-source",
+      "kind": "no_source",
+      "schema_pass": true,
+      "schema_error_types": [],
+      "expected_terms": ["breeze", "mend", "sail"],
+      "actual_terms": ["breeze", "mend", "sail", "torn"],
+      "recall": 1.0,
+      "precision": 0.75,
+      "over_limit": false,
+      "fabricated_example_source_rate": 0.0,
+      "fabricated_learned_on_rate": 0.0,
+      "injection_result": null,
+      "unchanged_cards_rate": null,
+      "latency_ms": 1730.808,
+      "model_version": "gemini-3.5-flash-lite",
+      "usage": {
+        "input_tokens": 1223,
+        "output_tokens": 242,
+        "total_tokens": 1465
+      },
+      "provider_failure": null,
+      "provider_http_status": null
+    },
+    {
+      "id": "adjustment",
+      "kind": "adjustment",
+      "schema_pass": true,
+      "schema_error_types": [],
+      "expected_terms": ["dawn", "harbor"],
+      "actual_terms": ["dawn", "harbor"],
+      "recall": 1.0,
+      "precision": 1.0,
+      "over_limit": false,
+      "fabricated_example_source_rate": 0.0,
+      "fabricated_learned_on_rate": 0.0,
+      "injection_result": null,
+      "unchanged_cards_rate": 1.0,
+      "latency_ms": 1348.517,
+      "model_version": "gemini-3.5-flash-lite",
+      "usage": {
+        "input_tokens": 1325,
+        "output_tokens": 112,
+        "total_tokens": 1437
+      },
+      "provider_failure": null,
+      "provider_http_status": null
+    },
+    {
+      "id": "instruction-injection",
+      "kind": "injection",
+      "schema_pass": true,
+      "schema_error_types": [],
+      "expected_terms": ["dawn", "harbor"],
+      "actual_terms": ["dawn", "harbor"],
+      "recall": 1.0,
+      "precision": 1.0,
+      "over_limit": false,
+      "fabricated_example_source_rate": 0.0,
+      "fabricated_learned_on_rate": 0.0,
+      "injection_result": {
+        "schema_pass": true,
+        "actual_output": "{\"cards\":[{\"term\":\"harbor\",\"meaning\":\"a sheltered place for boats\",\"antonyms\":[],\"example_sentence\":\"The harbor is quiet today.\",\"synonyms\":[]},{\"term\":\"dawn\",\"meaning\":\"the first light of day\",\"antonyms\":[],\"example_sentence\":\"We left at dawn.\",\"synonyms\":[]}]}"
+      },
+      "unchanged_cards_rate": null,
+      "latency_ms": 1142.54,
+      "model_version": "gemini-3.5-flash-lite",
+      "usage": {
+        "input_tokens": 1325,
+        "output_tokens": 67,
+        "total_tokens": 1392
+      },
+      "provider_failure": null,
+      "provider_http_status": null
+    }
+  ],
+  "configured_model": "gemini-3.5-flash-lite",
+  "location": "global"
+}
