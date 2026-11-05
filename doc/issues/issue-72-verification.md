@@ -266,3 +266,107 @@ No request/response model changed. API check regenerates internally and confirme
 The answer-set cases and all review fields are unchanged; per-case review and true-model evaluation
 remain outstanding maintainer work. No dependency, workflow, migration, environment/auth/static-path
 or scheduling change was made. No push, amend or rebase was performed.
+
+## Generation location and HTTP diagnostics follow-up
+
+Comparison base: `8dc162120f353425c04dc5a5e60f3e4e1f939c35`, 2026-11-05.
+The maintainer reported eight live Vertex evaluation cases with provider_failure=invalid_response
+using a model selected for global. This is operator-reported, not independently inspected or rerun.
+The agent did not call a model, browse documentation or verify model/location availability. Local
+source inspection only established the shared setting rejected global and generation always built
+a regional hostname. This change does not establish that location explains every reported failure.
+
+### Behavior and evidence map
+
+- [config.py:122](../../apps/api/app/config.py#L122) adds optional GENERATION_LOCATION, accepting
+  global or the original regional pattern. effective_generation_location falls back to the
+  unchanged VERTEX_LOCATION. [fallback/environment tests:20](../../apps/api/tests/unit/test_generation_location.py#L20)
+  cover unset/global/region, invalid values, and unchanged rejection of global by the embedding setting.
+- [build_generation_url:116](../../apps/api/app/generation.py#L116) selects the unprefixed global
+  host or original region-prefixed host and retains the selected location in the path.
+  [URL tests:64](../../apps/api/tests/unit/test_generation_location.py#L64) and the actual provider
+  request test check both forms. Global URL format is prior knowledge and **unverified against
+  the real API**. Model availability, including the operator-reported model, remains unverified.
+- [extraction.py:147](../../apps/api/app/extraction.py#L147) and
+  [evaluate.py:231](../training/issues/72/evaluate.py#L231) use the same effective setting.
+  [endpoint routing test:35](../../apps/api/tests/integration/test_generation_location_http.py#L35)
+  checks fallback/global/explicit region; [embedding test:102](../../apps/api/tests/unit/test_generation_location.py#L102)
+  observes the existing regional query_embedding URL with generation configured global.
+  Embedding implementation and its callers are unchanged.
+- [GenerationFailure:22](../../apps/api/app/generation.py#L22) retains an optional safe integer
+  http_status, accepting only 100-599 and excluding booleans/non-integers. It never captures a
+  response body, user material or token. HTTPError codes/retryability remain unchanged.
+  [status tests:132](../../apps/api/tests/unit/test_generation_location.py#L132) cover 400/404,
+  auth, quota and service failures; invalid diagnostic values are discarded.
+- [evaluation test:164](../../apps/api/tests/unit/test_generation_location.py#L164) uses a fake
+  provider with transport forbidden to check effective location and per-case provider_http_status
+  for 400, 404 and success. Report location is actual resolved configuration, not a guessed model
+  location. Non-HTTP failures/success have null status. No real evaluation ran.
+- [request_context.py:128](../../apps/api/app/request_context.py#L128) adds optional http_status
+  to the existing extraction completion event; [endpoint diagnostic test:69](../../apps/api/tests/integration/test_generation_location_http.py#L69)
+  checks one event, no text/body leaks and an unchanged public error envelope: HTTP 502,
+  generation_invalid_response, retryable=false for upstream 400/404. OpenAPI does not change.
+
+### Red-first results
+
+Before modifying implementation files, with `UV_CACHE_DIR=/tmp/codex-72/uv-cache`:
+
+| Directory | Command                                                                                                | Exit | Observed result                                                                                                                      |
+| --------- | ------------------------------------------------------------------------------------------------------ | ---- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| root      | `uv run --project apps/api pytest apps/api/tests/unit/test_generation_location.py -q`                  | 1    | 27 failed, 2 passed; missing generation setting/property/helper/status diagnostics, incorrect global URL, no location/status report  |
+| apps/api  | `RUN_POSTGRES_INTEGRATION_TESTS=1 uv run pytest tests/integration/test_generation_location_http.py -q` | 1    | 4 failed, 1 passed; global/explicit override ignored and HTTP diagnostic absent; original regional fallback passed                   |
+| apps/api  | `uv run pytest tests/unit/test_extraction_evaluation.py -q`                                            | 1    | 1 failed, 7 passed; existing replay assertion requires null review fields, incompatible with maintainer-owned uncommitted cases.json |
+
+Logs: `/tmp/codex-72/fix2-red-unit.log`, `fix2-red-http.log`, `fix2-existing-eval.log`.
+The third result predates implementation and is not fixed by changing the owner's dataset or
+weakening the existing test. All existing tests/assertions and cases.json were left unchanged.
+
+### Green scoped results and full checks
+
+After implementation: root `uv run --project apps/api pytest apps/api/tests/unit/test_generation_location.py apps/api/tests/unit/test_generation.py apps/api/tests/unit/test_embedding_provider.py -q`
+returned exit 0, 76 passed, one existing warning (`fix2-green-unit.log`). API
+`RUN_POSTGRES_INTEGRATION_TESTS=1 uv run pytest tests/integration/test_generation_location_http.py -q`
+returned exit 0, 5 passed, one existing warning (`fix2-green-http.log`). Both used the task uv cache.
+These use synthetic data and fake HTTP/token/provider paths only.
+
+All uv commands used `UV_CACHE_DIR=/tmp/codex-72/uv-cache`; PostgreSQL commands retained the
+existing pg72 service and restricted-role fixtures.
+
+| Directory | Command                                                               | Exit | Observed result                                                                          |
+| --------- | --------------------------------------------------------------------- | ---- | ---------------------------------------------------------------------------------------- |
+| apps/api  | `uv run ruff check .`                                                 | 0    | All checks passed                                                                        |
+| apps/api  | `uv run ruff format --check .`                                        | 0    | 98 files already formatted                                                               |
+| apps/api  | `uv run pytest tests/unit -q`                                         | 1    | 1 failed, 300 passed; same pre-existing null-review-fields assertion, 1 existing warning |
+| apps/api  | `RUN_POSTGRES_INTEGRATION_TESTS=1 uv run pytest tests/integration -q` | 0    | 321 passed, 51 existing warnings, no skips                                               |
+| apps/api  | `RUN_POSTGRES_INTEGRATION_TESTS=1 uv run pytest tests/eval -q`        | 0    | 10 passed, no skips                                                                      |
+| root      | `npm run lint:changed -- origin/main`                                 | 0    | Changed-file Prettier/ESLint passed                                                      |
+| root      | `npm run api:check`                                                   | 0    | Internal regeneration had no artifact drift                                              |
+| root      | `git diff --check`                                                    | 0    | No whitespace errors                                                                     |
+
+Logs under `/tmp/codex-72/`: `fix2-ruff-check.log`, `fix2-ruff-format.log`, `fix2-unit.log`,
+`fix2-integration.log`, `fix2-eval.log`, `fix2-lint.log`, `fix2-api-check.log`,
+`fix2-diff-check.log`. The documentation evaluation script additionally passed Ruff check/format
+(`fix2-eval-ruff.log`, `fix2-eval-format.log`). Integration warnings are the existing Starlette
+deprecation and 50 pgvector reflection warnings. No request/response model changed; api:check
+performed internal regeneration without a separate api:generate invocation. Frontend/build/browser/
+container checks were not repeated because those behaviors and lifecycle did not change.
+
+Independent reviewer verdict: PASS for the frozen code scope, no actionable defects; independently
+re-ran 76 focused tests and scoped Ruff/diff checks successfully. Owner dataset hash still matched.
+Full-suite verification verdict: FAIL, blocked verification due to the pre-existing dataset/test
+state mismatch. Owner-directed reconciliation and a unit rerun are required; no assertion was
+weakened and the dataset was not restored. Passing scoped tests is not a claim of full-suite PASS.
+
+### Scope and evidence limits
+
+The working tree already contained a maintainer edit to cases.json. Its initial SHA-256 is saved
+locally in `/tmp/codex-72/fix2-cases.sha256`; compare bytes again at delivery. It is not staged,
+restored, formatted or included in agent commits. The full `git diff --stat 8dc1621` includes that
+owner edit, so the final report distinguishes it from the agent's commit scope.
+
+The global endpoint URL format, model/location availability, IAM/ADC and actual provider outcomes
+remain unverified. Numeric status improves diagnosis but cannot identify the exact upstream cause
+without maintainer investigation. The public API model, original embedding settings/URLs, auth,
+workflows, migrations, public environment handling, static paths, scheduling and dependencies are
+unchanged. No push, amend, rebase, online documentation lookup, model call or production access
+was performed by this agent.

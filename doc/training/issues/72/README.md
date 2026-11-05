@@ -65,7 +65,7 @@ scripted-provider integration tests exercise the HTTP and PostgreSQL boundaries.
   Replay uses fixture timing; real mode measures wall time around the provider call. Failures
   retain a safe provider code and count as schema failures, with no automatic retry.
 
-## Manual Vertex mode, not executed
+## Manual Vertex mode
 
 The REST request format, response format, schema subset, current model names and IAM are
 **unverified against the real API**. No documentation query was performed because network model
@@ -81,14 +81,29 @@ Set these in the process environment without writing credentials or `.env` files
 export ENABLE_ISSUE72_VERTEX_EVAL=1
 export VERTEX_PROJECT_ID=your-project-id
 export GENERATION_MODEL=maintainer-verified-model-name
+# Optional; select global only after confirming the chosen model's location.
+export GENERATION_LOCATION=global
 uv run --project apps/api python doc/training/issues/72/evaluate.py \
   --vertex --model-query-date YYYY-MM-DD --output /tmp/issue72-vertex.json
 ```
 
+`GENERATION_LOCATION` is optional. If unset, generation uses `VERTEX_LOCATION` (default
+`us-central1`); embedding always retains its regional `VERTEX_LOCATION`. The independent generation
+setting accepts `global` or the existing regional format. Global generation uses host
+`aiplatform.googleapis.com` with `/locations/global/`; regional generation retains its prefixed
+host. This URL format comes from prior knowledge and is **unverified against the real API**.
+Model/location availability, including the maintainer-reported model selection, is also unverified.
+
 Both `--vertex` and `ENABLE_ISSUE72_VERTEX_EVAL=1` are required, along with explicit model/project
 and the date the maintainer checked live model documentation. ADC must be provisioned separately.
 The tool uses `Settings(_env_file=None)` and never reads `.env`. The report includes configured
-model, returned model versions when available, model query date and execution timestamp. Keep
+model, effective `location`, returned model versions when available, model query date and execution
+timestamp. Every real-mode case includes `provider_failure` and nullable `provider_http_status`.
+The latter is only a bounded HTTP status integer, never provider response bodies, user text or
+tokens; it is null on success or failures without a captured HTTPError status. HTTP 400/404 retain the
+`invalid_response` classification, but the recorded status helps distinguish upstream rejection
+from an invalid JSON/card body. Status alone cannot establish the root cause. Offline replay has
+no actual provider location and does not claim one. Keep
 real reports local until reviewed for safe publication. A provisional answer set remains provisional
 even if the API calls succeed. Do not report any real-model metric until this mode actually runs.
 

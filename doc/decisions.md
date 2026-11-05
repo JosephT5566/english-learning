@@ -517,3 +517,29 @@ Keep ordinary connection failures as provider_unavailable and retain existing HT
 classification. This does not establish real Vertex wire compatibility or all network failure
 behavior. Dataset review and true-model evaluation remain maintainer tasks, untouched by this fix.
 See [review-fix evidence](issues/issue-72-verification.md#pr-85-review-fixes).
+
+## 2026-11-05: Separate generation location and retain safe HTTP diagnostics
+
+PR #85's maintainer reported eight live evaluation cases classified invalid_response with a
+model selected for global. This is an operator report, not a model run or report independently
+inspected by this agent. It does not prove all failures share one cause. Local source confirms
+the original shared setting rejects global and the generation URL always used a regional host.
+
+Add server-only GENERATION_LOCATION, default None, accepting global or the same regional format.
+Resolve None to the unchanged VERTEX_LOCATION so existing deployments retain their region.
+Embedding configuration and routing remain regional and unchanged. A generation-only URL builder
+uses aiplatform.googleapis.com for global, with locations/global in the path; other regions retain
+the prefixed host. This global URL format comes from prior knowledge and is unverified against
+the real API; no model name, model/location availability or IAM permission is asserted valid.
+
+Keep external ApiError codes, retryability and OpenAPI unchanged. GenerationFailure retains an
+optional integer HTTP status (100-599, excluding booleans/non-integers) for internal diagnosis,
+never the response body, input or token. All HTTPError classifications remain unchanged, including
+400/404 as invalid_response. Record effective location at the top of manual evaluation reports
+and nullable provider_http_status per case. Record http_status in the existing private extraction
+completion event only when available. No new logging system or public diagnostic field is added.
+
+The maintainer's uncommitted cases.json edits are explicitly outside this change. Preserve them
+byte-for-byte and never stage them. The existing replay test assumes all case review fields are
+null and already fails against that working copy; do not weaken its assertions or reset owner data
+to make verification appear green. See [follow-up evidence](issues/issue-72-verification.md#generation-location-and-http-diagnostics-follow-up).

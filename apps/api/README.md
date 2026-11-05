@@ -472,15 +472,22 @@ bulk create. The frontend hand-pasted JSON workflow is unchanged.
 
 Server-only environment settings, validated at startup:
 
-| Setting                            | Default | Allowed range                   | Purpose                                            |
-| ---------------------------------- | ------- | ------------------------------- | -------------------------------------------------- |
-| `GENERATION_MODEL`                 | unset   | model identifier, max 128 chars | Explicit maintainer-selected Vertex model          |
-| `GENERATION_TIMEOUT_SECONDS`       | 30      | 1-120                           | HTTP transport timeout                             |
-| `GENERATION_MAX_OUTPUT_TOKENS`     | 8192    | 1-32768                         | Bound generated output                             |
-| `GENERATION_MATERIAL_MAX_CHARS`    | 20000   | 1-100000                        | Unicode characters after trimming outer whitespace |
-| `GENERATION_INSTRUCTION_MAX_CHARS` | 2000    | 1-10000                         | Unicode characters after trimming outer whitespace |
+| Setting                            | Default | Allowed range                   | Purpose                                                 |
+| ---------------------------------- | ------- | ------------------------------- | ------------------------------------------------------- |
+| `GENERATION_MODEL`                 | unset   | model identifier, max 128 chars | Explicit maintainer-selected Vertex model               |
+| `GENERATION_LOCATION`              | unset   | global or regional location     | Generation-only override; falls back to VERTEX_LOCATION |
+| `GENERATION_TIMEOUT_SECONDS`       | 30      | 1-120                           | HTTP transport timeout                                  |
+| `GENERATION_MAX_OUTPUT_TOKENS`     | 8192    | 1-32768                         | Bound generated output                                  |
+| `GENERATION_MATERIAL_MAX_CHARS`    | 20000   | 1-100000                        | Unicode characters after trimming outer whitespace      |
+| `GENERATION_INSTRUCTION_MAX_CHARS` | 2000    | 1-10000                         | Unicode characters after trimming outer whitespace      |
 
-Reuse `VERTEX_PROJECT_ID` and `VERTEX_LOCATION`. Missing model or project returns stable
+Reuse `VERTEX_PROJECT_ID`. `GENERATION_LOCATION` accepts `global` or the existing regional
+format; when unset, generation uses `VERTEX_LOCATION` (default `us-central1`). Embedding continues
+to use only regional `VERTEX_LOCATION`, whose validation/default and routing are unchanged.
+Generation global routing uses host `aiplatform.googleapis.com` and path `locations/global`;
+regional generation retains the region-prefixed host. This global format is prior knowledge,
+**unverified against the live API**, and does not establish model availability in any location.
+Missing model or project returns stable
 503 `generation_not_configured` with no provider call or ADC lookup, after the access/consent
 checks. Provider construction is lazy and app-scoped. Input limit failures return 413
 `input_too_large`; request shape failures return 422. Timeout returns 504
@@ -494,7 +501,11 @@ The route commits authentication/deck/consent checks before external processing,
 connection and consent lock. Withdrawal or archive after that snapshot cannot recall transmitted
 material; no final data write occurs. Each request emits a `card_extraction_completed` JSON event
 with request ID, bounded deck UUID, adjustment flag, duration, optional token usage and result code,
-including rejected requests. It excludes material, instructions and card content.
+including rejected requests. HTTP provider failures additionally log a safe numeric `http_status`
+when available; it is never added to the public error envelope. `GenerationFailure` retains only
+that bounded status (100-599), not the provider body, token or user text. HTTP 400/404 still return
+502 `generation_invalid_response`; this diagnostic does not change retryability or API codes.
+Events exclude material, instructions and card content.
 
 The response schema is derived from `CardDrafts.model_json_schema()`, with references expanded,
 nullable unions converted and unsupported conditionals/extra-property restrictions omitted from
