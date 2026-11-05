@@ -1,6 +1,6 @@
-Refs #
+Closes #
 
-<!-- Use `Closes #N` only when this pull request finishes every acceptance criterion of that issue. -->
+<!-- Default is `Closes #N`, so merging closes the issue. Use `Refs #N` instead only when this pull request does not finish every acceptance criterion of that issue, and say in Summary what remains. -->
 
 ## Summary
 
