@@ -418,7 +418,7 @@ and was not edited. The public draft JSON Schema, API response model and OpenAPI
   is also retained in [test_card_draft_validation.py:82](../../apps/api/tests/unit/test_card_draft_validation.py#L82).
 - [test_prompt_already_states_card_count_boundary:120](../../apps/api/tests/unit/test_generation_schema_limits.py#L120)
   confirms the existing prompt's count instruction without changing prompt semantics.
-- [test_extraction_count_bounds_survive_provider_schema_projection:29](../../apps/api/tests/integration/test_generation_schema_limits.py#L29)
+- [test_extraction_count_bounds_survive_provider_schema_projection:29](../../apps/api/tests/integration/test_generation_schema_limits_http.py#L29)
   checks 0/21 output returns 502 extraction_invalid_output (non-retryable, no drafts returned),
   while 1/20 returns 200; all four inspect the actual provider request for absent count keys,
   exactly one provider call and unchanged learning-data counts. Existing 21-card extraction
@@ -429,10 +429,14 @@ and was not edited. The public draft JSON Schema, API response model and OpenAPI
 All uv commands used `UV_CACHE_DIR=/tmp/codex-72/uv-cache`.
 Before implementation, after changing the authorized expectation and adding regression tests:
 
-| Directory | Command                                                                                                | Exit | Observed result                                                                                                      |
-| --------- | ------------------------------------------------------------------------------------------------------ | ---- | -------------------------------------------------------------------------------------------------------------------- |
-| apps/api  | `uv run pytest tests/unit/test_generation.py tests/unit/test_generation_schema_limits.py -q`           | 1    | 3 failed, 28 passed; original projection still contained minItems/maxItems in actual/nested schemas                  |
-| apps/api  | `RUN_POSTGRES_INTEGRATION_TESTS=1 uv run pytest tests/integration/test_generation_schema_limits.py -q` | 1    | 4 failed; projected request still contained count keywords. Server already correctly accepted 1/20 and rejected 0/21 |
+Integration paths in the historical fix #3 command listings below now use the current renamed
+module so they can be rerun. The saved fix3 logs contain the original pre-fix4 basename; this was
+a content-preserving rename, not a change to those historical results.
+
+| Directory | Command                                                                                                     | Exit | Observed result                                                                                                      |
+| --------- | ----------------------------------------------------------------------------------------------------------- | ---- | -------------------------------------------------------------------------------------------------------------------- |
+| apps/api  | `uv run pytest tests/unit/test_generation.py tests/unit/test_generation_schema_limits.py -q`                | 1    | 3 failed, 28 passed; original projection still contained minItems/maxItems in actual/nested schemas                  |
+| apps/api  | `RUN_POSTGRES_INTEGRATION_TESTS=1 uv run pytest tests/integration/test_generation_schema_limits_http.py -q` | 1    | 4 failed; projected request still contained count keywords. Server already correctly accepted 1/20 and rejected 0/21 |
 
 Logs: `/tmp/codex-72/fix3-red-unit.log`, `fix3-red-http.log`. These are executed assertion failures.
 An earlier root-cwd uv invocation could not spawn pytest (exit 2); it was corrected to API cwd
@@ -525,3 +529,78 @@ results, and the cause of the slow responses was not isolated. The model was the
 One run, one model, eight synthetic cases, one reviewer, English-to-Traditional-Chinese only.
 No repeat runs, so run-to-run variance is unknown. The numbers are not a production quality
 claim. `gemini-3.5-flash-lite` availability, cost and stability as a default were not evaluated.
+
+## Combined pytest collection collision, fix #4
+
+Comparison base: `f5b572236fbf70afe1fbc9b55f8d4c0e9be9a1f1`. No product/API behavior changed.
+The maintainer reported CI Backend/Test with PostgreSQL failing during collection. Read-only
+inspection confirms the backend working directory is apps/api
+([ci.yml:81](../../.github/workflows/ci.yml#L81)), RUN_POSTGRES_INTEGRATION_TESTS is enabled
+([ci.yml:99](../../.github/workflows/ci.yml#L99)) and the test step executes `uv run pytest -q`
+with no directory arguments ([ci.yml:125](../../.github/workflows/ci.yml#L125)). The prior
+separate-directory checks did not reproduce the combined import namespace.
+
+### Root cause and minimal correction
+
+Scanning every test\_\*.py under apps/api/tests found exactly one duplicated basename:
+test_generation_schema_limits.py appeared in unit and integration. Both were added in this PR;
+pytest's default collection imported the integration module under that basename, then rejected
+the unit module's different `__file__`.
+
+Used git mv to rename only the PR-added integration file to
+[test_generation_schema_limits_http.py:1](../../apps/api/tests/integration/test_generation_schema_limits_http.py#L1).
+Its SHA-256 is unchanged from before the rename, and Git identifies a 100% rename. The unit
+file, every assertion, pytest configuration, workflows and dependencies remain unchanged. No
+cache cleanup or import-mode override was used to make collection pass. All test basenames are
+now unique. No `__pycache__` directory or `.pyc` file is tracked anywhere in the repository.
+Audit: `/tmp/codex-72/fix4-name-cache-audit.json`; original file hash: `fix4-test.sha256`.
+
+Current repository links and runnable integration command references use the renamed module.
+Historical fix3 logs retain the exact commands used before the rename, as explained above.
+Cases.json is untouched; initial hash is `/tmp/codex-72/fix4-cases.sha256`.
+
+### Red-first and green collection
+
+All uv commands used UV_CACHE_DIR=/tmp/codex-72/uv-cache, from apps/api.
+
+| Stage         | Command                                                            | Exit | Observed result                                                                                               |
+| ------------- | ------------------------------------------------------------------ | ---- | ------------------------------------------------------------------------------------------------------------- |
+| Before rename | `RUN_POSTGRES_INTEGRATION_TESTS=1 uv run pytest --collect-only -q` | 2    | 636 tests collected, 1 error: import file mismatch between integration and unit test_generation_schema_limits |
+| After rename  | `RUN_POSTGRES_INTEGRATION_TESTS=1 uv run pytest --collect-only -q` | 0    | 641 tests collected, no collection errors; one existing Starlette warning                                     |
+
+Logs: `/tmp/codex-72/fix4-red-collect.log`, `fix4-green-collect.log`. The missing five cases
+before the fix were the unit schema-limit module that pytest could not collect. No test was
+removed or weakened.
+
+### Final verification
+
+All commands used UV_CACHE_DIR as above where uv was involved.
+
+| Directory | Command                                                               | Exit | Observed result                            |
+| --------- | --------------------------------------------------------------------- | ---- | ------------------------------------------ |
+| apps/api  | `RUN_POSTGRES_INTEGRATION_TESTS=1 uv run pytest --collect-only -q`    | 0    | 641 collected, no errors                   |
+| apps/api  | `RUN_POSTGRES_INTEGRATION_TESTS=1 uv run pytest -q`                   | 0    | 641 passed, 51 existing warnings, no skips |
+| apps/api  | `uv run ruff check .`                                                 | 0    | All checks passed                          |
+| apps/api  | `uv run ruff format --check .`                                        | 0    | 100 files already formatted                |
+| apps/api  | `uv run pytest tests/unit -q`                                         | 0    | 306 passed, 1 existing Starlette warning   |
+| apps/api  | `RUN_POSTGRES_INTEGRATION_TESTS=1 uv run pytest tests/integration -q` | 0    | 325 passed, 51 existing warnings, no skips |
+| apps/api  | `RUN_POSTGRES_INTEGRATION_TESTS=1 uv run pytest tests/eval -q`        | 0    | 10 passed, no skips                        |
+| root      | `npm run lint:changed -- origin/main`                                 | 0    | Changed-file Prettier/ESLint passed        |
+| root      | `git diff --check`                                                    | 0    | No whitespace errors                       |
+
+Logs under `/tmp/codex-72/`: `fix4-green-collect.log`, `fix4-combined.log`,
+`fix4-ruff-check.log`, `fix4-ruff-format.log`, `fix4-unit.log`, `fix4-integration.log`,
+`fix4-eval.log`, `fix4-lint.log`, `fix4-diff-check.log`. The 51 warnings in combined/integration
+runs are one existing Starlette deprecation and 50 pgvector reflection warnings. Combined and
+separate integration processes used independently UUID-named test databases on the same pg72
+service. The separate eval run followed completion of combined pytest. No requested check was
+skipped, no test contents changed, and no production/API checks were substituted for collection.
+
+### Limits
+
+These are actual local pytest runs against the existing disposable pg72 PostgreSQL service,
+with unchanged restricted-role fixtures. The full CI job, hosted runner, artifact upload and PR
+checks were not rerun or inspected remotely; no GitHub/model/network-documentation call occurred.
+No production access, workflow/dependency/.env/cases change, amend, rebase or push occurred.
+Test contents and product behavior are unchanged. One local commit contains only the rename
+and this documentation/reference update.
