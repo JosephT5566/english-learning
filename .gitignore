@@ -42,3 +42,6 @@ __pycache__/
 
 # Temporary export output; approved public snapshots are tracked under static/guest.
 /exported-guest/
+
+# Generated offline retrieval evaluation reports
+/apps/api/retrieval-eval-report/

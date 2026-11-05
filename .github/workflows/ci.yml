@@ -124,6 +124,20 @@ jobs:
       - name: Test with PostgreSQL
         run: uv run pytest -q
 
+      - name: Upload retrieval evaluation report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: retrieval-eval-report
+          path: apps/api/retrieval-eval-report/
+
+      - name: Summarize failed retrieval evaluation
+        if: failure()
+        run: |
+          if [ -f retrieval-eval-report/report.md ]; then
+            cat retrieval-eval-report/report.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+
       - name: Build locked API container
         run: docker build --tag english-learning-api:verify .
 
