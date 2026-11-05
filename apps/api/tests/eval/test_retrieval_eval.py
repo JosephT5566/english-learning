@@ -6,7 +6,7 @@ from types import SimpleNamespace
 from uuid import UUID
 
 import pytest
-from sqlalchemy import MetaData, Table
+from sqlalchemy import MetaData, Table, text
 from sqlalchemy.orm import Session
 from starlette.requests import Request
 
@@ -44,6 +44,12 @@ class FrozenQueryProvider:
 
 def retrieve_rankings(engine, labels: dict, vectors: dict) -> dict:
     owner = insert_user(engine)
+    # Frozen synthetic vectors only: consent is required before process_card embeds.
+    with engine.begin() as connection:
+        connection.execute(
+            text("UPDATE users SET genai_consent_at = now() WHERE id = :id"),
+            {"id": owner},
+        )
     deck = insert_deck(engine, owner_id=owner)
     table = Table("learning_cards", MetaData(), autoload_with=engine)
     factory = create_database_session_factory(engine)
