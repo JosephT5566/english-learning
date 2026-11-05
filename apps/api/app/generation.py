@@ -126,6 +126,12 @@ def build_vertex_request(request: GenerationRequest, *, max_output_tokens: int) 
     }
 
 
+# Allowlist based on the review-cited Vertex Content REST reference (unverified;
+# online documentation and live API validation were prohibited for this task).
+# Unknown keys fail closed, including mixed text/tool or text/media content.
+TEXT_PART_KEYS = frozenset({"text", "thought", "thoughtSignature"})
+
+
 def parse_vertex_response(payload: object) -> GenerationResult:
     """Parse handwritten response contracts, NOT a verified live Vertex contract."""
     try:
@@ -138,11 +144,26 @@ def parse_vertex_response(payload: object) -> GenerationResult:
         if candidate.get("finishReason") != "STOP":
             raise GenerationFailure("invalid_response")
         parts = candidate["content"]["parts"]
-        if not parts or any(
-            set(part) != {"text"} or not isinstance(part["text"], str) for part in parts
-        ):
+        if not isinstance(parts, list) or not parts:
             raise GenerationFailure("invalid_response")
-        content = "".join(part["text"] for part in parts)
+        final_text = []
+        for part in parts:
+            if (
+                not isinstance(part, dict)
+                or not set(part) <= TEXT_PART_KEYS
+                or not isinstance(part.get("text"), str)
+                or ("thought" in part and not isinstance(part["thought"], bool))
+                or (
+                    "thoughtSignature" in part
+                    and not isinstance(part["thoughtSignature"], str)
+                )
+            ):
+                raise GenerationFailure("invalid_response")
+            # Validate even excluded thoughts so they cannot hide non-text content.
+            # Signatures are opaque metadata and are never part of the answer.
+            if not part.get("thought", False):
+                final_text.append(part["text"])
+        content = "".join(final_text)
         if not content:
             raise GenerationFailure("invalid_response")
         model = payload.get("modelVersion")
@@ -229,6 +250,14 @@ class VertexGenerationProvider:
             )
             response.raise_for_status()
             return parse_vertex_response(response.json())
+        except (
+            requests.exceptions.JSONDecodeError,
+            requests.exceptions.ContentDecodingError,
+            requests.exceptions.ChunkedEncodingError,
+        ):
+            # Body format/framing failures are invalid output, not retryable outages.
+            # JSONDecodeError is also a RequestException, so this must precede it.
+            raise GenerationFailure("invalid_response") from None
         except requests.Timeout:
             raise GenerationFailure("provider_timeout") from None
         except requests.HTTPError as error:
