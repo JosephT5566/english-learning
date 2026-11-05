@@ -31,6 +31,14 @@ pytestmark = [
 
 def fixture_card(engine: Engine) -> tuple[int, object]:
     owner_id = insert_user(engine)
+    # These lifecycle cases exercise the explicitly consented provider path.
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "UPDATE users SET genai_consent_at = CURRENT_TIMESTAMP WHERE id = :id"
+            ),
+            {"id": owner_id},
+        )
     deck_id = insert_deck(engine, owner_id=owner_id)
     table = Table("learning_cards", MetaData(), autoload_with=engine)
     card_id = insert_card(

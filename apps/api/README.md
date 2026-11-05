@@ -385,3 +385,32 @@ Supporting backend commit `34c7560` is optional when real cards are needed befor
 publication. It retains anonymous compatibility for the old frontend. Restore compatible backend
 support before rolling back to that frontend.
 Live IAM setup, real-card export and deployment are not established by local test results.
+
+### GenAI consent
+
+`GET /v1/me/genai-consent` returns `{"genai_consent_at": null}` until the authenticated
+user grants consent through `PUT` at the same path. The response then contains a timezone-aware
+ISO timestamp. Repeated grants retain that timestamp. No route accepts another user's ID.
+`DELETE` clears consent and deletes all owned `card_embeddings`, including pending and failed
+attempts across all model versions, in one transaction. Confirmed cards and review state remain.
+
+Without consent, semantic search returns `403` with `error.code = genai_consent_required`,
+and card-write background embedding work skips the provider while the card write succeeds.
+The owner-bounded backfill also skips unconsented users, including in dry runs. Granting consent
+does not automatically enqueue old cards; the existing explicit backfill can repair coverage.
+Withdrawal cannot recall content already sent to a provider. A running document embedding result
+cannot recreate a deleted claim after withdrawal, even if the user subsequently grants consent.
+
+The inline consent prompt in `src/routes/search/+page.svelte` names card text and search queries
+as content sent to Google Vertex AI. Semantic search is blocked until consent is granted.
+Withdrawal requires a second inline confirmation and warns that it deletes existing embeddings
+and cannot recall content already sent. A `403 genai_consent_required` returns the page to the
+consent prompt.
+
+Known limit: `process_card` checks consent in the claim transaction
+([embeddings.py:179](app/embeddings.py#L179)); its shared user-row lock is released when that
+transaction ends. The provider call runs outside any transaction
+([embeddings.py:260](app/embeddings.py#L260)). Withdrawal between claim commit and provider call
+start can therefore still send that one card's text to the provider. The final write recheck
+([embeddings.py:268](app/embeddings.py#L268)) prevents storing the result. The maintainer accepted
+this limit and rejected holding a database lock across a network call.

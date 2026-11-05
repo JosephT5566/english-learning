@@ -1,3 +1,4 @@
+import type { components } from "./generated";
 import { env } from "$env/dynamic/public";
 import { getTokenIfValid, isCurrentToken, signOut } from "$lib/auth";
 import {
@@ -459,4 +460,41 @@ export async function semanticSearch(
     );
   }
   return data;
+}
+
+type GenAIConsent = components["schemas"]["GenAIConsentResponse"];
+
+async function requestGenAIConsent(
+  method: "GET" | "PUT" | "DELETE",
+): Promise<GenAIConsent> {
+  const data = await authenticatedRequest("/v1/me/genai-consent", { method });
+  if (
+    !data ||
+    typeof data !== "object" ||
+    !("genai_consent_at" in data) ||
+    !(
+      data.genai_consent_at === null ||
+      (typeof data.genai_consent_at === "string" &&
+        Number.isFinite(Date.parse(data.genai_consent_at)))
+    )
+  ) {
+    throw new ApiClientError(
+      "The consent response was invalid.",
+      "invalid_response",
+      true,
+    );
+  }
+  return { genai_consent_at: data.genai_consent_at };
+}
+
+export function getGenAIConsent(): Promise<GenAIConsent> {
+  return requestGenAIConsent("GET");
+}
+
+export function grantGenAIConsent(): Promise<GenAIConsent> {
+  return requestGenAIConsent("PUT");
+}
+
+export function withdrawGenAIConsent(): Promise<GenAIConsent> {
+  return requestGenAIConsent("DELETE");
 }

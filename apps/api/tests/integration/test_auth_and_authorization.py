@@ -54,6 +54,12 @@ def api_client(
     )
     with TestClient(create_app(), raise_server_exceptions=False) as client:
         client.app.state.token_verifier = SwitchingTokenVerifier()
+        assert (
+            client.put(
+                "/v1/me/genai-consent", headers=bearer("fixture-token")
+            ).status_code
+            == 200
+        )
         yield client
 
 

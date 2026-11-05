@@ -15,6 +15,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.database import database_transaction
+from app.genai_consent import has_genai_consent
 from app.semantic_text import DIMENSIONS, MODEL_VERSION, canonical_text, content_hash
 
 CARD_SELECT = """
@@ -175,6 +176,8 @@ def process_card(
     """Claim once, call provider outside transactions, then reject stale results."""
 
     with database_transaction(session_factory) as session:
+        if not has_genai_consent(session, owner_id, lock=True):
+            return "skipped"
         row = (
             session.execute(
                 text(CARD_SELECT + " FOR UPDATE OF c"),
@@ -262,6 +265,8 @@ def process_card(
         vector, error_code = None, "provider_error"
 
     with database_transaction(session_factory) as session:
+        if not has_genai_consent(session, owner_id, lock=True):
+            return "skipped"
         current = (
             session.execute(
                 text(CARD_SELECT + " FOR UPDATE OF c"),

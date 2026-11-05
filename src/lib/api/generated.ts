@@ -231,6 +231,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/me/genai-consent": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Consent */
+        get: operations["read_consent_v1_me_genai_consent_get"];
+        /**
+         * Grant Consent
+         * @description Grant only the caller's consent; repeated grants retain the original time.
+         */
+        put: operations["grant_consent_v1_me_genai_consent_put"];
+        post?: never;
+        /**
+         * Withdraw Consent
+         * @description Clear consent and all owned embeddings in the same request transaction.
+         */
+        delete: operations["withdraw_consent_v1_me_genai_consent_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/reviews": {
         parameters: {
             query?: never;
@@ -691,6 +716,11 @@ export interface components {
          */
         ErrorResponse: {
             error: components["schemas"]["ErrorBody"];
+        };
+        /** GenAIConsentResponse */
+        GenAIConsentResponse: {
+            /** Genai Consent At */
+            genai_consent_at: string | null;
         };
         /** GuestSnapshot */
         GuestSnapshot: {
@@ -1538,6 +1568,66 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+        };
+    };
+    read_consent_v1_me_genai_consent_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GenAIConsentResponse"];
+                };
+            };
+        };
+    };
+    grant_consent_v1_me_genai_consent_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GenAIConsentResponse"];
+                };
+            };
+        };
+    };
+    withdraw_consent_v1_me_genai_consent_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GenAIConsentResponse"];
                 };
             };
         };

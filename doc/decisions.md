@@ -428,3 +428,24 @@ unchanged.
   removing the separate hash-only read on edits. Every edit still recomputes from persisted fields,
   including note-only edits that repair a missing hash. Canonical normalization, optimistic versions,
   transaction boundaries, and background embedding eligibility retain their existing behavior.
+
+## 2026-11-05: Require explicit owner consent before Vertex processing
+
+Issue #74's supplied approval record authorizes the migration and backend consent boundary.
+Store only the grant timestamp on `users`; NULL means no consent for new and existing users.
+Expose self-only GET/PUT/DELETE `/v1/me/genai-consent`, and return the fixed
+`genai_consent_required` code with 403 before semantic search can call its provider.
+Card writes still commit without consent; derived embedding work skips the provider.
+Serialize embedding claims and final writes with withdrawal through the user's row lock.
+Clear consent and delete all of that user's embedding versions atomically on withdrawal.
+An already running provider call cannot be recalled, but its deleted claim cannot be restored.
+Backfill requires consent and never grants it. Grant does not automatically backfill old cards.
+
+On 2026-11-05 the maintainer selected inline option A by chat. The search route now checks
+consent on entering meaning search and explains that card text and search queries go to
+Google Vertex AI. Only a granted state enables meaning search; keyword search remains available.
+Grant does not automatically submit the query. Withdrawal uses an inline second confirmation
+that warns about deleting existing embeddings and cannot recall already-transmitted content.
+A consent-required 403 returns to the prompt. No dialog, account-menu entry, or public config
+was added. See [Issue #74 verification](issues/issue-74-verification.md) for local evidence
+and deployment limits.

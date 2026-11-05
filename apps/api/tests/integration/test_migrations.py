@@ -19,7 +19,7 @@ pytestmark = [
 
 ALEMBIC_CONFIG_PATH = Path(__file__).parents[2] / "alembic.ini"
 BASELINE_REVISION = "20260901_0001"
-EMBEDDING_REVISION = "20260920_0006"
+CONSENT_REVISION = "20261105_0007"
 
 
 EXPECTED_HEAD_TABLES = {
@@ -64,7 +64,7 @@ def test_clean_postgres_database_supports_reversible_migration_cycle(
         command.upgrade(alembic_config, "head")
 
         assert set(inspect(database_engine).get_table_names()) == EXPECTED_HEAD_TABLES
-        assert current_revision(database_engine) == EMBEDDING_REVISION
+        assert current_revision(database_engine) == CONSENT_REVISION
 
         command.downgrade(alembic_config, BASELINE_REVISION)
 
@@ -74,7 +74,7 @@ def test_clean_postgres_database_supports_reversible_migration_cycle(
         command.upgrade(alembic_config, "head")
 
         assert set(inspect(database_engine).get_table_names()) == EXPECTED_HEAD_TABLES
-        assert current_revision(database_engine) == EMBEDDING_REVISION
+        assert current_revision(database_engine) == CONSENT_REVISION
 
         command.downgrade(alembic_config, "base")
 
@@ -84,6 +84,6 @@ def test_clean_postgres_database_supports_reversible_migration_cycle(
         command.upgrade(alembic_config, "head")
 
         assert set(inspect(database_engine).get_table_names()) == EXPECTED_HEAD_TABLES
-        assert current_revision(database_engine) == EMBEDDING_REVISION
+        assert current_revision(database_engine) == CONSENT_REVISION
     finally:
         database_engine.dispose()

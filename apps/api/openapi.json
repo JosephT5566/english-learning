@@ -1720,6 +1720,27 @@
         "title": "ErrorResponse",
         "type": "object"
       },
+      "GenAIConsentResponse": {
+        "properties": {
+          "genai_consent_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Genai Consent At"
+          }
+        },
+        "required": [
+          "genai_consent_at"
+        ],
+        "title": "GenAIConsentResponse",
+        "type": "object"
+      },
       "GuestSnapshot": {
         "additionalProperties": false,
         "properties": {
@@ -3450,6 +3471,73 @@
           }
         ],
         "summary": "Get Me"
+      }
+    },
+    "/v1/me/genai-consent": {
+      "delete": {
+        "description": "Clear consent and all owned embeddings in the same request transaction.",
+        "operationId": "withdraw_consent_v1_me_genai_consent_delete",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenAIConsentResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Withdraw Consent"
+      },
+      "get": {
+        "operationId": "read_consent_v1_me_genai_consent_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenAIConsentResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Read Consent"
+      },
+      "put": {
+        "description": "Grant only the caller's consent; repeated grants retain the original time.",
+        "operationId": "grant_consent_v1_me_genai_consent_put",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenAIConsentResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Grant Consent"
       }
     },
     "/v1/reviews": {
