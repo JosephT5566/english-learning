@@ -6,7 +6,9 @@ Vertex. A maintainer must run the manual real-model evaluation before deployment
 
 import json
 import threading
-from dataclasses import dataclass
+import time
+from copy import deepcopy
+from dataclasses import dataclass, field
 from typing import Annotated, Protocol
 
 import google.auth
@@ -47,6 +49,9 @@ class GenerationRequest:
     system: str
     data: dict
     response_schema: dict | None = None
+    contents: list[dict] | None = None
+    tools: list[dict] | None = None
+    tools_disabled: bool = False
 
 
 @dataclass(frozen=True)
@@ -54,6 +59,8 @@ class GenerationResult:
     text: str
     model: str | None = None
     usage: GenerationUsage | None = None
+    parts: list[dict] = field(default_factory=list)
+    function_calls: list[dict] = field(default_factory=list)
 
 
 class GenerationProvider(Protocol):
@@ -64,8 +71,9 @@ class GenerationProvider(Protocol):
         model: str,
         project: str,
         location: str,
-        timeout_seconds: int,
+        timeout_seconds: float,
         max_output_tokens: int,
+        deadline: float | None = None,
     ) -> GenerationResult: ...
 
     def close(self) -> None: ...
@@ -139,7 +147,7 @@ def build_vertex_request(request: GenerationRequest, *, max_output_tokens: int) 
         config.update(
             responseMimeType="application/json", responseSchema=request.response_schema
         )
-    return {
+    payload = {
         "systemInstruction": {"parts": [{"text": request.system}]},
         "contents": [
             {
@@ -149,6 +157,14 @@ def build_vertex_request(request: GenerationRequest, *, max_output_tokens: int) 
         ],
         "generationConfig": config,
     }
+    if request.contents is not None:
+        payload["contents"] = deepcopy(request.contents)
+    if request.tools is not None:
+        payload["tools"] = [{"functionDeclarations": deepcopy(request.tools)}]
+    if request.tools_disabled:
+        # NONE is explicit even with declarations retained. Unverified on real Vertex.
+        payload["toolConfig"] = {"functionCallingConfig": {"mode": "NONE"}}
+    return payload
 
 
 # Allowlist based on the review-cited Vertex Content REST reference (unverified;
@@ -157,7 +173,9 @@ def build_vertex_request(request: GenerationRequest, *, max_output_tokens: int) 
 TEXT_PART_KEYS = frozenset({"text", "thought", "thoughtSignature"})
 
 
-def parse_vertex_response(payload: object) -> GenerationResult:
+def parse_vertex_response(
+    payload: object, *, allow_empty: bool = False
+) -> GenerationResult:
     """Parse handwritten response contracts, NOT a verified live Vertex contract."""
     try:
         candidates = payload["candidates"]
@@ -172,7 +190,35 @@ def parse_vertex_response(payload: object) -> GenerationResult:
         if not isinstance(parts, list) or not parts:
             raise GenerationFailure("invalid_response")
         final_text = []
+        function_calls = []
         for part in parts:
+            if isinstance(part, dict) and "functionCall" in part:
+                function = part["functionCall"]
+                if (
+                    not set(part) <= {"functionCall", "thoughtSignature", "thought"}
+                    or not isinstance(function, dict)
+                    or not set(function) <= {"name", "args", "id"}
+                    or not isinstance(function.get("name"), str)
+                    or not function["name"].strip()
+                    or not isinstance(function.get("args", {}), dict)
+                    or (
+                        "id" in function
+                        and (
+                            not isinstance(function["id"], str)
+                            or not function["id"].strip()
+                        )
+                    )
+                    or ("thought" in part and not isinstance(part["thought"], bool))
+                    or (
+                        "thoughtSignature" in part
+                        and not isinstance(part["thoughtSignature"], str)
+                    )
+                ):
+                    raise GenerationFailure("invalid_response")
+                call = deepcopy(function)
+                call.setdefault("args", {})
+                function_calls.append(call)
+                continue
             if (
                 not isinstance(part, dict)
                 or not set(part) <= TEXT_PART_KEYS
@@ -189,7 +235,7 @@ def parse_vertex_response(payload: object) -> GenerationResult:
             if not part.get("thought", False):
                 final_text.append(part["text"])
         content = "".join(final_text)
-        if not content:
+        if not content and not function_calls and not allow_empty:
             raise GenerationFailure("invalid_response")
         model = payload.get("modelVersion")
         if model is not None and (not isinstance(model, str) or not model.strip()):
@@ -202,7 +248,15 @@ def parse_vertex_response(payload: object) -> GenerationResult:
                 output_tokens=metadata.get("candidatesTokenCount"),
                 total_tokens=metadata.get("totalTokenCount"),
             )
-        return GenerationResult(text=content, model=model, usage=usage)
+        # Preserve full model parts including opaque thoughtSignature for replay.
+        # Gemini multi-turn signature requirements are unverified; real-model eval is needed.
+        return GenerationResult(
+            text=content,
+            model=model,
+            usage=usage,
+            parts=deepcopy(parts),
+            function_calls=function_calls,
+        )
     except GenerationFailure:
         raise
     except (
@@ -262,19 +316,34 @@ class VertexGenerationProvider:
         model: str,
         project: str,
         location: str,
-        timeout_seconds: int,
+        timeout_seconds: float,
         max_output_tokens: int,
+        deadline: float | None = None,
     ) -> GenerationResult:
         token = self._access_token()
         try:
+            url = build_generation_url(project=project, location=location, model=model)
+            payload = build_vertex_request(request, max_output_tokens=max_output_tokens)
+            if deadline is not None:
+                timeout_seconds = min(timeout_seconds, deadline - time.monotonic())
+                if timeout_seconds <= 0:
+                    raise GenerationFailure("provider_timeout")
             response = requests.post(
-                build_generation_url(project=project, location=location, model=model),
+                url,
                 headers={"Authorization": f"Bearer {token}"},
-                json=build_vertex_request(request, max_output_tokens=max_output_tokens),
+                json=payload,
                 timeout=timeout_seconds,
             )
             response.raise_for_status()
-            return parse_vertex_response(response.json())
+            result = parse_vertex_response(
+                response.json(),
+                # A fully validated final NONE response with only thought parts
+                # must reach the assistant fallback, not bypass part validation.
+                allow_empty=request.tools is not None and request.tools_disabled,
+            )
+            if result.function_calls and request.tools is None:
+                raise GenerationFailure("invalid_response")
+            return result
         except (
             requests.exceptions.JSONDecodeError,
             requests.exceptions.ContentDecodingError,

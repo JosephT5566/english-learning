@@ -87,7 +87,26 @@ def semantic_search(
     """Rank only current embeddings belonging to the authenticated owner."""
 
     require_genai_consent(session, user.id)
+    return search_cards(
+        payload,
+        session,
+        user.id,
+        request.app.state.settings,
+        request.app.state.embedding_provider,
+    )
 
+
+def search_cards(
+    payload,
+    session,
+    owner_id,
+    settings,
+    provider,
+    *,
+    release_transaction=False,
+    before_ranking=None,
+):
+    """Shared owner-scoped search; assistant may release before external embedding."""
     if payload.deck_id is not None:
         try:
             deck = (
@@ -96,7 +115,7 @@ def semantic_search(
                     SELECT archived_at, target_language FROM learning_decks
                     WHERE id = :deck_id AND owner_id = :owner_id
                 """),
-                    {"deck_id": payload.deck_id, "owner_id": user.id},
+                    {"deck_id": payload.deck_id, "owner_id": owner_id},
                 )
                 .mappings()
                 .one_or_none()
@@ -122,7 +141,6 @@ def semantic_search(
                 items=[], index_status="empty", eligible_count=0, indexed_count=0
             )
 
-    settings = request.app.state.settings
     if not settings.vertex_project_id:
         raise ApiError(
             status_code=503,
@@ -132,7 +150,7 @@ def semantic_search(
         )
     try:
         parameters = {
-            "owner_id": user.id,
+            "owner_id": owner_id,
             "language": payload.target_language,
             "deck_id": payload.deck_id,
             "model": MODEL_VERSION,
@@ -170,11 +188,18 @@ def semantic_search(
                 indexed_count=0,
             )
 
-        query_vector = request.app.state.embedding_provider.query_embedding(
+        if release_transaction:
+            # Assistant-only: no transaction spans embedding latency. Identity is
+            # reapplied by after_begin for the ranking query below. Existing HTTP
+            # semantic-search behavior keeps its original transaction boundary.
+            session.commit()
+        query_vector = provider.query_embedding(
             payload.query,
             project=settings.vertex_project_id,
             location=settings.vertex_location,
         )
+        if before_ranking is not None:
+            before_ranking()
         parameters.update(vector=json.dumps(query_vector), limit=payload.limit)
         rows = (
             session.execute(
