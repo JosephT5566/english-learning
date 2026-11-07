@@ -219,3 +219,45 @@ started before the call ID patch landed. It reported one Starlette deprecation w
 and 50 SQLAlchemy warnings about vector reflection.
 On the final patch, `RUN_POSTGRES_INTEGRATION_TESTS=1 python -m pytest tests/integration/test_assistant_http_boundaries.py -q`
 exited 0 with all 26 assistant HTTP tests passing and one Starlette deprecation warning.
+
+## SSE follow-up
+
+The new HTTP regression suite first ran from `apps/api` on `2af113b` with the
+tests applied. `RUN_POSTGRES_INTEGRATION_TESTS=1 python -m pytest tests/integration/test_assistant_sse_http.py -q --tb=line`
+exited 1 with eight failures because the SSE route returned HTTP 404. The transport
+suite also failed against the unchanged source because it had no streaming method.
+
+Two incremental tests reproduced cleanup failures during review. The level-cancellation
+test exited 1 when the HTTPX close did not finish. The slow-client integration test
+exited 1 with `TimeoutError` while waiting for upstream close. Both passed after the
+cancellation shield and bounded downstream sends were added.
+
+| Directory | Command                                                                                                                                                            | Exit | Evidence                                      |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---- | --------------------------------------------- |
+| apps/api  | `python -m pytest tests/unit -q`                                                                                                                                   | 0    | 357 passed                                    |
+| apps/api  | `RUN_POSTGRES_INTEGRATION_TESTS=1 python -m pytest tests/integration/test_assistant_sse_http.py tests/integration/test_assistant_http_boundaries.py -q --tb=short` | 0    | 39 passed across SSE and existing JSON routes |
+| apps/api  | `ruff check .` and `ruff format --check .`                                                                                                                         | 0    | Lint passed, 110 files already formatted      |
+
+Pytest used the workspace API virtualenv. The targeted PostgreSQL tests use the
+restricted role and verify that the pool has no checked-out SQL connection during
+model generation or SSE. Independent review confirmed that upstream close completes
+on disconnect and under downstream backpressure. The final-step log classifies
+downstream backpressure closure as a disconnect. The wire event reports a timeout.
+
+The first live Vertex run had two tool calls on final turns even though the request
+disabled tools. After adding a final-turn instruction, all eight synthetic cases
+completed on Gemini 3.5 Flash-Lite and received a text delta before `done`.
+Seven received multiple text deltas. See the [dated SSE evaluation](../training/issues/70/README.md#live-sse-result-on-2026-11-07).
+
+With all new tests applied to an unchanged export of `2af113b`, from `apps/api`,
+`RUN_POSTGRES_INTEGRATION_TESTS=1 python -m pytest tests/integration/test_assistant_sse_http.py tests/unit/test_vertex_assistant_stream.py tests/unit/test_assistant_contracts.py -q -k 'test_sse_ or test_vertex_assistant_stream or disconnected_tool' --tb=no`
+exited 1 with 26 failures and 33 deselected. This includes the final 13 HTTP
+cases, 12 Vertex transport cases, and the cancelled SQL dispatch regression.
+
+From the repository root, `npm run api:generate`, `npm run api:check`,
+`npm run check`, `npm run test:frontend`, `BASE_PATH=/english-learning npm run build`,
+`npm run lint:changed -- 2af113b`, and `git diff --check` exited 0. The first
+Vitest attempt failed because the isolated checkout linked `node_modules` from
+another workspace. A local `npm ci` resolved it. The API container build and
+`bash apps/api/scripts/verify_container.sh english-learning-api:verify` exited 0
+on the final SSE source.

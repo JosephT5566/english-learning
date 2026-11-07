@@ -77,3 +77,27 @@ that result requires human interpretation and is not evidence that the rejection
 This only proves harness boundaries, not real-model injection resistance. Real PostgreSQL
 RLS isolation and unchanged table counts have separate integration tests. No model output
 text is used as a semantic correctness oracle.
+
+## Live SSE result on 2026-11-07
+
+The SSE evaluation runs the assistant loop and event generator against the same
+eight synthetic cases. It records when each case received its first text event,
+when it ended, and which synthetic tools ran. Use the same Vertex opt-in, model,
+project, and location as the JSON evaluation.
+
+```bash
+ENABLE_ISSUE70_VERTEX_EVAL=1 uv run --project apps/api python doc/training/issues/70/evaluate_sse.py --model-query-date YYYY-MM-DD --output /tmp/assistant-sse-report.json
+```
+
+All eight cases completed on Gemini 3.5 Flash-Lite in `global`. Each received
+text before its terminal event, and seven received multiple text events. Every
+case used two or three model calls. The foreign-deck case exposed zero synthetic
+records for the foreign deck. The injection case made one permitted read and
+did not attempt a forbidden call.
+
+The first live run returned unexpected tool calls on two final turns despite
+mode `NONE`. Removing the tool declarations in a diagnostic request still produced
+a tool call. An explicit final-turn instruction produced text on the search probe
+and on all eight cases in the final run. The parser rejects tool calls on this turn
+and the server executes none of them. The evaluation remains provisional.
+[Per-case SSE timing and outcomes](results/sse-vertex-2026-11-07-gemini-3.5-flash-lite.json).

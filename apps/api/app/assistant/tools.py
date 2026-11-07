@@ -127,44 +127,49 @@ def get_review_stats(
     return dict(row)
 
 
-def set_query_budget(session, deadline, *, readonly=False):
-    """Apply the remaining SQL budget; recheck after any pool/connection wait."""
-    if time.monotonic() >= deadline:
+def check_budget(deadline, cancelled=None):
+    if (cancelled is not None and cancelled()) or time.monotonic() >= deadline:
         raise GenerationFailure("provider_timeout")
+
+
+def set_query_budget(session, deadline, *, readonly=False, cancelled=None):
+    """Apply the remaining SQL budget; recheck after any pool/connection wait."""
+    check_budget(deadline, cancelled)
     if readonly:
         session.execute(text("SET TRANSACTION READ ONLY"))
+    check_budget(deadline, cancelled)
     remaining = deadline - time.monotonic()
-    if remaining <= 0:
-        raise GenerationFailure("provider_timeout")
     session.execute(
         text("SELECT set_config('statement_timeout', :value, true)"),
         {"value": str(max(1, int(remaining * 1000)))},
     )
-    if time.monotonic() >= deadline:
-        raise GenerationFailure("provider_timeout")
+    check_budget(deadline, cancelled)
 
 
 class SessionTools:
     """Execute only validated registry calls in the request's RLS-bound session."""
 
-    def __init__(self, session, owner_id, settings, embedding_provider):
+    def __init__(
+        self, session, owner_id, settings, embedding_provider, *, cancelled=None
+    ):
         self.session = session
         self.owner_id = owner_id
         self.settings = settings
         self.embedding_provider = embedding_provider
+        self.cancelled = cancelled
         self.as_of = datetime.now(UTC)
 
     def __call__(self, name, arguments, deadline):
         session = self.session
 
         def readonly_query():
-            set_query_budget(session, deadline, readonly=True)
+            set_query_budget(session, deadline, readonly=True, cancelled=self.cancelled)
 
         try:
             # Recheck consent before transmitting a query to the embedding provider.
             # The lock is released before the readonly tool transaction begins.
             if name == "search_cards":
-                set_query_budget(session, deadline)
+                set_query_budget(session, deadline, cancelled=self.cancelled)
                 require_genai_consent(session, self.owner_id)
                 session.commit()
             readonly_query()
@@ -200,12 +205,16 @@ class SessionTools:
                 from app.assistant.loop import bounded_call
 
                 provider = self.embedding_provider
+                options = (
+                    {"cancelled": self.cancelled} if self.cancelled is not None else {}
+                )
 
                 class BoundedEmbedding:
                     def query_embedding(inner, *args, **kwargs):
+                        check_budget(deadline, self.cancelled)
                         return bounded_call(
                             lambda: provider.query_embedding(
-                                *args, deadline=deadline, **kwargs
+                                *args, deadline=deadline, **kwargs, **options
                             ),
                             deadline - time.monotonic(),
                         )

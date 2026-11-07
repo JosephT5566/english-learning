@@ -576,3 +576,30 @@ timeout is capped at the remaining budget. In-flight requests may finish after t
 The assistant discards their results. Streaming and Neon pooled `set_config` behavior remain
 unverified. See [verification](../../doc/issues/issue-70-verification.md) and the
 [provisional live evaluation](../../doc/training/issues/70/README.md#live-result-on-2026-11-07).
+
+### Stream an assistant reply
+
+Send the same JSON request to `POST /v1/assistant/messages/stream` with the usual
+authentication header. A successful response is `text/event-stream`. Each event's
+`data` field contains one JSON object.
+
+| Event   | Data                                                                       |
+| ------- | -------------------------------------------------------------------------- |
+| `delta` | `text` contains the next fragment of the reply. Append fragments in order. |
+| `done`  | `tool_calls`, `stop_reason`, and nullable `usage`.                         |
+| `error` | Stable `code`, `message`, and `retryable` fields.                          |
+
+Authentication, validation, consent and model configuration errors are HTTP
+responses before any SSE frames. A preflight deadline failure returns HTTP 504.
+Once streaming starts, expect one `done` or `error` event while the connection is
+open. A deadline reached after headers returns `done` with `stop_reason: "timeout"`.
+Keep text already received. Close the request to stop reading. The server closes
+the active upstream stream on disconnect and stops dispatching additional work.
+If the client stops reading, the server closes the upstream stream at the deadline
+and attempts to deliver the timeout event within a short grace period.
+
+The SSE path reserves one model call for the tool-disabled reply. It streams
+visible text directly from Vertex and can use an extra model call for simple
+questions. The same overall call limit and deadline cover planning, tools and
+streaming. Planning and tool execution finish before the first answer delta.
+See the [SSE verification record](../../doc/issues/issue-70-verification.md#sse-follow-up).

@@ -105,6 +105,7 @@ class VertexEmbeddingProvider:
         project: str,
         location: str,
         deadline: float | None = None,
+        cancelled: Callable[[], bool] | None = None,
     ) -> list[float]:
         return self._embedding(
             content,
@@ -112,6 +113,7 @@ class VertexEmbeddingProvider:
             project=project,
             location=location,
             deadline=deadline,
+            cancelled=cancelled,
         )
 
     def _embedding(
@@ -122,8 +124,11 @@ class VertexEmbeddingProvider:
         project: str,
         location: str,
         deadline: float | None = None,
+        cancelled: Callable[[], bool] | None = None,
     ) -> list[float]:
         try:
+            if cancelled is not None and cancelled():
+                raise EmbeddingFailure("provider_timeout")
             token = self._access_token()
             url = (
                 f"https://{location}-aiplatform.googleapis.com/v1/projects/{project}"
@@ -134,6 +139,8 @@ class VertexEmbeddingProvider:
                 timeout = min(timeout, deadline - time.monotonic())
                 if timeout <= 0:
                     raise EmbeddingFailure("provider_timeout")
+            if cancelled is not None and cancelled():
+                raise EmbeddingFailure("provider_timeout")
             response = requests.post(
                 url,
                 headers={"Authorization": f"Bearer {token}"},

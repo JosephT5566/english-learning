@@ -625,3 +625,19 @@ tool validation and replay the original model part with its opaque signature. Wh
 a function-call ID, copy it onto the corresponding function response, including a denied call.
 The ID is provider metadata and stays out of public tool summaries and logs. Malformed IDs and
 arguments still fail parsing, and each tool still enforces its required fields.
+
+## 2026-11-07: Stream the final assistant answer on a separate endpoint
+
+Issue #70 adds `POST /v1/assistant/messages/stream` alongside the JSON route. The
+SSE route completes the existing validation, authentication and consent checks
+before sending headers. It reserves one model call for a tool-disabled
+`streamGenerateContent` response. A final-turn instruction asks Vertex to answer
+from the available evidence because the synthetic live probe observed tool calls
+despite mode `NONE`.
+
+Use HTTPX for asynchronous Vertex streaming and retain the existing pinned version
+as a runtime dependency. The SQL worker returns its prepared answer after closing
+its session. The response owns upstream cancellation and emits only visible answer
+text. On disconnect, the planning worker checks a cancellation flag at SQL and
+provider boundaries. HTTPX cleanup runs inside a shielded cancellation scope.
+See [verification](issues/issue-70-verification.md#sse-follow-up).

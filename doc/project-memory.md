@@ -20,7 +20,9 @@ Frontend work remains deferred under ui-design-gate; only generated API types ch
 The PR #86 follow-up checks the shared deadline before sending content to Vertex and
 replays signed function calls with their IDs. The provisional live evaluation exercised
 eight synthetic cases on Gemini 3.5 Flash-Lite. Seven produced a reply and one reached
-the step cap. Production, streaming, and Neon pooled behavior remain unverified.
+the step cap. The same PR adds an authenticated SSE route with incremental final
+answer text, shared tool limits and a disconnect-aware Vertex stream. Production and
+Neon pooled behavior remain unverified.
 See [verification](issues/issue-70-verification.md) and the
 [dated evaluation](training/issues/70/README.md#live-result-on-2026-11-07).
 

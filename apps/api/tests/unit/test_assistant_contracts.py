@@ -1,5 +1,6 @@
 """Offline assistant boundaries; handwritten wire fixtures are not live evidence."""
 
+import time
 from copy import deepcopy
 from unittest.mock import Mock
 
@@ -526,3 +527,28 @@ def test_assistant_embedding_http_obeys_deadline_after_credentials(
         assert provider.generate.call_count == 1
     else:
         assert post.call_args.kwargs["timeout"] == pytest.approx(0.5)
+
+
+def test_disconnected_tool_does_not_start_sql_after_statement_budget(monkeypatch):
+    from threading import Event
+    from unittest.mock import Mock
+
+    from app.assistant import tools
+
+    disconnected = Event()
+    session = Mock()
+
+    def execute(statement, *args):
+        if "statement_timeout" in str(statement):
+            disconnected.set()
+
+    session.execute.side_effect = execute
+    stats = Mock()
+    monkeypatch.setattr(tools, "get_review_stats", stats)
+    execute_tool = tools.SessionTools(
+        session, 1, None, None, cancelled=disconnected.is_set
+    )
+    with pytest.raises(GenerationFailure, match="provider_timeout"):
+        execute_tool("get_review_stats", {}, time.monotonic() + 5)
+    stats.assert_not_called()
+    session.rollback.assert_called_once()

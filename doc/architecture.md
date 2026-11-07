@@ -698,4 +698,14 @@ Per-step structured logs contain only correlation, bounded state, timing and nul
 [Issue #70 verification](issues/issue-70-verification.md) maps backend acceptance to local
 checks. [Evaluation assets](training/issues/70/README.md) use a synthetic tool sandbox in both
 modes; replay is provisional and true Vertex mode requires explicit flag/environment opt-in.
-No live model, production connection, streaming or Neon pool behavior was verified.
+The first evaluation covers the non-streaming route. Production and Neon pool behavior
+remain unverified. See the [assistant evaluation](training/issues/70/README.md).
+
+`POST /v1/assistant/messages/stream` accepts the same request and checks consent before
+the HTTP response starts. The planning worker uses the same loop and an owner-bound
+SQL session. It reserves one call for a tool-disabled Vertex stream and returns the
+request and summaries after closing the session. The async response emits only visible
+answer fragments and one terminal event. Its ASGI listener cancels the response on
+disconnect, signals the planning worker to stop dispatching, and closes the upstream
+HTTPX stream. Both phases use the same absolute deadline.
+See [SSE verification](issues/issue-70-verification.md#sse-follow-up).

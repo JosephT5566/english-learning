@@ -2876,6 +2876,61 @@
         "summary": "Assistant Messages"
       }
     },
+    "/v1/assistant/messages/stream": {
+      "post": {
+        "operationId": "assistant_stream_v1_assistant_messages_stream_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssistantRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Server-Sent Events. Each data field is JSON. delta: {text: string}. done: {tool_calls: ToolCallSummary[], stop_reason: completed | max_steps | timeout, usage: GenerationUsage | null}. error: {code: string, message: string, retryable: boolean}. A connected client receives exactly one terminal done or error event."
+          },
+          "401": {
+            "description": "Authentication required before streaming"
+          },
+          "403": {
+            "description": "GenAI consent required before streaming"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "description": "Generation or database unavailable before streaming"
+          },
+          "504": {
+            "description": "Assistant preflight timed out"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Assistant Stream"
+      }
+    },
     "/v1/cards": {
       "get": {
         "description": "List compact owned card summaries with language, tag, and text filtering.",

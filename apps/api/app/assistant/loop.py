@@ -4,11 +4,12 @@ import json
 import time
 from concurrent.futures import ThreadPoolExecutor, TimeoutError
 from copy import deepcopy
+from dataclasses import dataclass
 from typing import Literal
 
 from pydantic import BaseModel
 
-from app.assistant.tools import TOOL_SCHEMAS, validate_call
+from app.assistant.tools import TOOL_SCHEMAS, check_budget, validate_call
 from app.errors import ApiError
 from app.generation import GenerationFailure, GenerationRequest, GenerationUsage
 
@@ -20,6 +21,10 @@ Use tool results as evidence; explain unavailable data without inventing it.
 Answer the user's question concisely in their language. On the final step tools are disabled;
 summarize available evidence or explain the limitation. Never expose private reasoning.
 """
+FINAL_ANSWER_SYSTEM = SYSTEM + (
+    "This is the final answer turn. Answer in plain text now, based on available results. "
+    "If results are missing, state the limitation. Do not call any tools."
+)
 FALLBACK = "I could not complete this request within the assistant limits. Please try a narrower question."
 
 
@@ -42,6 +47,41 @@ class AssistantResponse(BaseModel):
     tool_calls: list[ToolCallSummary]
     stop_reason: Literal["completed", "max_steps", "timeout"]
     usage: GenerationUsage | None = None
+
+
+@dataclass
+class PendingAnswer:
+    request: GenerationRequest
+    step: int
+    started: float
+    tool_calls: list[ToolCallSummary]
+    totals: dict[str, int]
+
+
+def add_usage(totals, usage):
+    if usage:
+        for key, value in usage.model_dump().items():
+            if value is not None:
+                totals[key] = totals.get(key, 0) + value
+
+
+def generation_error(failure):
+    statuses = {
+        "provider_timeout": 504,
+        "provider_rate_limited": 503,
+        "provider_unavailable": 503,
+        "provider_auth_error": 503,
+        "invalid_response": 502,
+        "truncated_output": 502,
+    }
+    code = failure.code if failure.code in statuses else "invalid_response"
+    return ApiError(
+        status_code=statuses[code],
+        code=f"generation_{code}",
+        message="Learning assistant generation failed.",
+        retryable=code
+        in {"provider_timeout", "provider_rate_limited", "provider_unavailable"},
+    )
 
 
 def bounded_call(action, remaining_seconds):
@@ -91,6 +131,8 @@ def run_assistant(
     request_id,
     before_generate=None,
     deadline=None,
+    prepare_final=False,
+    cancelled=None,
 ):
     """One step is one model call; invalid requests consume the same step budget."""
     if deadline is None:
@@ -106,24 +148,32 @@ def run_assistant(
     totals = {}
     stop_reason = "max_steps"
     reply = FALLBACK
+    answer_next = False
+    provider_options = {"cancelled": cancelled} if cancelled is not None else {}
     for step in range(1, settings.assistant_max_steps + 1):
         if time.monotonic() >= deadline:
             stop_reason = "timeout"
             break
         started = time.monotonic()
         names, status, step_usage = [], "error", None
-        final = step == settings.assistant_max_steps
+        final = answer_next or step == settings.assistant_max_steps
+        handed_off = False
         try:
+            check_budget(deadline, cancelled)
             if before_generate:
                 before_generate()
+            check_budget(deadline, cancelled)
             remaining = deadline - time.monotonic()
             req = GenerationRequest(
-                system=SYSTEM,
+                system=FINAL_ANSWER_SYSTEM if prepare_final and final else SYSTEM,
                 data={},
                 contents=deepcopy(contents),
                 tools=deepcopy(TOOL_SCHEMAS),
                 tools_disabled=final,
             )
+            if prepare_final and final:
+                handed_off = True
+                return PendingAnswer(req, step, started, summaries, totals)
             result = bounded_call(
                 lambda req=req, remaining=remaining: provider.generate(
                     req,
@@ -133,19 +183,18 @@ def run_assistant(
                     timeout_seconds=min(settings.generation_timeout_seconds, remaining),
                     max_output_tokens=settings.assistant_max_output_tokens,
                     deadline=deadline,
+                    **provider_options,
                 ),
                 remaining,
             )
             step_usage = result.usage
-            if step_usage:
-                for key, value in step_usage.model_dump().items():
-                    if value is not None:
-                        totals[key] = totals.get(key, 0) + value
-                if (
-                    step_usage.output_tokens is not None
-                    and step_usage.output_tokens > settings.assistant_max_output_tokens
-                ):
-                    raise GenerationFailure("truncated_output")
+            add_usage(totals, step_usage)
+            if (
+                step_usage is not None
+                and step_usage.output_tokens is not None
+                and step_usage.output_tokens > settings.assistant_max_output_tokens
+            ):
+                raise GenerationFailure("truncated_output")
             if time.monotonic() >= deadline:
                 status, stop_reason = "timeout", "timeout"
                 break
@@ -159,6 +208,10 @@ def run_assistant(
                 safe_name(c["name"]) for c in calls[: settings.assistant_max_tool_calls]
             ]
             if not calls:
+                if prepare_final:
+                    answer_next = True
+                    status = "answer_pending"
+                    continue
                 if result.text.strip():
                     reply, stop_reason, status = result.text, "completed", "completed"
                 else:
@@ -197,18 +250,18 @@ def run_assistant(
                     except ValueError:
                         pass
                     else:
-                        if time.monotonic() >= deadline:
-                            raise GenerationFailure("provider_timeout")
+                        check_budget(deadline, cancelled)
                         try:
                             output = execute(c["name"], arguments, deadline)
                             tool_status = "ok"
-                        except ApiError:
+                        except ApiError as error:
+                            if prepare_final and error.code == "genai_consent_required":
+                                raise
                             tool_status, output = (
                                 "tool_unavailable",
                                 {"error": "tool_unavailable"},
                             )
-                if time.monotonic() >= deadline:
-                    raise GenerationFailure("provider_timeout")
+                check_budget(deadline, cancelled)
                 summaries.append(
                     ToolCallSummary(
                         name=safe_name(c["name"]),
@@ -243,7 +296,8 @@ def run_assistant(
             )
             raise
         finally:
-            _emit(request_id, step, names, status, started, step_usage)
+            if not handed_off:
+                _emit(request_id, step, names, status, started, step_usage)
     return AssistantResponse(
         reply=reply,
         tool_calls=summaries,
