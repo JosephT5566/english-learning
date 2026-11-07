@@ -612,3 +612,16 @@ scores. This is harness coverage, not model safety or retrieval-quality evidence
 Default tuning, live wire/schema/signature behavior and corpus review remain for maintainer
 confirmation. See the [decision-log draft and verification](issues/issue-70-verification.md).
 Streaming and Neon pooled transaction-local set_config remain unverified.
+
+## 2026-11-07: Enforce the assistant deadline before Vertex sends
+
+Carry the same absolute monotonic deadline through orchestration, generation and assistant query
+embedding. After acquiring credentials, each provider checks the deadline before its HTTP POST
+and caps the transport timeout to the remaining budget. A credential refresh or an already-started
+POST can still finish after the caller times out.
+
+Vertex function calls can omit `args`. Treat an omission as an empty argument object for local
+tool validation and replay the original model part with its opaque signature. When Gemini sends
+a function-call ID, copy it onto the corresponding function response, including a denied call.
+The ID is provider metadata and stays out of public tool summaries and logs. Malformed IDs and
+arguments still fail parsing, and each tool still enforces its required fields.

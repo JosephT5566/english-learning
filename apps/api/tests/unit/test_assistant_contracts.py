@@ -89,6 +89,10 @@ def test_assistant_function_wire_roundtrip_preserves_signature():
     "part",
     [
         {"functionCall": {"name": "x", "args": []}},
+        {"functionCall": {"name": "x", "id": ""}},
+        {"functionCall": {"name": "x", "id": " "}},
+        {"functionCall": {"name": "x", "id": None}},
+        {"functionCall": {"name": "x", "id": 1}},
         {"functionCall": {"name": "x", "args": {}}, "text": "mixed"},
         {"functionCall": {"name": "x", "args": {}, "owner_id": 1}},
         {"functionCall": {"name": "", "args": {}}},
@@ -376,3 +380,149 @@ def test_assistant_final_wire_thought_only_uses_max_steps_fallback(monkeypatch):
             parse_vertex_response(payload)
     finally:
         provider.close()
+
+
+def test_assistant_replays_signed_stats_call_with_omitted_args():
+    stats = {"functionCall": {"name": "get_review_stats"}, "thoughtSignature": "opaque"}
+    provider = Mock()
+    provider.generate.side_effect = [result([stats]), result([{"text": "Done"}])]
+    execute = Mock(return_value={"total_count": 1})
+
+    response = run(provider, execute)
+
+    assert response.reply == "Done"
+    assert execute.call_args.args[:2] == ("get_review_stats", {})
+    assert provider.generate.call_args.args[0].contents[1] == {
+        "role": "model",
+        "parts": [stats],
+    }
+    assert stats["functionCall"] == {"name": "get_review_stats"}
+
+
+def test_assistant_replies_to_identified_calls_with_matching_ids():
+    stats = call()
+    stats["functionCall"]["id"] = "first-call"
+    invalid_stats = call(owner_id=1)
+    invalid_stats["functionCall"]["id"] = "second-call"
+    parts = [stats, invalid_stats]
+    provider = Mock()
+    provider.generate.side_effect = [result(parts), result([{"text": "Done"}])]
+    execute = Mock(return_value={"total_count": 1})
+
+    response = run(provider, execute)
+
+    assert response.reply == "Done"
+    execute.assert_called_once()
+    wire = provider.generate.call_args.args[0].contents
+    assert wire[-2] == {"role": "model", "parts": parts}
+    assert wire[-1] == {
+        "role": "user",
+        "parts": [
+            {
+                "functionResponse": {
+                    "id": "first-call",
+                    "name": "get_review_stats",
+                    "response": {"total_count": 1},
+                }
+            },
+            {
+                "functionResponse": {
+                    "id": "second-call",
+                    "name": "get_review_stats",
+                    "response": {"error": "invalid_tool_call"},
+                }
+            },
+        ],
+    }
+    assert "first-call" not in response.model_dump_json()
+    assert "second-call" not in response.model_dump_json()
+
+
+@pytest.mark.parametrize("credential_seconds", [1.5, 3])
+def test_assistant_generation_http_obeys_deadline_after_credentials(
+    monkeypatch, credential_seconds
+):
+    import time
+
+    import requests
+
+    from app.generation import VertexGenerationProvider
+
+    now = [0.0]
+    monkeypatch.setattr(time, "monotonic", lambda: now[0])
+
+    def access_token():
+        now[0] += credential_seconds
+        return "synthetic-token"
+
+    provider = VertexGenerationProvider()
+    monkeypatch.setattr(provider, "_access_token", access_token)
+    post = Mock(
+        return_value=Mock(
+            json=lambda: {
+                "candidates": [
+                    {"finishReason": "STOP", "content": {"parts": [{"text": "Done"}]}}
+                ]
+            }
+        )
+    )
+    monkeypatch.setattr(requests, "post", post)
+    try:
+        response = run(provider, assistant_timeout_seconds=2)
+    finally:
+        provider.close()
+
+    if credential_seconds >= 2:
+        assert response.stop_reason == "timeout"
+        post.assert_not_called()
+    else:
+        assert response.reply == "Done"
+        assert post.call_args.kwargs["timeout"] == pytest.approx(0.5)
+
+
+@pytest.mark.parametrize("credential_seconds", [1.5, 3])
+def test_assistant_embedding_http_obeys_deadline_after_credentials(
+    monkeypatch, credential_seconds
+):
+    import time
+    from types import SimpleNamespace
+
+    import requests
+
+    from app.assistant.tools import SessionTools
+    from app.embeddings import VertexEmbeddingProvider
+
+    now = [0.0]
+    monkeypatch.setattr(time, "monotonic", lambda: now[0])
+
+    def access_token():
+        now[0] += credential_seconds
+        return "synthetic-token"
+
+    embedding = VertexEmbeddingProvider()
+    monkeypatch.setattr(embedding, "_access_token", access_token)
+    post = Mock(side_effect=requests.Timeout)
+    monkeypatch.setattr(requests, "post", post)
+    provider = Mock()
+    provider.generate.side_effect = [
+        result([call("search_cards", query="harbor", target_language="en")]),
+        result([{"text": "Done"}]),
+    ]
+    session = Mock()
+    session.execute.return_value.mappings.return_value.one.return_value = (
+        SimpleNamespace(eligible_count=1, indexed_count=1)
+    )
+    options = settings(assistant_timeout_seconds=2)
+    execute = SessionTools(session, 1, options, embedding)
+
+    try:
+        response = run(provider, execute, assistant_timeout_seconds=2)
+    finally:
+        embedding.close()
+
+    if credential_seconds >= 2:
+        assert response.stop_reason == "timeout"
+        post.assert_not_called()
+        assert provider.generate.call_count == 1
+    else:
+        assert post.call_args.kwargs["timeout"] == pytest.approx(0.5)

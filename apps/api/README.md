@@ -552,9 +552,9 @@ provider call; reported output counts above the limit fail with non-retryable 50
 `generation_truncated_output`. Missing provider usage stays null, never an invented count.
 
 The final step retains declarations and sends `toolConfig.functionCallingConfig.mode=NONE`.
-This is explicit intent, not verified Vertex behavior. If the provider still requests tools,
-none execute, and the response uses a fixed fallback with `max_steps`. Provider timeouts and
-late results return the fixed fallback with `timeout`. Other safe #72 provider codes retain
+The server blocks any tool calls from the final step. When the provider returns no final text,
+the response uses a fixed fallback with `max_steps`. Provider timeouts and late results return
+the fixed fallback with `timeout`. Other safe #72 provider codes retain
 502/503 classification. No provider retry occurs. Each model step emits one JSON
 `assistant_step` with request ID, step, allowlisted tool names, bounded status, duration and
 tokens, without message text, arguments, reasoning, card data or signatures.
@@ -570,9 +570,9 @@ watchdog timeout, partial summaries/usage are unavailable and the response has a
 Generation and assistant query embedding run outside database transactions. Each readonly
 tool transaction rebinds the existing RLS identity and rolls back on completion. Due and stats
 share the due predicate and a request snapshot. PostgreSQL statement timeouts bound tool SQL.
-Provider-only workers bound ADC/HTTP waits and never receive database sessions. Python
-cannot cancel running HTTP calls, so in-flight requests can finish after timeout; their
-results are discarded and cannot trigger another model or tool call. This is not a remote cancellation or billing guarantee. Consent withdrawal
-cannot recall already-transmitted text. Streaming and Neon pooled `set_config` behavior remain
+Provider workers run without database sessions. Generation and assistant query embedding
+check the shared deadline after credential acquisition and before sending content. The HTTP
+timeout is capped at the remaining budget. In-flight requests may finish after the deadline.
+The assistant discards their results. Streaming and Neon pooled `set_config` behavior remain
 unverified. See [verification](../../doc/issues/issue-70-verification.md) and the
-[provisional evaluation](../../doc/training/issues/70/README.md).
+[provisional live evaluation](../../doc/training/issues/70/README.md#live-result-on-2026-11-07).

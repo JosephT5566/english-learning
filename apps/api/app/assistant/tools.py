@@ -154,9 +154,8 @@ class SessionTools:
         self.embedding_provider = embedding_provider
         self.as_of = datetime.now(UTC)
 
-    def __call__(self, name, arguments, remaining_seconds):
+    def __call__(self, name, arguments, deadline):
         session = self.session
-        deadline = time.monotonic() + remaining_seconds
 
         def readonly_query():
             set_query_budget(session, deadline, readonly=True)
@@ -205,7 +204,9 @@ class SessionTools:
                 class BoundedEmbedding:
                     def query_embedding(inner, *args, **kwargs):
                         return bounded_call(
-                            lambda: provider.query_embedding(*args, **kwargs),
+                            lambda: provider.query_embedding(
+                                *args, deadline=deadline, **kwargs
+                            ),
                             deadline - time.monotonic(),
                         )
 

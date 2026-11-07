@@ -6,6 +6,7 @@ Vertex. A maintainer must run the manual real-model evaluation before deployment
 
 import json
 import threading
+import time
 from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import Annotated, Protocol
@@ -70,8 +71,9 @@ class GenerationProvider(Protocol):
         model: str,
         project: str,
         location: str,
-        timeout_seconds: int,
+        timeout_seconds: float,
         max_output_tokens: int,
+        deadline: float | None = None,
     ) -> GenerationResult: ...
 
     def close(self) -> None: ...
@@ -195,10 +197,17 @@ def parse_vertex_response(
                 if (
                     not set(part) <= {"functionCall", "thoughtSignature", "thought"}
                     or not isinstance(function, dict)
-                    or set(function) != {"name", "args"}
-                    or not isinstance(function["name"], str)
+                    or not set(function) <= {"name", "args", "id"}
+                    or not isinstance(function.get("name"), str)
                     or not function["name"].strip()
-                    or not isinstance(function["args"], dict)
+                    or not isinstance(function.get("args", {}), dict)
+                    or (
+                        "id" in function
+                        and (
+                            not isinstance(function["id"], str)
+                            or not function["id"].strip()
+                        )
+                    )
                     or ("thought" in part and not isinstance(part["thought"], bool))
                     or (
                         "thoughtSignature" in part
@@ -206,7 +215,9 @@ def parse_vertex_response(
                     )
                 ):
                     raise GenerationFailure("invalid_response")
-                function_calls.append(deepcopy(function))
+                call = deepcopy(function)
+                call.setdefault("args", {})
+                function_calls.append(call)
                 continue
             if (
                 not isinstance(part, dict)
@@ -305,15 +316,22 @@ class VertexGenerationProvider:
         model: str,
         project: str,
         location: str,
-        timeout_seconds: int,
+        timeout_seconds: float,
         max_output_tokens: int,
+        deadline: float | None = None,
     ) -> GenerationResult:
         token = self._access_token()
         try:
+            url = build_generation_url(project=project, location=location, model=model)
+            payload = build_vertex_request(request, max_output_tokens=max_output_tokens)
+            if deadline is not None:
+                timeout_seconds = min(timeout_seconds, deadline - time.monotonic())
+                if timeout_seconds <= 0:
+                    raise GenerationFailure("provider_timeout")
             response = requests.post(
-                build_generation_url(project=project, location=location, model=model),
+                url,
                 headers={"Authorization": f"Bearer {token}"},
-                json=build_vertex_request(request, max_output_tokens=max_output_tokens),
+                json=payload,
                 timeout=timeout_seconds,
             )
             response.raise_for_status()

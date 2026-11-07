@@ -17,11 +17,12 @@ queries are shared with existing endpoints; statistics reuses the same due predi
 Model and assistant query-embedding waits release database transactions; new transactions
 retain existing RLS binding. Settings bound turns, time, output, history and tool batches.
 Frontend work remains deferred under ui-design-gate; only generated API types change.
-[Verification](issues/issue-70-verification.md) distinguishes deterministic local results
-from unverified Vertex function-calling/signature/schema/NONE compatibility. Eight
-[AI-drafted synthetic cases](training/issues/70/README.md) await per-case maintainer review;
-replay is provisional and no real-model evaluation was executed. Production, streaming and
-Neon pooled behavior remain unverified.
+The PR #86 follow-up checks the shared deadline before sending content to Vertex and
+replays signed function calls with their IDs. The provisional live evaluation exercised
+eight synthetic cases on Gemini 3.5 Flash-Lite. Seven produced a reply and one reached
+the step cap. Production, streaming, and Neon pooled behavior remain unverified.
+See [verification](issues/issue-70-verification.md) and the
+[dated evaluation](training/issues/70/README.md#live-result-on-2026-11-07).
 
 ## Stateless card extraction (2026-11-05)
 

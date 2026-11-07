@@ -669,8 +669,11 @@ and explicit tool disabling. `GenerationResult` preserves complete validated mod
 including opaque thoughtSignature, plus parsed function calls. Extraction still rejects
 unsolicited function calls. Unknown/mixed media parts and malformed calls fail closed;
 existing malformed-body error classification and generation location routing remain intact.
-The final call sends NONE; Vertex function-call REST/schema/signature compatibility is
-unverified, covered only by handwritten contracts and scripted fake providers.
+The final call sends `NONE`. Parsed calls normalize omitted arguments to an empty object
+and echo a supplied call ID in the matching tool response. Signed parts are replayed intact.
+The synthetic live evaluation exercised this protocol on Gemini 3.5 Flash-Lite. The server
+blocked a tool call the model still proposed on its final step.
+See the [dated evaluation](training/issues/70/README.md#live-result-on-2026-11-07).
 
 `app/assistant/tools.py` owns the fixed registry and strict argument models. Unknown names,
 extra owner/user fields and invalid arguments never reach tools. Owner identity comes from

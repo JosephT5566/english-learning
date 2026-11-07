@@ -45,7 +45,7 @@ class SyntheticTools:
     def __init__(self):
         self.results = []
 
-    def __call__(self, name, args, remaining):
+    def __call__(self, name, args, _deadline):
         foreign = args.get("deck_id") == "10000000-0000-0000-0000-000000000099"
         cards = (
             []

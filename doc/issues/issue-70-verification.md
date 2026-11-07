@@ -176,3 +176,46 @@ Unverified items requiring operator/maintainer work:
 Reviewers should focus on owner/session lifetime across the outer deadline, consent rechecks,
 readonly ranking after embedding, strict fixed registry/schema drift, unchanged old query contracts,
 parser allow_empty restricted to final tool-disabled requests, and evaluator failure denominators.
+
+## PR #86 follow-up on 2026-11-07
+
+From `apps/api` at PR head `186214f` with only the regression tests applied, the command below
+used the workspace API virtualenv and exited 1 with five failures. The signed stats call raised
+`invalid_response`, both transports issued a POST when credentials finished past the deadline, and both used the original timeout
+when credentials left 0.5 seconds in the budget.
+
+```bash
+python -m pytest tests/unit/test_assistant_contracts.py -q -k 'obeys_deadline_after_credentials or omitted_args'
+```
+
+After the fix, the same command exited 0 with five passing tests. The mocked transport tests
+exercise the actual provider methods and make no network calls. Signed wire parts remain intact
+on replay, while omitted arguments validate as an empty object for `get_review_stats`.
+
+A subsequent live shape probe exposed Gemini's optional function-call ID. From `apps/api` with
+the deadline and omitted-argument fixes in place, the following regression command exited 1
+with `invalid_response` before ID support and exited 0 after the fix.
+
+```bash
+python -m pytest tests/unit/test_assistant_contracts.py -q -k identified_calls
+```
+
+The fixture uses two calls with the same name and different IDs. The replay preserves both
+signed parts and echoes the matching ID on both the successful and denied function responses.
+Malformed IDs fail parsing, and calls without IDs continue to use the legacy wire shape.
+
+After the fixes, from `apps/api`, `uv run --no-sync pytest tests/unit -q` exited 0 with 344
+tests passing and one Starlette TestClient deprecation warning. `uv run --no-sync ruff check .`
+and `uv run --no-sync ruff format --check .` both exited 0.
+
+The first synthetic Vertex run rejected six tool-using responses. The field-name diagnostic
+found a call ID on the signed model part. The rerun on Gemini 3.5 Flash-Lite completed seven of
+eight cases with no provider errors. The foreign-deck case reached the step cap and returned
+zero synthetic records. See the [dated live evaluation](../training/issues/70/README.md#live-result-on-2026-11-07).
+
+From `apps/api`, `RUN_POSTGRES_INTEGRATION_TESTS=1 python -m pytest tests/integration -q`
+exited 0 with 351 passing tests against disposable PostgreSQL 17 with pgvector. This run
+started before the call ID patch landed. It reported one Starlette deprecation warning
+and 50 SQLAlchemy warnings about vector reflection.
+On the final patch, `RUN_POSTGRES_INTEGRATION_TESTS=1 python -m pytest tests/integration/test_assistant_http_boundaries.py -q`
+exited 0 with all 26 assistant HTTP tests passing and one Starlette deprecation warning.

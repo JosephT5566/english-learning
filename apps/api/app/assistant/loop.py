@@ -130,10 +130,9 @@ def run_assistant(
                     model=settings.generation_model,
                     project=settings.vertex_project_id,
                     location=settings.effective_generation_location,
-                    timeout_seconds=max(
-                        0.001, min(settings.generation_timeout_seconds, remaining)
-                    ),
+                    timeout_seconds=min(settings.generation_timeout_seconds, remaining),
                     max_output_tokens=settings.assistant_max_output_tokens,
+                    deadline=deadline,
                 ),
                 remaining,
             )
@@ -201,9 +200,7 @@ def run_assistant(
                         if time.monotonic() >= deadline:
                             raise GenerationFailure("provider_timeout")
                         try:
-                            output = execute(
-                                c["name"], arguments, deadline - time.monotonic()
-                            )
+                            output = execute(c["name"], arguments, deadline)
                             tool_status = "ok"
                         except ApiError:
                             tool_status, output = (
@@ -222,9 +219,10 @@ def run_assistant(
                         ),
                     )
                 )
-                responses.append(
-                    {"functionResponse": {"name": c["name"], "response": output}}
-                )
+                function_response = {"name": c["name"], "response": output}
+                if "id" in c:
+                    function_response["id"] = c["id"]
+                responses.append({"functionResponse": function_response})
             contents.append({"role": "user", "parts": responses})
             status = "tools_processed"
         except GenerationFailure as failure:
