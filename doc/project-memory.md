@@ -1,6 +1,6 @@
 # Project Memory
 
-Last updated: 2026-11-05
+Last updated: 2026-11-08
 
 This file is the current product-state index. Training milestones, evidence limits, and the next
 training action belong in [`training/project-memory.md`](training/project-memory.md); detailed
@@ -8,15 +8,18 @@ verification records belong in the linked issue artifacts. Implementation and te
 precedence over stale documentation. Deployment statements below summarize recorded evidence, not
 a fresh inspection of the live services.
 
-## Stateless readonly assistant backend (2026-11-05)
+## Stateless readonly assistant (2026-11-08)
 
-Issue #70 adds a backend-only non-streaming `POST /v1/assistant/messages` with consent,
+Issue #70 adds a non-streaming `POST /v1/assistant/messages` with consent,
 text-only history limits, a maximum of three generated turns and exactly three readonly
 owner-bound tools. Tool summaries omit card results; no conversation persists. Search/due
 queries are shared with existing endpoints; statistics reuses the same due predicate.
 Model and assistant query-embedding waits release database transactions; new transactions
 retain existing RLS binding. Settings bound turns, time, output, history and tool batches.
-Frontend work remains deferred under ui-design-gate; only generated API types change.
+The signed-in `/assistant` page streams replies in a single column with expandable tool
+summaries. It shares the AI consent panel with Search and keeps conversation history in
+page memory. Partial replies stay visible after an interruption. Only completed turns are
+sent as context for later questions.
 The PR #86 follow-up checks the shared deadline before sending content to Vertex and
 replays signed function calls with their IDs. The provisional live evaluation exercised
 eight synthetic cases on Gemini 3.5 Flash-Lite. Seven produced a reply and one reached
