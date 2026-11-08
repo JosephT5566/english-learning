@@ -641,3 +641,8 @@ its session. The response owns upstream cancellation and emits only visible answ
 text. On disconnect, the planning worker checks a cancellation flag at SQL and
 provider boundaries. HTTPX cleanup runs inside a shielded cancellation scope.
 See [verification](issues/issue-70-verification.md#sse-follow-up).
+
+## 2026-11-09: Allow the GenAI consent grant through CORS
+
+Add `PUT` to the API's CORS method allowlist so an allowed frontend origin can complete the
+preflight for `PUT /v1/me/genai-consent` before submitting the authenticated consent grant.
