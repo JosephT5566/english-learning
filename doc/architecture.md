@@ -189,8 +189,9 @@ Last updated: 2026-11-04
 10. HTTP middleware assigns a new request UUID. Expected, validation, framework, and unexpected
     failures return one stable envelope and never serialize internal exception details.
 11. The outer CORS middleware permits only configured HTTP(S) frontend origins, the product's
-    `GET`/`POST`/`PATCH`/`DELETE` methods, and its bearer/content/idempotency headers. It exposes `X-Request-ID` for
-    browser-visible support diagnostics without enabling credentialed cookies.
+    `GET`/`POST`/`PUT`/`PATCH`/`DELETE` methods, and its bearer/content/idempotency headers. It
+    exposes `X-Request-ID` for browser-visible support diagnostics without enabling credentialed
+    cookies.
 12. The production container starts `app.serve` directly as PID 1. Uvicorn owns SIGTERM handling,
     stops accepting work, completes FastAPI lifespan cleanup within its bounded drain window, and
     exits. Schema migrations use the same image but run as a separate pre-deploy command; web
