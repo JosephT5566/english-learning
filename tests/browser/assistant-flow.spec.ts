@@ -63,7 +63,7 @@ test("opens from navigation, shows tools and sends only text history", async ({
   await input.fill("What should I review?");
   await page.getByRole("button", { name: "Send", exact: true }).click();
   await expect(page.getByText("Start with 間に合う.")).toBeVisible();
-  await page.getByText("Tools used · 1 call").click();
+  await page.getByText("Tool call attempts · 1").click();
   await expect(page.getByText("Get due cards")).toBeVisible();
   for (const width of [390, 1280]) {
     await page.setViewportSize({ width, height: 900 });
@@ -147,4 +147,36 @@ test("handles consent 403, then keeps a partial reply on timeout and stream fail
   await send.click();
   await expect(page.getByText("Another partial reply")).toBeVisible();
   await expect(page.getByText("The assistant is unavailable.")).toBeVisible();
+});
+
+test("shows a rejected tool batch as attempts", async ({ page }) => {
+  await page.route("**/v1/assistant/messages/stream", (route) =>
+    route.fulfill({
+      contentType: "text/event-stream",
+      body:
+        event("delta", { text: "Try asking about one deck." }) +
+        event("done", {
+          tool_calls: Array.from({ length: 4 }, () => ({
+            name: "get_due_cards",
+            arguments: null,
+            duration_ms: 0,
+            status: "too_many_calls",
+          })),
+          stop_reason: "completed",
+          usage: null,
+        }),
+    }),
+  );
+  await page.goto("./assistant");
+  await page
+    .getByRole("textbox", { name: "Ask the assistant" })
+    .fill("What is due?");
+  await page.getByRole("button", { name: "Send", exact: true }).click();
+  await expect(page.getByText("Try asking about one deck.")).toBeVisible();
+  const summary = page.getByText("Tool call attempts · 4", { exact: true });
+  await expect(summary).toBeVisible();
+  await summary.click();
+  await expect(
+    page.getByText("Get due cards · Rejected", { exact: true }),
+  ).toHaveCount(4);
 });

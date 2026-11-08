@@ -26,6 +26,14 @@
     get_due_cards: "Get due cards",
     get_review_stats: "Get review stats",
   };
+  const toolStatusSuffix: Record<AssistantTool["status"], string> = {
+    ok: "",
+    invalid_call: " · Rejected",
+    too_many_calls: " · Rejected",
+    tool_unavailable: " · Unavailable",
+    tools_disabled: " · Rejected",
+    timeout: " · Timed out",
+  };
   // Match the API defaults while keeping the full transcript visible locally.
   const historyCharacterLimit = 12000;
   const historyMessageLimit = 20;
@@ -202,18 +210,13 @@
             {#if turn.issue}<p class="error" role="alert">{turn.issue}</p>{/if}
             {#if turn.tools.length > 0}
               <details>
-                <summary
-                  >Tools used · {turn.tools.length}
-                  {turn.tools.length === 1 ? "call" : "calls"}</summary
-                >
+                <summary>Tool call attempts · {turn.tools.length}</summary>
                 <ul>
                   {#each turn.tools as tool (tool)}
                     <li>
                       {Object.hasOwn(toolLabels, tool.name)
                         ? toolLabels[tool.name]
-                        : "Unknown tool"}{tool.succeeded
-                        ? ""
-                        : " · Unsuccessful"}
+                        : "Unknown tool"}{toolStatusSuffix[tool.status]}
                     </li>
                   {/each}
                 </ul>

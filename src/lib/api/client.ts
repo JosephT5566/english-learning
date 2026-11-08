@@ -145,10 +145,8 @@ export type AssistantMessage = components["schemas"]["Message"];
 type AssistantStop = components["schemas"]["AssistantResponse"]["stop_reason"];
 export type AssistantTool = Pick<
   components["schemas"]["ToolCallSummary"],
-  "name"
-> & {
-  succeeded: boolean;
-};
+  "name" | "status"
+>;
 
 function invalidAssistantStream(): ApiClientError {
   return new ApiClientError(
@@ -249,11 +247,20 @@ export async function streamAssistantReply(
               tool === null ||
               !("name" in tool) ||
               typeof tool.name !== "string" ||
-              !("status" in tool) ||
-              typeof tool.status !== "string"
+              !("status" in tool)
             )
               throw invalidAssistantStream();
-            return { name: tool.name, succeeded: tool.status === "ok" };
+            switch (tool.status) {
+              case "ok":
+              case "invalid_call":
+              case "too_many_calls":
+              case "tool_unavailable":
+              case "tools_disabled":
+              case "timeout":
+                return { name: tool.name, status: tool.status };
+              default:
+                throw invalidAssistantStream();
+            }
           });
           return { stop: payload.stop_reason, tools };
         }
