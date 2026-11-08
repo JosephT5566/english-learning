@@ -12,6 +12,7 @@
   import HouseIcon from "@lucide/svelte/icons/house";
   import PlayingCardsFunIcon from "@lucide/svelte/icons/playing-cards-fan";
   import WalletCardsIcon from "@lucide/svelte/icons/wallet-cards";
+  import MessageCircleIcon from "@lucide/svelte/icons/message-circle";
   import SearchIcon from "@lucide/svelte/icons/search";
 
   let language = $derived(
@@ -31,6 +32,7 @@
   }
   let decksPath = $derived(resolve("/decks"));
   let searchPath = $derived(resolve("/search"));
+  let assistantPath = $derived(resolve("/assistant"));
 </script>
 
 <header>
@@ -77,6 +79,15 @@
             title="Search"
             aria-current={page.url.pathname === searchPath ? "page" : undefined}
             ><SearchIcon size={20} aria-hidden="true" /></a
+          >
+        </li>
+        <li>
+          <a
+            href={assistantPath}
+            aria-label="Assistant"
+            title="Assistant"
+            aria-current={page.url.pathname === assistantPath ? "page" : undefined}
+            ><MessageCircleIcon size={20} aria-hidden="true" /></a
           >
         </li>
       {/if}
