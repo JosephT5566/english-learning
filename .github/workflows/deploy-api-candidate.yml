@@ -39,6 +39,8 @@ jobs:
       CORS_ALLOWED_ORIGINS: ${{ vars.CORS_ALLOWED_ORIGINS }}
       VERTEX_PROJECT_ID: ${{ vars.VERTEX_PROJECT_ID }}
       VERTEX_LOCATION: ${{ vars.VERTEX_LOCATION }}
+      GENERATION_MODEL: ${{ vars.GENERATION_MODEL }}
+      GENERATION_LOCATION: ${{ vars.GENERATION_LOCATION }}
       GUEST_EXPORT_DECK_ID: ${{ vars.GUEST_EXPORT_DECK_ID }}
       GUEST_EXPORT_AUDIENCE: ${{ vars.GUEST_EXPORT_AUDIENCE }}
       GUEST_EXPORT_SUBJECT: ${{ vars.GUEST_EXPORT_SUBJECT }}
@@ -167,6 +169,12 @@ jobs:
           fi
           if [[ -n "${VERTEX_PROJECT_ID}" ]]; then
             environment_variables+="|VERTEX_PROJECT_ID=${VERTEX_PROJECT_ID}|VERTEX_LOCATION=${VERTEX_LOCATION:-us-central1}"
+          fi
+          if [[ -n "${GENERATION_MODEL}" ]]; then
+            environment_variables+="|GENERATION_MODEL=${GENERATION_MODEL}"
+          fi
+          if [[ -n "${GENERATION_LOCATION}" ]]; then
+            environment_variables+="|GENERATION_LOCATION=${GENERATION_LOCATION}"
           fi
 
           gcloud run deploy "${API_SERVICE}" \

@@ -164,6 +164,12 @@ They require OIDC-based Google authentication and a protected `production` GitHu
 GitHub runner never receives `DATABASE_URL`; the migration job and API revision read separate direct
 and pooled Neon URLs from Secret Manager through their own runtime identities.
 
+To enable Vertex-backed generation on the API candidate, set `VERTEX_PROJECT_ID` and
+`GENERATION_MODEL` as nonsecret variables in the protected GitHub `production` environment.
+Set `GENERATION_LOCATION` if the model uses a separate endpoint such as `global`. The workflow
+passes configured generation values to the revision. Without a generation location override,
+the API uses `VERTEX_LOCATION`, which also controls embedding requests.
+
 ## Validation Expectations
 
 Use the change-to-check table in [`AGENTS.md`](../AGENTS.md#verification) for required local checks.
