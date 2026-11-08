@@ -565,3 +565,79 @@ provider-compatibility assumption. Replace it with assertions that minItems/maxI
 add recursive/nested conversion coverage, and keep server zero/over-limit output rejection checks.
 This changes only the provider projection, not the public JSON Schema/OpenAPI or validation
 contract. Cases.json remains untouched. See [fix #3 evidence](issues/issue-72-verification.md#provider-array-count-keyword-bisect-fix-3).
+
+## 2026-11-05: Bound a stateless readonly assistant independently of model behavior
+
+Issue #70's supplied approved snapshot and maintainer task instructions authorize the backend
+only. Frontend design is not selected; no handwritten frontend change is included. Reuse the
+existing REST/ADC generation provider without dependencies, migrations, auth/GIS changes,
+workflow changes or deployment. One step is one model call, at most three. Retain declarations
+and explicitly send functionCallingConfig NONE on the last call so the wire request states
+that tools are disabled. This wire format, provider schema subset and thoughtSignature replay
+are unverified on real Vertex. Preserve complete validated model parts for opaque signatures;
+handwritten tests prove copying only, not provider acceptance.
+
+Chosen defaults are engineering bounds, not measured optimal values: 3 steps with range 1-3;
+60-second orchestration timeout with range 1-120; 2048 output tokens per call with range 1-8192;
+20 input messages with range 1-100; 12000 total characters with range 1-100000; 3 tool calls per
+step with range 1-10; and search/due result cap 10 with range 1-20. Search/due request defaults
+are five, clamped to 1..configured cap. Stats returns counts and accepts no limit. These choices
+permit a short history and a small query batch while limiting latency, output and returned card
+content. All configurable bounds live in Settings. Oversized tool batches execute nothing;
+unknown tools and invalid/extra arguments return fixed model-visible errors and consume a step.
+
+Only three readonly tools exist. Reuse semantic retrieval and paginated due queries; share one
+due SQL predicate with new statistics. Strict arguments never accept owner/user IDs. The bound
+session and existing RLS hook carry identity across short transactions. Generate outside
+transactions and release consent locks as #72 does; use readonly transactions for tool SQL,
+including after assistant search releases its transaction to obtain a query embedding. Recheck
+consent before each new generation and query embedding. Withdrawal cannot recall in-flight data.
+The assistant deadline starts after the existing auth/validation/commit boundary. An outer
+watchdog covers initial/repeated consent and pool/SQL waits as well as provider time. Its
+worker owns a separate owner-bound session and closes it itself, so caller timeout cannot
+race session cleanup. Remaining statement timeouts also bound consent locks and tool SQL.
+Provider-only worker timeouts do not pass sessions into model/embedding workers. The outer
+watchdog returns no partial summaries or usage rather than reading a live worker's state. A timed-out
+HTTP/ADC operation may finish later; no claim of remote cancellation or billing cutoff is made.
+
+Eight original synthetic evaluation cases cover three single tools, a two-tool/two-step flow,
+no-tool knowledge, foreign-deck inducement, owned-card injection and unsupported writes. AI drafts
+all expectations; reviewed_by/reviewed_on stay null pending maintainer per-case review. Replay
+runs the real loop on scripted responses with synthetic token counts. Manual Vertex mode uses
+the same synthetic tools, requires explicit opt-in, and was not executed. Ordered exact tool
+names and expected key/value subsets determine scores. Query paraphrases can be penalized;
+denied attempts are separately retained in security results and omitted from task-selection
+scores. This is harness coverage, not model safety or retrieval-quality evidence.
+
+Default tuning, live wire/schema/signature behavior and corpus review remain for maintainer
+confirmation. See the [decision-log draft and verification](issues/issue-70-verification.md).
+Streaming and Neon pooled transaction-local set_config remain unverified.
+
+## 2026-11-07: Enforce the assistant deadline before Vertex sends
+
+Carry the same absolute monotonic deadline through orchestration, generation and assistant query
+embedding. After acquiring credentials, each provider checks the deadline before its HTTP POST
+and caps the transport timeout to the remaining budget. A credential refresh or an already-started
+POST can still finish after the caller times out.
+
+Vertex function calls can omit `args`. Treat an omission as an empty argument object for local
+tool validation and replay the original model part with its opaque signature. When Gemini sends
+a function-call ID, copy it onto the corresponding function response, including a denied call.
+The ID is provider metadata and stays out of public tool summaries and logs. Malformed IDs and
+arguments still fail parsing, and each tool still enforces its required fields.
+
+## 2026-11-07: Stream the final assistant answer on a separate endpoint
+
+Issue #70 adds `POST /v1/assistant/messages/stream` alongside the JSON route. The
+SSE route completes the existing validation, authentication and consent checks
+before sending headers. It reserves one model call for a tool-disabled
+`streamGenerateContent` response. A final-turn instruction asks Vertex to answer
+from the available evidence because the synthetic live probe observed tool calls
+despite mode `NONE`.
+
+Use HTTPX for asynchronous Vertex streaming and retain the existing pinned version
+as a runtime dependency. The SQL worker returns its prepared answer after closing
+its session. The response owns upstream cancellation and emits only visible answer
+text. On disconnect, the planning worker checks a cancellation flag at SQL and
+provider boundaries. HTTPX cleanup runs inside a shielded cancellation scope.
+See [verification](issues/issue-70-verification.md#sse-follow-up).

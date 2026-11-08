@@ -654,3 +654,58 @@ responses only. Missing explicit model/project configuration fails closed with 5
 completion logs contain identifiers, adjustment, timing, tokens and result code only. The eight
 AI-drafted synthetic evaluation cases remain unreviewed. See
 [Issue #72 verification](issues/issue-72-verification.md) for acceptance evidence and limits.
+
+## Stateless readonly assistant (2026-11-05)
+
+`app/assistant/routes.py` adds the authenticated, consent-gated non-streaming
+`POST /v1/assistant/messages` contract. It validates text-only user/assistant history and
+configured message/character limits before checking consent. No conversation storage,
+write tools or migrations are added. The browser UI is deferred pending design selection;
+only generated API types change under `src/`.
+
+`app/assistant/loop.py` runs at most three model calls through #72's generation Protocol.
+`GenerationRequest` now optionally carries multi-turn contents, fixed function declarations
+and explicit tool disabling. `GenerationResult` preserves complete validated model parts,
+including opaque thoughtSignature, plus parsed function calls. Extraction still rejects
+unsolicited function calls. Unknown/mixed media parts and malformed calls fail closed;
+existing malformed-body error classification and generation location routing remain intact.
+The final call sends `NONE`. Parsed calls normalize omitted arguments to an empty object
+and echo a supplied call ID in the matching tool response. Signed parts are replayed intact.
+The synthetic live evaluation exercised this protocol on Gemini 3.5 Flash-Lite. The server
+blocked a tool call the model still proposed on its final step.
+See the [dated evaluation](training/issues/70/README.md#live-result-on-2026-11-07).
+
+`app/assistant/tools.py` owns the fixed registry and strict argument models. Unknown names,
+extra owner/user fields and invalid arguments never reach tools. Owner identity comes from
+the request session. Shared `semantic_search.search_cards` retains the old HTTP query logic;
+its assistant-only transaction-release option also reapplies readonly SQL settings before
+ranking. `reads.get_due_cards` retains pagination and filter behavior. Statistics reuses
+`reads.DUE_CONDITION` rather than duplicating due rules. Tools use a common request-time
+snapshot, explicit owner predicates and transaction-local RLS binding.
+
+The existing auth transaction completes before starting the assistant budget. An orchestration
+worker creates and exclusively owns a separate session, binds the same authenticated owner,
+and closes it itself even after the caller times out. One absolute deadline covers initial
+and repeated consent, pool waits, tool SQL and provider waits. SQL gets the remaining statement
+timeout before consent and tool reads. Auth/validation remain framework preconditions. Consent
+work commits before generation; tools open short readonly transactions and roll them back. Assistant embedding latency also runs without a database transaction.
+Every new transaction uses the existing after_begin identity binding. Provider-only worker
+threads bound waits, cannot access sessions or execute tools, and may finish after a timeout;
+remote cancellation is not guaranteed. Consent is checked again before each generated turn
+and before query embedding. Already-transmitted data cannot be recalled after withdrawal.
+Per-step structured logs contain only correlation, bounded state, timing and nullable usage.
+
+[Issue #70 verification](issues/issue-70-verification.md) maps backend acceptance to local
+checks. [Evaluation assets](training/issues/70/README.md) use a synthetic tool sandbox in both
+modes; replay is provisional and true Vertex mode requires explicit flag/environment opt-in.
+The first evaluation covers the non-streaming route. Production and Neon pool behavior
+remain unverified. See the [assistant evaluation](training/issues/70/README.md).
+
+`POST /v1/assistant/messages/stream` accepts the same request and checks consent before
+the HTTP response starts. The planning worker uses the same loop and an owner-bound
+SQL session. It reserves one call for a tool-disabled Vertex stream and returns the
+request and summaries after closing the session. The async response emits only visible
+answer fragments and one terminal event. Its ASGI listener cancels the response on
+disconnect, signals the planning worker to stop dispatching, and closes the upstream
+HTTPX stream. Both phases use the same absolute deadline.
+See [SSE verification](issues/issue-70-verification.md#sse-follow-up).

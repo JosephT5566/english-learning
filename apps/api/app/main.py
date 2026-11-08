@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from app.assistant.routes import router as assistant_router
 from app.auth import GoogleTokenVerifier
 from app.auth import router as auth_router
 from app.config import load_settings
@@ -84,6 +85,7 @@ def create_app() -> FastAPI:
     app.include_router(reads_router)
     app.include_router(writes_router)
     app.include_router(extraction_router)
+    app.include_router(assistant_router)
     app.include_router(reviews_router)
     app.include_router(semantic_search_router)
     return app

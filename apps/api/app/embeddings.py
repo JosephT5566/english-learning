@@ -3,6 +3,7 @@
 import json
 import math
 import threading
+import time
 from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
@@ -98,21 +99,48 @@ class VertexEmbeddingProvider:
         )
 
     def query_embedding(
-        self, content: str, *, project: str, location: str
+        self,
+        content: str,
+        *,
+        project: str,
+        location: str,
+        deadline: float | None = None,
+        cancelled: Callable[[], bool] | None = None,
     ) -> list[float]:
         return self._embedding(
-            content, task_type="RETRIEVAL_QUERY", project=project, location=location
+            content,
+            task_type="RETRIEVAL_QUERY",
+            project=project,
+            location=location,
+            deadline=deadline,
+            cancelled=cancelled,
         )
 
     def _embedding(
-        self, content: str, *, task_type: str, project: str, location: str
+        self,
+        content: str,
+        *,
+        task_type: str,
+        project: str,
+        location: str,
+        deadline: float | None = None,
+        cancelled: Callable[[], bool] | None = None,
     ) -> list[float]:
         try:
+            if cancelled is not None and cancelled():
+                raise EmbeddingFailure("provider_timeout")
             token = self._access_token()
             url = (
                 f"https://{location}-aiplatform.googleapis.com/v1/projects/{project}"
                 f"/locations/{location}/publishers/google/models/gemini-embedding-001:predict"
             )
+            timeout = 8.0
+            if deadline is not None:
+                timeout = min(timeout, deadline - time.monotonic())
+                if timeout <= 0:
+                    raise EmbeddingFailure("provider_timeout")
+            if cancelled is not None and cancelled():
+                raise EmbeddingFailure("provider_timeout")
             response = requests.post(
                 url,
                 headers={"Authorization": f"Bearer {token}"},
@@ -123,7 +151,7 @@ class VertexEmbeddingProvider:
                         "outputDimensionality": DIMENSIONS,
                     },
                 },
-                timeout=8,
+                timeout=timeout,
             )
             response.raise_for_status()
             embedding = response.json()["predictions"][0]["embeddings"]

@@ -451,6 +451,26 @@ def list_due_reviews(
     """Return active due cards using one server-time snapshot across pages."""
 
     _reject_unknown_filters(request, {"target_language", "deck_id", "limit", "cursor"})
+    return get_due_cards(session, user.id, target_language, deck_id, limit, cursor)
+
+
+# One predicate for both paginated due reads and assistant statistics.
+DUE_CONDITION = (
+    "s.next_review_at <= :as_of AND c.archived_at IS NULL AND d.archived_at IS NULL"
+)
+
+
+def get_due_cards(
+    session,
+    owner_id,
+    target_language,
+    deck_id=None,
+    limit=10,
+    cursor=None,
+    *,
+    as_of=None,
+):
+    """Return the same due page for HTTP reads and readonly assistant tools."""
     deck_ids = deck_id or []
     if len(deck_ids) > 20:
         raise _validation_error("deck_id", "too_many_items", "Select at most 20 decks.")
@@ -466,7 +486,7 @@ def list_due_reviews(
                 WHERE owner_id = :owner_id AND id IN :deck_ids
                 """
                 ).bindparams(bindparam("deck_ids", expanding=True)),
-                {"owner_id": user.id, "deck_ids": deck_ids},
+                {"owner_id": owner_id, "deck_ids": deck_ids},
             )
             .mappings()
             .all()
@@ -491,7 +511,7 @@ def list_due_reviews(
     fingerprint = query_fingerprint(filters, limit)
     cursor_due_at = cursor_id = None
     if cursor is None:
-        as_of = datetime.now(UTC)
+        as_of = as_of or datetime.now(UTC)
     else:
         position, snapshot = decode_cursor(
             cursor,
@@ -507,9 +527,7 @@ def list_due_reviews(
 
     conditions = [
         "s.owner_id = :owner_id",
-        "s.next_review_at <= :as_of",
-        "c.archived_at IS NULL",
-        "d.archived_at IS NULL",
+        DUE_CONDITION,
         "d.target_language = :target_language",
     ]
     statement = f"""
@@ -534,7 +552,7 @@ def list_due_reviews(
         session.execute(
             query,
             {
-                "owner_id": user.id,
+                "owner_id": owner_id,
                 "target_language": target_language,
                 "as_of": as_of,
                 "deck_ids": deck_ids,
