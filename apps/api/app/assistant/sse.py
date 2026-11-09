@@ -4,6 +4,7 @@ import asyncio
 import json
 import time
 from contextlib import aclosing
+from dataclasses import dataclass
 from threading import Event
 
 import anyio
@@ -13,39 +14,58 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.assistant.loop import (
     FALLBACK,
     AssistantResponse,
-    _emit,
     add_usage,
+    emit_run_completed,
+    emit_step,
     generation_error,
 )
+from app.assistant.tools import AssistantDeadlineExceeded
 from app.errors import ApiError
 from app.generation import GenerationFailure, GenerationUsage
 
 TERMINAL_SEND_GRACE_SECONDS = 0.1
 
 
+@dataclass(frozen=True)
+class _Frame:
+    name: str
+    data: dict
+    outcome: str | None = None
+    error_code: str | None = None
+
+
 class AssistantSSE(StreamingResponse):
     media_type = "text/event-stream"
 
-    def __init__(self, content, *, deadline, headers=None, status_code=200):
+    def __init__(self, content, *, deadline, request_id, headers=None, status_code=200):
         super().__init__(content, headers=headers, status_code=status_code)
         self.deadline = deadline
+        self.request_id = request_id
+        self.started_at = time.monotonic()
+        self.outcome = "disconnected"
+        self.error_code = None
 
     async def __call__(self, scope, receive, send):
         # ASGI 2.4 may report a disconnect only at the next failed send.
         # Listen even while waiting on a silent model or a planning step.
-        async with anyio.create_task_group() as group:
+        try:
+            async with anyio.create_task_group() as group:
 
-            async def send_events():
-                try:
-                    await self.stream_response(send)
-                except OSError:
-                    pass
-                finally:
-                    group.cancel_scope.cancel()
+                async def send_events():
+                    try:
+                        await self.stream_response(send)
+                    except OSError:
+                        pass
+                    finally:
+                        group.cancel_scope.cancel()
 
-            group.start_soon(send_events)
-            await self.listen_for_disconnect(receive)
-            group.cancel_scope.cancel()
+                group.start_soon(send_events)
+                await self.listen_for_disconnect(receive)
+                group.cancel_scope.cancel()
+        finally:
+            emit_run_completed(
+                self.request_id, "sse", self.started_at, self.outcome, self.error_code
+            )
 
     async def stream_response(self, send):
         terminal_started = False
@@ -59,9 +79,11 @@ class AssistantSSE(StreamingResponse):
                 }
             )
             async for frame in self.body_iterator:
-                terminal_started = not frame.startswith("event: delta\n")
+                terminal_started = frame.outcome is not None
                 remaining = self.deadline - time.monotonic()
                 if terminal_started:
+                    self.outcome = frame.outcome
+                    self.error_code = frame.error_code
                     remaining = max(remaining, TERMINAL_SEND_GRACE_SECONDS)
                 elif remaining <= 0:
                     raise TimeoutError
@@ -69,6 +91,8 @@ class AssistantSSE(StreamingResponse):
                     await _send_frame(send, frame)
         except TimeoutError:
             send_timed_out = True
+            if not terminal_started:
+                self.outcome = "timeout"
         finally:
             # Close upstream even when downstream backpressure suspends a yield.
             with anyio.CancelScope(shield=True):
@@ -76,34 +100,40 @@ class AssistantSSE(StreamingResponse):
 
         with anyio.move_on_after(TERMINAL_SEND_GRACE_SECONDS):
             if send_timed_out and not terminal_started:
-                await _send_frame(send, _done([], "timeout", {}))
+                await _send_frame(send, _done(_answer([], "timeout", {})))
             await send({"type": "http.response.body", "body": b"", "more_body": False})
 
 
 async def _send_frame(send, frame):
-    await send(
-        {"type": "http.response.body", "body": frame.encode(), "more_body": True}
+    data = json.dumps(frame.data, separators=(",", ":"))
+    body = f"event: {frame.name}\ndata: {data}\n\n".encode()
+    await send({"type": "http.response.body", "body": body, "more_body": True})
+
+
+def _done(response, error_code=None):
+    return _Frame(
+        "done",
+        response.model_dump(mode="json", exclude={"reply"}),
+        response.stop_reason,
+        error_code,
     )
 
 
-def _event(name, data):
-    return f"event: {name}\ndata: {json.dumps(data, separators=(',', ':'))}\n\n"
-
-
-def _done(tool_calls, stop_reason, totals):
-    response = AssistantResponse(
+def _answer(tool_calls, stop_reason, totals):
+    return AssistantResponse(
         reply="",
         tool_calls=tool_calls,
         stop_reason=stop_reason,
         usage=GenerationUsage(**totals) if totals else None,
     )
-    return _event("done", response.model_dump(mode="json", exclude={"reply"}))
 
 
 def _error(error):
-    return _event(
+    return _Frame(
         "error",
         {"code": error.code, "message": error.message, "retryable": error.retryable},
+        "error",
+        error.code,
     )
 
 
@@ -118,6 +148,8 @@ async def stream_events(prepare, provider, settings, deadline, request_id):
     cancelled = Event()
     pending = None
     step_usage = None
+    logged_usage = {}
+    model_id = None
     status = "disconnected"
     try:
         remaining = _remaining(deadline)
@@ -125,15 +157,16 @@ async def stream_events(prepare, provider, settings, deadline, request_id):
             asyncio.to_thread(prepare, cancelled.is_set), timeout=remaining
         )
         if isinstance(result, AssistantResponse):
-            yield _event("done", result.model_dump(mode="json", exclude={"reply"}))
+            yield _done(result, result._terminal_error_code)
             return
 
         pending = result
         has_text = False
+        model_id = settings.generation_model
         async with aclosing(
             provider.stream(
                 pending.request,
-                model=settings.generation_model,
+                model=model_id,
                 project=settings.vertex_project_id,
                 location=settings.effective_generation_location,
                 timeout_seconds=settings.generation_timeout_seconds,
@@ -150,24 +183,35 @@ async def stream_events(prepare, provider, settings, deadline, request_id):
                 _remaining(deadline)
                 if chunk.usage is not None:
                     step_usage = chunk.usage
+                    # Preserve earlier reported counts in logs without changing the SSE payload.
+                    logged_usage.update(step_usage.model_dump(exclude_none=True))
                 if chunk.text:
                     has_text = has_text or bool(chunk.text.strip())
-                    yield _event("delta", {"text": chunk.text})
+                    yield _Frame("delta", {"text": chunk.text})
 
         status = "completed" if has_text else "max_steps"
         if not has_text:
-            yield _event("delta", {"text": FALLBACK})
+            yield _Frame("delta", {"text": FALLBACK})
         add_usage(pending.totals, step_usage)
-        yield _done(pending.tool_calls, status, pending.totals)
+        yield _done(_answer(pending.tool_calls, status, pending.totals))
     except (TimeoutError, GenerationFailure) as failure:
         if isinstance(failure, TimeoutError) or failure.code == "provider_timeout":
             status = "timeout"
             cancelled.set()
+            error_code = (
+                generation_error(failure).code
+                if isinstance(failure, GenerationFailure)
+                and not isinstance(failure, AssistantDeadlineExceeded)
+                and time.monotonic() < deadline
+                else None
+            )
             if pending is None:
-                yield _done([], status, {})
+                yield _done(_answer([], status, {}), error_code)
             else:
                 add_usage(pending.totals, step_usage)
-                yield _done(pending.tool_calls, status, pending.totals)
+                yield _done(
+                    _answer(pending.tool_calls, status, pending.totals), error_code
+                )
         else:
             error = generation_error(failure)
             status = error.code
@@ -195,4 +239,12 @@ async def stream_events(prepare, provider, settings, deadline, request_id):
     finally:
         cancelled.set()
         if pending is not None:
-            _emit(request_id, pending.step, [], status, pending.started, step_usage)
+            emit_step(
+                request_id,
+                pending.step,
+                [],
+                status,
+                pending.started,
+                GenerationUsage(**logged_usage) if step_usage is not None else None,
+                model_id,
+            )

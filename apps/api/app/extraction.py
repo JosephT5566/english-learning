@@ -135,13 +135,15 @@ def extract_card_drafts(
             message="Card generation is not configured.",
         )
     data = payload.model_dump(mode="json", exclude_none=True)
+    generation_request = GenerationRequest(
+        system=system,
+        data=data,
+        response_schema=vertex_response_schema(CardDrafts.model_json_schema()),
+    )
+    request.state.extraction_model_id = settings.generation_model
     try:
         result = request.app.state.generation_provider.generate(
-            GenerationRequest(
-                system=system,
-                data=data,
-                response_schema=vertex_response_schema(CardDrafts.model_json_schema()),
-            ),
+            generation_request,
             model=settings.generation_model,
             project=settings.vertex_project_id,
             location=settings.effective_generation_location,

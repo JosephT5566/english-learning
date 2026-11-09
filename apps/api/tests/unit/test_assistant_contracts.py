@@ -225,7 +225,12 @@ def test_assistant_loop_caps_steps_disables_last_tools_and_logs_privately(capsys
             "status",
             "duration_ms",
             "usage",
+            "model_id",
         }
+        assert (
+            log["model_id"]
+            == provider.generate.call_args_list[step - 1].kwargs["model"]
+        )
         assert log["step"] == step
         assert log["request_id"] == "synthetic-request"
         assert "PRIVATE" not in str(log)
