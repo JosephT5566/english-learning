@@ -166,6 +166,33 @@ def test_sse_delivers_text_before_upstream_finishes(
     assert "PRIVATE_" not in output
 
 
+def test_sse_step_log_preserves_split_usage(api_client, provider, capsys):
+    async def upstream(request, **options):
+        yield SimpleNamespace(text="first", usage=GenerationUsage(input_tokens=0))
+        yield SimpleNamespace(text=" second", usage=GenerationUsage(output_tokens=2))
+
+    provider.generate.return_value = GenerationResult(text="planning text")
+    provider.stream = upstream
+    response = api_client.post(PATH, headers=HEADERS, json=BODY)
+
+    assert response.status_code == 200
+    event, data = response.text.strip().split("\n\n")[-1].splitlines()
+    assert event == "event: done"
+    assert json.loads(data.removeprefix("data: "))["usage"] == {
+        "input_tokens": None,
+        "output_tokens": 2,
+        "total_tokens": None,
+    }
+    steps = shared.log_events(capsys.readouterr().out, "assistant_step")
+    assert [step["step"] for step in steps] == [1, 2]
+    assert steps[-1]["request_id"] == response.headers["X-Request-ID"]
+    assert steps[-1]["usage"] == {
+        "input_tokens": 0,
+        "output_tokens": 2,
+        "total_tokens": None,
+    }
+
+
 @pytest.mark.parametrize(
     ("failure", "event", "field", "value"),
     [

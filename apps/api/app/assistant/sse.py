@@ -148,6 +148,7 @@ async def stream_events(prepare, provider, settings, deadline, request_id):
     cancelled = Event()
     pending = None
     step_usage = None
+    logged_usage = {}
     model_id = None
     status = "disconnected"
     try:
@@ -182,6 +183,8 @@ async def stream_events(prepare, provider, settings, deadline, request_id):
                 _remaining(deadline)
                 if chunk.usage is not None:
                     step_usage = chunk.usage
+                    # Preserve earlier reported counts in logs without changing the SSE payload.
+                    logged_usage.update(step_usage.model_dump(exclude_none=True))
                 if chunk.text:
                     has_text = has_text or bool(chunk.text.strip())
                     yield _Frame("delta", {"text": chunk.text})
@@ -242,6 +245,6 @@ async def stream_events(prepare, provider, settings, deadline, request_id):
                 [],
                 status,
                 pending.started,
-                step_usage,
+                GenerationUsage(**logged_usage) if step_usage is not None else None,
                 model_id,
             )
