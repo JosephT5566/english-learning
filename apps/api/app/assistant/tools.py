@@ -127,9 +127,16 @@ def get_review_stats(
     return dict(row)
 
 
+class AssistantDeadlineExceeded(GenerationFailure):
+    """A local assistant budget elapsed or its request was cancelled."""
+
+    def __init__(self):
+        super().__init__("provider_timeout")
+
+
 def check_budget(deadline, cancelled=None):
     if (cancelled is not None and cancelled()) or time.monotonic() >= deadline:
-        raise GenerationFailure("provider_timeout")
+        raise AssistantDeadlineExceeded()
 
 
 def set_query_budget(session, deadline, *, readonly=False, cancelled=None):
@@ -232,7 +239,7 @@ class SessionTools:
             raise ValueError("invalid_tool_call")
         except SQLAlchemyError as error:
             if getattr(getattr(error, "orig", None), "sqlstate", None) == "57014":
-                raise GenerationFailure("provider_timeout") from None
+                raise AssistantDeadlineExceeded() from None
             raise
         finally:
             # Release every readonly transaction, including failed queries.

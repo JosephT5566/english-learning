@@ -1,17 +1,22 @@
 """Bounded orchestration. Model and tool text are data, never execution authority."""
 
-import json
 import time
 from concurrent.futures import ThreadPoolExecutor, TimeoutError
 from copy import deepcopy
 from dataclasses import dataclass
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, PrivateAttr
 
-from app.assistant.tools import TOOL_SCHEMAS, check_budget, validate_call
+from app.assistant.tools import (
+    TOOL_SCHEMAS,
+    AssistantDeadlineExceeded,
+    check_budget,
+    validate_call,
+)
 from app.errors import ApiError
 from app.generation import GenerationFailure, GenerationRequest, GenerationUsage
+from app.request_context import emit_operational_event
 
 SYSTEM = """You are a learning assistant for the authenticated user's own cards.
 Use only the supplied readonly tools. Never claim to write cards or access other users.
@@ -47,6 +52,7 @@ class AssistantResponse(BaseModel):
     tool_calls: list[ToolCallSummary]
     stop_reason: Literal["completed", "max_steps", "timeout"]
     usage: GenerationUsage | None = None
+    _terminal_error_code: str | None = PrivateAttr(default=None)
 
 
 @dataclass
@@ -93,7 +99,7 @@ def bounded_call(action, remaining_seconds):
     before subsequent provider/tool work, then closes its own session.
     """
     if remaining_seconds <= 0:
-        raise GenerationFailure("provider_timeout")
+        raise AssistantDeadlineExceeded()
     executor = ThreadPoolExecutor(
         max_workers=1, thread_name_prefix="assistant-provider"
     )
@@ -101,25 +107,37 @@ def bounded_call(action, remaining_seconds):
     try:
         return future.result(timeout=remaining_seconds)
     except TimeoutError:
-        raise GenerationFailure("provider_timeout") from None
+        raise AssistantDeadlineExceeded() from None
     finally:
         executor.shutdown(wait=False, cancel_futures=True)
 
 
-def _emit(request_id, step, names, status, started, usage):
+def emit_step(request_id, step, names, status, started, usage, model_id):
+    emit_operational_event(
+        {
+            "event": "assistant_step",
+            "request_id": request_id,
+            "step": step,
+            "tool_names": names,
+            "status": status,
+            "duration_ms": max(0, round((time.monotonic() - started) * 1000)),
+            "usage": usage.model_dump() if usage else None,
+            "model_id": model_id,
+        }
+    )
+
+
+def emit_run_completed(request_id, transport, started, outcome, error_code):
     event = {
-        "event": "assistant_step",
+        "event": "assistant_run_completed",
         "request_id": request_id,
-        "step": step,
-        "tool_names": names,
-        "status": status,
+        "transport": transport,
         "duration_ms": max(0, round((time.monotonic() - started) * 1000)),
-        "usage": usage.model_dump() if usage else None,
+        "outcome": outcome,
     }
-    try:
-        print(json.dumps(event, separators=(",", ":")), flush=True)
-    except OSError:
-        pass
+    if error_code is not None:
+        event["error_code"] = error_code
+    emit_operational_event(event)
 
 
 def run_assistant(
@@ -147,6 +165,7 @@ def run_assistant(
     summaries = []
     totals = {}
     stop_reason = "max_steps"
+    terminal_error_code = None
     reply = FALLBACK
     answer_next = False
     provider_options = {"cancelled": cancelled} if cancelled is not None else {}
@@ -156,6 +175,7 @@ def run_assistant(
             break
         started = time.monotonic()
         names, status, step_usage = [], "error", None
+        model_id = None
         final = answer_next or step == settings.assistant_max_steps
         handed_off = False
         try:
@@ -174,16 +194,22 @@ def run_assistant(
             if prepare_final and final:
                 handed_off = True
                 return PendingAnswer(req, step, started, summaries, totals)
+
+            model_id = settings.generation_model
             result = bounded_call(
-                lambda req=req, remaining=remaining: provider.generate(
-                    req,
-                    model=settings.generation_model,
-                    project=settings.vertex_project_id,
-                    location=settings.effective_generation_location,
-                    timeout_seconds=min(settings.generation_timeout_seconds, remaining),
-                    max_output_tokens=settings.assistant_max_output_tokens,
-                    deadline=deadline,
-                    **provider_options,
+                lambda req=req, remaining=remaining, model_id=model_id: (
+                    provider.generate(
+                        req,
+                        model=model_id,
+                        project=settings.vertex_project_id,
+                        location=settings.effective_generation_location,
+                        timeout_seconds=min(
+                            settings.generation_timeout_seconds, remaining
+                        ),
+                        max_output_tokens=settings.assistant_max_output_tokens,
+                        deadline=deadline,
+                        **provider_options,
+                    )
                 ),
                 remaining,
             )
@@ -281,6 +307,11 @@ def run_assistant(
         except GenerationFailure as failure:
             if failure.code == "provider_timeout":
                 stop_reason, status = "timeout", "timeout"
+                if (
+                    not isinstance(failure, AssistantDeadlineExceeded)
+                    and time.monotonic() < deadline
+                ):
+                    terminal_error_code = generation_error(failure).code
                 break
             status = (
                 failure.code
@@ -297,10 +328,14 @@ def run_assistant(
             raise
         finally:
             if not handed_off:
-                _emit(request_id, step, names, status, started, step_usage)
-    return AssistantResponse(
+                emit_step(
+                    request_id, step, names, status, started, step_usage, model_id
+                )
+    response = AssistantResponse(
         reply=reply,
         tool_calls=summaries,
         stop_reason=stop_reason,
         usage=GenerationUsage(**totals) if totals else None,
     )
+    response._terminal_error_code = terminal_error_code
+    return response

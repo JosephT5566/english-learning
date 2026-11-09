@@ -6,7 +6,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.generation import GenerationFailure, GenerationResult
+from app.generation import GenerationFailure, GenerationResult, GenerationUsage
 from tests.integration import test_assistant_http_boundaries as shared
 
 api_client = shared.api_client
@@ -26,7 +26,7 @@ PATH = "/v1/assistant/messages/stream"
         ("config", 503, "generation_not_configured"),
     ],
 )
-def test_sse_http_preflight(api_client, provider, gate, status, code):
+def test_sse_http_preflight(api_client, provider, gate, status, code, capsys):
     if gate == "consent":
         assert (
             api_client.delete("/v1/me/genai-consent", headers=HEADERS).status_code
@@ -45,9 +45,10 @@ def test_sse_http_preflight(api_client, provider, gate, status, code):
     assert response.json()["error"]["code"] == code
     provider.generate.assert_not_called()
     provider.stream.assert_not_called()
+    assert not shared.log_events(capsys.readouterr().out, "assistant_run_completed")
 
 
-async def start_request(app, *, body_gate=None):
+async def start_request(app, *, body_gate=None, response_headers=None):
     incoming = asyncio.Queue()
     outgoing = asyncio.Queue()
     incoming.put_nowait(
@@ -80,7 +81,10 @@ async def start_request(app, *, body_gate=None):
     task = asyncio.create_task(app(scope, incoming.get, send))
     response = await asyncio.wait_for(outgoing.get(), 5)
     assert response["status"] == 200
-    assert dict(response["headers"])[b"content-type"].startswith(b"text/event-stream")
+    headers = dict(response["headers"])
+    assert headers[b"content-type"].startswith(b"text/event-stream")
+    if response_headers is not None:
+        response_headers.update(headers)
     return task, incoming, outgoing
 
 
@@ -92,7 +96,11 @@ async def read_event(outgoing):
 
 
 @pytest.mark.parametrize("disconnect", [False, True])
-def test_sse_delivers_text_before_upstream_finishes(api_client, provider, disconnect):
+def test_sse_delivers_text_before_upstream_finishes(
+    api_client, provider, disconnect, capsys
+):
+    response_headers = {}
+
     async def scenario():
         release = asyncio.Event()
         closed = asyncio.Event()
@@ -100,7 +108,9 @@ def test_sse_delivers_text_before_upstream_finishes(api_client, provider, discon
         async def upstream(request, **options):
             assert request.tools_disabled
             try:
-                yield SimpleNamespace(text="first", usage=None)
+                yield SimpleNamespace(
+                    text="first", usage=GenerationUsage(output_tokens=0)
+                )
                 await release.wait()
                 yield SimpleNamespace(text=" second", usage=None)
             finally:
@@ -108,7 +118,9 @@ def test_sse_delivers_text_before_upstream_finishes(api_client, provider, discon
 
         provider.generate.return_value = GenerationResult(text="planning text")
         provider.stream = upstream
-        task, incoming, outgoing = await start_request(api_client.app)
+        task, incoming, outgoing = await start_request(
+            api_client.app, response_headers=response_headers
+        )
         assert await read_event(outgoing) == ("delta", {"text": "first"})
         assert not closed.is_set()
         if disconnect:
@@ -118,14 +130,40 @@ def test_sse_delivers_text_before_upstream_finishes(api_client, provider, discon
             assert await read_event(outgoing) == ("delta", {"text": " second"})
             event, data = await read_event(outgoing)
             assert event == "done"
-            assert data == {"tool_calls": [], "stop_reason": "completed", "usage": None}
+            assert data == {
+                "tool_calls": [],
+                "stop_reason": "completed",
+                "usage": {
+                    "input_tokens": None,
+                    "output_tokens": 0,
+                    "total_tokens": None,
+                },
+            }
             end = await asyncio.wait_for(outgoing.get(), 5)
             assert not end["more_body"] and not end["body"]
         await asyncio.wait_for(task, 5)
         await asyncio.wait_for(closed.wait(), 5)
         assert provider.generate.call_count == 1
 
+    capsys.readouterr()
     asyncio.run(scenario())
+    output = capsys.readouterr().out
+    request_id = response_headers[b"x-request-id"].decode()
+    shared.assert_run_event(
+        output, request_id, "sse", "disconnected" if disconnect else "completed"
+    )
+    steps = shared.log_events(output, "assistant_step")
+    assert [step["step"] for step in steps] == [1, 2]
+    assert all(
+        step["model_id"] == "fake-v1" and step["request_id"] == request_id
+        for step in steps
+    )
+    assert steps[1]["usage"] == {
+        "input_tokens": None,
+        "output_tokens": 0,
+        "total_tokens": None,
+    }
+    assert "PRIVATE_" not in output
 
 
 @pytest.mark.parametrize(
@@ -135,7 +173,9 @@ def test_sse_delivers_text_before_upstream_finishes(api_client, provider, discon
         ("provider_unavailable", "error", "code", "generation_provider_unavailable"),
     ],
 )
-def test_sse_failure_after_delta(api_client, provider, failure, event, field, value):
+def test_sse_failure_after_delta(
+    api_client, provider, failure, event, field, value, capsys
+):
     async def upstream(request, **options):
         yield SimpleNamespace(text="partial", usage=None)
         raise GenerationFailure(failure)
@@ -148,6 +188,13 @@ def test_sse_failure_after_delta(api_client, provider, failure, event, field, va
     header, data = frames[1].splitlines()
     assert header == f"event: {event}"
     assert json.loads(data.removeprefix("data: "))[field] == value
+    shared.assert_run_event(
+        capsys.readouterr().out,
+        response.headers["X-Request-ID"],
+        "sse",
+        "timeout" if event == "done" else "error",
+        f"generation_{failure}",
+    )
 
 
 def test_sse_tool_rounds_use_rls_release_connections_and_cap_calls(
@@ -319,3 +366,65 @@ def test_sse_slow_client_cannot_hold_upstream_past_deadline(api_client, provider
             await asyncio.wait_for(task, 5)
 
     asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("path", [shared.PATH, PATH])
+def test_assistant_logging_sink_failure_keeps_response(
+    api_client, provider, monkeypatch, path
+):
+    from app import request_context
+
+    async def upstream(request, **options):
+        yield SimpleNamespace(text="finished", usage=None)
+
+    provider.stream = upstream
+    attempted = []
+
+    def fail_assistant_log(value, **options):
+        event = json.loads(value)["event"]
+        attempted.append(event)
+        raise OSError("PRIVATE_LOG_SINK")
+
+    monkeypatch.setattr(request_context, "print", fail_assistant_log, raising=False)
+    response = api_client.post(path, headers=HEADERS, json=BODY)
+    assert response.status_code == 200
+    if path == PATH:
+        assert response.text.count("event: done") == 1
+        assert '"stop_reason":"completed"' in response.text
+    else:
+        assert response.json()["stop_reason"] == "completed"
+    assert attempted.count("assistant_run_completed") == 1
+
+
+@pytest.mark.parametrize("stage", ["planning", "tool"])
+def test_sse_early_provider_timeout_logs_stable_code(
+    api_client, provider, capsys, monkeypatch, stage
+):
+    if stage == "planning":
+        provider.generate.side_effect = GenerationFailure("provider_timeout")
+    else:
+        from app.assistant import tools
+
+        def timeout(*args, **kwargs):
+            raise GenerationFailure("provider_timeout")
+
+        provider.generate.return_value = shared.tool_result([("get_review_stats", {})])
+        monkeypatch.setattr(tools, "get_review_stats", timeout)
+
+    response = api_client.post(PATH, headers=HEADERS, json=BODY)
+    assert response.status_code == 200
+    event, data = response.text.strip().splitlines()
+    assert event == "event: done"
+    assert json.loads(data.removeprefix("data: ")) == {
+        "tool_calls": [],
+        "stop_reason": "timeout",
+        "usage": None,
+    }
+    provider.stream.assert_not_called()
+    shared.assert_run_event(
+        capsys.readouterr().out,
+        response.headers["X-Request-ID"],
+        "sse",
+        "timeout",
+        "generation_provider_timeout",
+    )

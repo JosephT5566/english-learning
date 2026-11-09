@@ -264,6 +264,9 @@ def test_extraction_emits_one_private_safe_log(api_client, provider, capsys, kin
     assert log["request_id"] == response.headers["X-Request-ID"]
     assert log["deck_id"] == FIXTURE_DECK_ID
     assert log["adjustment"] is True
+    assert log["model_id"] == (
+        provider.calls[0][1]["model"] if kind in {"success", "failure"} else None
+    )
     assert log["duration_ms"] >= 0
     assert log["result_code"] == (
         "ok" if kind == "success" else response.json()["error"]["code"]

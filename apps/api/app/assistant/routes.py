@@ -1,21 +1,28 @@
 """Authenticated text-only assistant endpoint; no conversation persistence."""
 
 import time
+from threading import Lock
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Body, Request
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from app.assistant.loop import (
     FALLBACK,
     AssistantResponse,
     bounded_call,
+    emit_run_completed,
     generation_error,
     run_assistant,
 )
 from app.assistant.sse import AssistantSSE, stream_events
-from app.assistant.tools import SessionTools, check_budget, set_query_budget
+from app.assistant.tools import (
+    AssistantDeadlineExceeded,
+    SessionTools,
+    check_budget,
+    set_query_budget,
+)
 from app.auth import CurrentUserDependency
 from app.database import bind_owner
 from app.errors import ApiError
@@ -60,7 +67,7 @@ def _consent_then_release(session, owner_id, deadline, *, cancelled=None):
         session.commit()
     except SQLAlchemyError as error:
         if getattr(getattr(error, "orig", None), "sqlstate", None) == "57014":
-            raise GenerationFailure("provider_timeout") from None
+            raise AssistantDeadlineExceeded() from None
         raise
     check_budget(deadline, cancelled)
 
@@ -93,8 +100,12 @@ def assistant_messages(
     request_id = str(request.state.request_id)
     session.commit()
     deadline = time.monotonic() + settings.assistant_timeout_seconds
+    run_lock = Lock()
+    run_started_at = None
+    run_closed = False
 
     def orchestrate():
+        nonlocal run_started_at
         # The worker exclusively owns this session. Caller timeout never closes a
         # session while another thread is using it. No request-scoped session is
         # captured here; a late worker cleans up its own transaction/connection.
@@ -106,6 +117,12 @@ def assistant_messages(
 
             consent_then_release()
             _require_configuration(settings)
+            # Admission and request completion can race after the caller times out.
+            with run_lock:
+                started_at = time.monotonic()
+                if run_closed or started_at >= deadline:
+                    raise AssistantDeadlineExceeded()
+                run_started_at = started_at
             return run_assistant(
                 messages=messages,
                 settings=settings,
@@ -118,14 +135,37 @@ def assistant_messages(
                 deadline=deadline,
             )
 
+    outcome, error_code = "error", "internal_error"
     try:
-        return bounded_call(orchestrate, deadline - time.monotonic())
+        result = bounded_call(orchestrate, deadline - time.monotonic())
+        outcome, error_code = result.stop_reason, result._terminal_error_code
+        return result
     except GenerationFailure as failure:
         if failure.code == "provider_timeout":
+            outcome, error_code = "timeout", None
             return AssistantResponse(
                 reply=FALLBACK, tool_calls=[], stop_reason="timeout"
             )
-        raise generation_error(failure) from None
+        error = generation_error(failure)
+        error_code = error.code
+        raise error from None
+    except ApiError as error:
+        error_code = error.code
+        raise
+    except SQLAlchemyError as error:
+        # The request database dependency sanitizes these exceptions for HTTP.
+        error_code = (
+            "validation_failed"
+            if isinstance(error, IntegrityError)
+            else "database_unavailable"
+        )
+        raise
+    finally:
+        with run_lock:
+            run_closed = True
+            started_at = run_started_at
+        if started_at is not None:
+            emit_run_completed(request_id, "json", started_at, outcome, error_code)
 
 
 @router.post(
@@ -207,5 +247,6 @@ def assistant_stream(
     return AssistantSSE(
         stream_events(prepare, provider, settings, deadline, request_id),
         deadline=deadline,
+        request_id=request_id,
         headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"},
     )

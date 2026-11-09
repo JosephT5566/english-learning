@@ -45,6 +45,14 @@ def _method(request: Request) -> str:
     )
 
 
+def emit_operational_event(event: dict) -> None:
+    """Write an allowlisted event without affecting the operation on sink failure."""
+    try:
+        print(json.dumps(event, separators=(",", ":")), flush=True)
+    except OSError:
+        pass
+
+
 def _emit_request_event(request: Request, response: Response, elapsed_ms: int) -> None:
     """Write one bounded JSON line without any request or exception values."""
 
@@ -60,12 +68,7 @@ def _emit_request_event(request: Request, response: Response, elapsed_ms: int) -
     }
     if isinstance(error_code, str):
         event["error_code"] = error_code
-    try:
-        print(json.dumps(event, separators=(",", ":")), flush=True)
-    except OSError:
-        # A logging sink failure must not turn a completed card or review write
-        # into an ambiguous HTTP failure.
-        pass
+    emit_operational_event(event)
 
 
 def emit_review_outcome(request: Request) -> None:
@@ -81,10 +84,7 @@ def emit_review_outcome(request: Request) -> None:
         "outcome": outcome,
         "item_count": item_count,
     }
-    try:
-        print(json.dumps(event, separators=(",", ":")), flush=True)
-    except OSError:
-        pass
+    emit_operational_event(event)
 
 
 async def add_request_id(
@@ -123,14 +123,12 @@ async def add_request_id(
             "adjustment": getattr(request.state, "extraction_adjustment", False),
             "duration_ms": elapsed_ms,
             "usage": getattr(request.state, "extraction_usage", None),
+            "model_id": getattr(request.state, "extraction_model_id", None),
             "result_code": getattr(request.state, "error_code", "ok"),
         }
         http_status = getattr(request.state, "generation_http_status", None)
         if http_status is not None:
             event["http_status"] = http_status
-        try:
-            print(json.dumps(event, separators=(",", ":")), flush=True)
-        except OSError:
-            pass
+        emit_operational_event(event)
     _emit_request_event(request, response, elapsed_ms)
     return response
