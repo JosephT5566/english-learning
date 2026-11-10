@@ -24,7 +24,7 @@ from app.generation import VertexGenerationProvider
 from app.guest_export import router as guest_export_router
 from app.health import router as health_router
 from app.reads import router as reads_router
-from app.request_context import add_request_id
+from app.request_context import RequestContextMiddleware
 from app.reviews import router as reviews_router
 from app.semantic_search import router as semantic_search_router
 from app.writes import router as writes_router
@@ -75,7 +75,7 @@ def create_app() -> FastAPI:
     """
 
     app = FastAPI(title="English Learning API", lifespan=lifespan)
-    app.middleware("http")(add_request_id)
+    app.add_middleware(RequestContextMiddleware)
     app.add_middleware(ConfiguredCORSMiddleware)
     register_error_handlers(app)
     app.include_router(health_router)

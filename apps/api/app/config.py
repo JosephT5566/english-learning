@@ -138,7 +138,8 @@ class Settings(BaseSettings):
     generation_material_max_chars: Annotated[int, Field(gt=0, le=100000)] = 20000
     generation_instruction_max_chars: Annotated[int, Field(gt=0, le=10000)] = 2000
     assistant_max_steps: Annotated[int, Field(ge=1, le=3)] = 3
-    assistant_timeout_seconds: Annotated[int, Field(ge=1, le=120)] = 60
+    assistant_timeout_seconds: Annotated[int, Field(ge=1, le=120)] = 25
+    assistant_sse_heartbeat_seconds: Annotated[int, Field(ge=0, le=60)] = 15
     assistant_max_output_tokens: Annotated[int, Field(ge=1, le=8192)] = 2048
     assistant_max_messages: Annotated[int, Field(ge=1, le=100)] = 20
     assistant_max_chars: Annotated[int, Field(ge=1, le=100000)] = 12000

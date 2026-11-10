@@ -3,7 +3,7 @@
 import asyncio
 import json
 import time
-from contextlib import aclosing
+from contextlib import aclosing, suppress
 from dataclasses import dataclass
 from threading import Event
 
@@ -32,6 +32,11 @@ class _Frame:
     data: dict
     outcome: str | None = None
     error_code: str | None = None
+
+
+@dataclass(frozen=True)
+class _Heartbeat:
+    preparation: asyncio.Task
 
 
 class AssistantSSE(StreamingResponse):
@@ -79,7 +84,9 @@ class AssistantSSE(StreamingResponse):
                 }
             )
             async for frame in self.body_iterator:
-                terminal_started = frame.outcome is not None
+                terminal_started = (
+                    isinstance(frame, _Frame) and frame.outcome is not None
+                )
                 remaining = self.deadline - time.monotonic()
                 if terminal_started:
                     self.outcome = frame.outcome
@@ -105,6 +112,31 @@ class AssistantSSE(StreamingResponse):
 
 
 async def _send_frame(send, frame):
+    if isinstance(frame, _Heartbeat):
+        if frame.preparation.done():
+            return
+        # Preparation completion must also cancel a comment blocked in send().
+        with anyio.CancelScope() as scope:
+
+            async def stop_when_prepared():
+                await asyncio.wait({frame.preparation})
+                scope.cancel()
+
+            watcher = asyncio.create_task(stop_when_prepared())
+            try:
+                await send(
+                    {
+                        "type": "http.response.body",
+                        "body": b": ping\n\n",
+                        "more_body": True,
+                    }
+                )
+            finally:
+                watcher.cancel()
+                with anyio.CancelScope(shield=True):
+                    with suppress(asyncio.CancelledError):
+                        await watcher
+        return
     data = json.dumps(frame.data, separators=(",", ":"))
     body = f"event: {frame.name}\ndata: {data}\n\n".encode()
     await send({"type": "http.response.body", "body": body, "more_body": True})
@@ -153,9 +185,35 @@ async def stream_events(prepare, provider, settings, deadline, request_id):
     status = "disconnected"
     try:
         remaining = _remaining(deadline)
-        result = await asyncio.wait_for(
-            asyncio.to_thread(prepare, cancelled.is_set), timeout=remaining
-        )
+        if settings.assistant_sse_heartbeat_seconds:
+            preparation = asyncio.create_task(
+                asyncio.wait_for(
+                    asyncio.to_thread(prepare, cancelled.is_set), timeout=remaining
+                )
+            )
+            try:
+                while True:
+                    ready, _ = await asyncio.wait(
+                        {preparation},
+                        timeout=min(
+                            settings.assistant_sse_heartbeat_seconds,
+                            _remaining(deadline),
+                        ),
+                    )
+                    if ready:
+                        break
+                    _remaining(deadline)
+                    # Yield comments through the same bounded sender as event frames.
+                    yield _Heartbeat(preparation)
+                result = preparation.result()
+            finally:
+                preparation.cancel()
+                with anyio.CancelScope(shield=True):
+                    await asyncio.gather(preparation, return_exceptions=True)
+        else:
+            result = await asyncio.wait_for(
+                asyncio.to_thread(prepare, cancelled.is_set), timeout=remaining
+            )
         if isinstance(result, AssistantResponse):
             yield _done(result, result._terminal_error_code)
             return

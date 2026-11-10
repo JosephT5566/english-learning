@@ -646,3 +646,47 @@ See [verification](issues/issue-70-verification.md#sse-follow-up).
 
 Add `PUT` to the API's CORS method allowlist so an allowed frontend origin can complete the
 preflight for `PUT /v1/me/genai-consent` before submitting the authenticated consent grant.
+
+## 2026-11-10: Bound assistant planning heartbeats and shorten the default deadline
+
+Issue #91 emits only SSE comments (`: ping`) while `prepare()` is pending after
+headers. The interval defaults to 15 seconds, accepts integers from 0 through 60,
+and 0 disables it. Preparation completion, failure, cancellation, disconnect or
+the absolute deadline stops comments; later token gaps do not restart them.
+Comments share the frame sender and deadline/backpressure limits. Event encoding,
+terminal payloads, consent ordering and logging fields remain unchanged.
+
+Lower the shared JSON/SSE assistant deadline default from 60 to 25 seconds, with
+the same 1-120 range. Keep Cloud Run at 30 seconds for cost control and leave the
+generation timeout at 30, capped by the remaining assistant budget. Slow setup
+before the budget starts can still exhaust the platform margin. Preserve the
+historical #70 default and the independent #71 60-second evaluation pin.
+
+Idle proxy disconnection remains an inferred risk, not an observed failure.
+Production override absence is the maintainer's report; no production, proxy or
+Vertex timing was independently verified for this change.
+
+## 2026-11-10: Keep SSE deadlines on the transport across request correlation
+
+PR #92 review reproduced a request-ID middleware handoff gap. Starlette's
+BaseHTTPMiddleware accepted body frames into a memory stream before the outer
+transport finished writing. Preparation completion therefore stopped watching an
+already accepted heartbeat, and event send deadlines also missed the transport.
+The app-level regression reproduced bare EOF for both heartbeat and delta writes;
+the heartbeat-disabled control retained its terminal event.
+
+Use pure ASGI RequestContextMiddleware with inline header injection and direct
+send delegation. Preserve pre-header safe 500 responses, request state, route
+resolution, allowlisted event fields and header-time completion logging. Leave
+CORS ordering and SSE encoding, deadline math and terminal grace unchanged.
+Do not add SSE-specific coordination with BaseHTTPMiddleware's private buffering:
+that would leave ordinary event writes with the same gap. No other application
+BaseHTTPMiddleware registration was found in apps/api/app.
+
+Cancellation is not a generic atomic-write guarantee. In the installed uvicorn
+h11 and httptools implementations, send awaits flow drain before synchronous body
+encoding and transport.write, with no intervening await during that write. This
+supports cancellation before enqueueing a body in those implementations; it does
+not prove socket delivery, other servers or proxies. Terminal delivery remains
+best effort under sustained backpressure or disconnect. The new test uses fake
+preparation and an outer ASGI gate, without lifespan, SQL or model calls.

@@ -168,7 +168,7 @@ def test_assistant_registry_is_fixed_with_exact_minimal_schemas():
     "field,default,maximum",
     [
         ("assistant_max_steps", 3, 3),
-        ("assistant_timeout_seconds", 60, 120),
+        ("assistant_timeout_seconds", 25, 120),
         ("assistant_max_output_tokens", 2048, 8192),
         ("assistant_max_messages", 20, 100),
         ("assistant_max_chars", 12000, 100000),
@@ -181,6 +181,8 @@ def test_assistant_settings_have_bounds_and_env(monkeypatch, field, default, max
     for invalid in (0, maximum + 1):
         with pytest.raises(ValueError):
             settings(**{field: invalid})
+    for valid in (1, maximum):
+        assert getattr(settings(**{field: valid}), field) == valid
     monkeypatch.setenv(field.upper(), "1")
     assert getattr(settings(), field) == 1
 
@@ -557,3 +559,20 @@ def test_disconnected_tool_does_not_start_sql_after_statement_budget(monkeypatch
         execute_tool("get_review_stats", {}, time.monotonic() + 5)
     stats.assert_not_called()
     session.rollback.assert_called_once()
+
+
+def test_assistant_sse_heartbeat_settings_have_bounds_and_env(monkeypatch):
+    assert settings().assistant_sse_heartbeat_seconds == 15
+    for valid in (0, 1, 60):
+        assert (
+            settings(
+                assistant_sse_heartbeat_seconds=valid
+            ).assistant_sse_heartbeat_seconds
+            == valid
+        )
+    for invalid in (-1, 61):
+        with pytest.raises(ValueError):
+            settings(assistant_sse_heartbeat_seconds=invalid)
+    for value in ("0", "1", "60"):
+        monkeypatch.setenv("ASSISTANT_SSE_HEARTBEAT_SECONDS", value)
+        assert settings().assistant_sse_heartbeat_seconds == int(value)

@@ -535,15 +535,16 @@ page, and `get_review_stats` for active/due counts with optional deck/language f
 Owners come from the authenticated session, never model arguments. Search uses the existing
 embedding provider and does not treat an embedding failure as a successful empty search.
 
-| Server-only variable          | Default | Allowed range | Reason                                  |
-| ----------------------------- | ------- | ------------- | --------------------------------------- |
-| `ASSISTANT_MAX_STEPS`         | 3       | 1-3           | One model call per step, bounded loop   |
-| `ASSISTANT_TIMEOUT_SECONDS`   | 60      | 1-120         | Bound the orchestration wait budget     |
-| `ASSISTANT_MAX_OUTPUT_TOKENS` | 2048    | 1-8192        | Short answers with bounded output       |
-| `ASSISTANT_MAX_MESSAGES`      | 20      | 1-100         | Short client-supplied history           |
-| `ASSISTANT_MAX_CHARS`         | 12000   | 1-100000      | Total message characters, not bytes     |
-| `ASSISTANT_MAX_TOOL_CALLS`    | 3       | 1-10          | Small batches; oversized batch rejected |
-| `ASSISTANT_TOOL_LIMIT`        | 10      | 1-20          | Search/due limit clamped to 1..this cap |
+| Server-only variable              | Default | Allowed range | Reason                                  |
+| --------------------------------- | ------- | ------------- | --------------------------------------- |
+| `ASSISTANT_MAX_STEPS`             | 3       | 1-3           | One model call per step, bounded loop   |
+| `ASSISTANT_TIMEOUT_SECONDS`       | 25      | 1-120         | Finish before the Cloud Run 30s cap     |
+| `ASSISTANT_SSE_HEARTBEAT_SECONDS` | 15      | 0-60          | Planning comment interval; 0 disables   |
+| `ASSISTANT_MAX_OUTPUT_TOKENS`     | 2048    | 1-8192        | Short answers with bounded output       |
+| `ASSISTANT_MAX_MESSAGES`          | 20      | 1-100         | Short client-supplied history           |
+| `ASSISTANT_MAX_CHARS`             | 12000   | 1-100000      | Total message characters, not bytes     |
+| `ASSISTANT_MAX_TOOL_CALLS`        | 3       | 1-10          | Small batches; oversized batch rejected |
+| `ASSISTANT_TOOL_LIMIT`            | 10      | 1-20          | Search/due limit clamped to 1..this cap |
 
 Search/due default to five results, clamped by the configured cap even when it is below
 five. Statistics has no `limit` argument; it returns two counts. Request models also enforce
@@ -581,7 +582,16 @@ unverified. See [verification](../../doc/issues/issue-70-verification.md) and th
 
 Send the same JSON request to `POST /v1/assistant/messages/stream` with the usual
 authentication header. A successful response is `text/event-stream`. Each event's
-`data` field contains one JSON object.
+`data` field contains one JSON object. `: ping` comment lines may arrive before the
+first event and must be ignored. Heartbeats run only while planning and tool
+preparation is pending, including before a terminal `done` or `error`; they stop
+when preparation finishes, even if the first answer token is slow. No heartbeats
+arrive between later events.
+
+The default overall assistant deadline is 25 seconds, below Cloud Run's unchanged
+30-second request cap. Authentication and validation precede that budget, so slow
+request setup can still consume the platform margin. `GENERATION_TIMEOUT_SECONDS`
+stays 30; assistant provider calls cap it to the remaining overall deadline.
 
 | Event   | Data                                                                       |
 | ------- | -------------------------------------------------------------------------- |
@@ -597,6 +607,13 @@ Keep text already received. Close the request to stop reading. The server closes
 the active upstream stream on disconnect and stops dispatching additional work.
 If the client stops reading, the server closes the upstream stream at the deadline
 and attempts to deliver the timeout event within a short grace period.
+
+Request correlation uses pure ASGI middleware: heartbeat and event sends await the
+outer transport directly, so preparation cancellation and the absolute deadline
+also interrupt a blocked transport write. Request and extraction completion logs
+are still recorded at response headers, excluding body delivery time. The middleware
+preserves request state and context variables without a separate response task.
+Terminal delivery remains best effort when the transport stays blocked or disconnects.
 
 The SSE path reserves one model call for the tool-disabled reply. It streams
 visible text directly from Vertex and can use an extra model call for simple
