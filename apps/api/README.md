@@ -608,6 +608,13 @@ the active upstream stream on disconnect and stops dispatching additional work.
 If the client stops reading, the server closes the upstream stream at the deadline
 and attempts to deliver the timeout event within a short grace period.
 
+Request correlation uses pure ASGI middleware: heartbeat and event sends await the
+outer transport directly, so preparation cancellation and the absolute deadline
+also interrupt a blocked transport write. Request and extraction completion logs
+are still recorded at response headers, excluding body delivery time. The middleware
+preserves request state and context variables without a separate response task.
+Terminal delivery remains best effort when the transport stays blocked or disconnects.
+
 The SSE path reserves one model call for the tool-disabled reply. It streams
 visible text directly from Vertex and can use an extra model call for simple
 questions. The same overall call limit and deadline cover planning, tools and

@@ -14,3 +14,16 @@
 ## 已完成
 
 （尚無）
+
+## Issue #91 middleware regression coverage, 2026-11-10
+
+`apps/api/tests/unit/test_assistant_transport_deadline.py` now drives `create_app()`
+with the real request-ID, CORS and error-handler stack, a synthetic SSE endpoint,
+fake preparation and a gated outer ASGI send. It checks a blocked planning heartbeat,
+a heartbeat-disabled control and a blocked non-heartbeat delta. Each case requires
+exactly one terminal event and final `more_body: False` within the deadline plus
+terminal grace and scheduling slack. This partly covers items 2 and 3 above.
+
+These tests do not exercise real uvicorn sockets, the authenticated PostgreSQL/RLS
+assistant route, browser rendering, Cloud Run or proxies. Items 1 through 4 remain
+open; this is ASGI middleware coverage, not end-to-end HTTP deployment evidence.
