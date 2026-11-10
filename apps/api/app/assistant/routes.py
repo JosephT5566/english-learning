@@ -179,7 +179,8 @@ def assistant_messages(
                 "done: {tool_calls: ToolCallSummary[], stop_reason: completed | max_steps | timeout, "
                 "usage: GenerationUsage | null}. "
                 "error: {code: string, message: string, retryable: boolean}. "
-                "A connected client receives exactly one terminal done or error event."
+                "A connected client receives exactly one terminal done or error event. "
+                ": ping comment lines may arrive before the first event and must be ignored."
             ),
             "content": {"text/event-stream": {"schema": {"type": "string"}}},
         },
