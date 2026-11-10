@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+from itertools import pairwise
 from types import SimpleNamespace
 
 import pytest
@@ -455,3 +456,280 @@ def test_sse_early_provider_timeout_logs_stable_code(
         "timeout",
         "generation_provider_timeout",
     )
+
+
+class HeartbeatHarness:
+    """Run the real response with fake planning, upstream and ASGI transport."""
+
+    def __init__(self, *, interval=1, timeout=None, delay=2.6, mode="delta"):
+        import time
+        from threading import Event
+
+        from app.assistant.loop import AssistantResponse
+        from app.assistant.sse import AssistantSSE, stream_events
+        from app.config import Settings
+
+        changes = {"assistant_sse_heartbeat_seconds": interval}
+        if timeout is not None:
+            changes["assistant_timeout_seconds"] = timeout
+        self.settings = Settings(_env_file=None, **changes)
+        self.release = Event()
+        self.finished = Event()
+        self.observed = []
+        self.messages = []
+        self.incoming = asyncio.Queue()
+        self.body_gate = None
+        self.sending = False
+        self.closed = False
+        self.started = time.monotonic()
+        self.deadline = self.started + self.settings.assistant_timeout_seconds
+
+        def prepare(cancelled):
+            try:
+                self.release.wait(delay)
+                self.observed.append(cancelled())
+                if mode == "error":
+                    raise GenerationFailure("invalid_response")
+                if mode == "done":
+                    return AssistantResponse(
+                        reply="", tool_calls=[], stop_reason="max_steps"
+                    )
+                return SimpleNamespace(
+                    request=object(),
+                    totals={},
+                    tool_calls=[],
+                    step=1,
+                    started=self.started,
+                )
+            finally:
+                self.prepared_at = time.monotonic()
+                self.finished.set()
+
+        async def upstream(*args, **kwargs):
+            try:
+                if mode == "slow_first":
+                    await asyncio.sleep(2.2)
+                yield SimpleNamespace(text="first", usage=None)
+                if mode == "slow_second":
+                    await asyncio.sleep(2.2)
+                    yield SimpleNamespace(text="second", usage=None)
+            finally:
+                self.closed = True
+
+        self.response = AssistantSSE(
+            stream_events(
+                prepare,
+                SimpleNamespace(stream=upstream),
+                self.settings,
+                self.deadline,
+                "heartbeat-test",
+            ),
+            deadline=self.deadline,
+            request_id="heartbeat-test",
+        )
+        self.task = None
+
+    async def send(self, message):
+        import time
+
+        assert not self.sending, "ASGI sends must not overlap"
+        self.sending = True
+        try:
+            if self.body_gate is not None and message.get("body"):
+                await self.body_gate.wait()
+            self.messages.append((time.monotonic(), message.copy()))
+        finally:
+            self.sending = False
+
+    def start(self):
+        self.task = asyncio.create_task(self.response({}, self.incoming.get, self.send))
+
+    async def finish(self, limit=8):
+        try:
+            await asyncio.wait_for(self.task, limit)
+        finally:
+            self.release.set()
+            assert await asyncio.to_thread(self.finished.wait, 2)
+
+    def bodies(self):
+        return [
+            (stamp, message["body"])
+            for stamp, message in self.messages
+            if message.get("body")
+        ]
+
+    def events(self):
+        return [body for _, body in self.bodies() if not body.startswith(b":")]
+
+    def pings(self):
+        return [stamp for stamp, body in self.bodies() if body == b": ping\n\n"]
+
+
+@pytest.mark.parametrize("mode", ["delta", "error"])
+def test_sse_heartbeat_during_slow_prepare(mode):
+    async def scenario():
+        active = HeartbeatHarness(mode=mode)
+        active.start()
+        await active.finish()
+        disabled = HeartbeatHarness(interval=0, mode=mode)
+        disabled.start()
+        await disabled.finish()
+        assert len(active.pings()) >= 2
+        stamps = [active.messages[0][0], *active.pings()]
+        assert all(right - left >= 0.98 for left, right in pairwise(stamps))
+        bodies = [body for _, body in active.bodies()]
+        assert bodies[: len(active.pings())] == [b": ping\n\n"] * len(active.pings())
+        assert active.events() == disabled.events()
+        assert (
+            sum(
+                body.startswith((b"event: done", b"event: error"))
+                for body in active.events()
+            )
+            == 1
+        )
+        assert all(
+            message["more_body"]
+            for _, message in active.messages
+            if message.get("body")
+        )
+
+    asyncio.run(scenario())
+
+
+def test_sse_heartbeat_disabled_when_zero():
+    async def scenario():
+        harness = HeartbeatHarness(interval=0)
+        harness.start()
+        await harness.finish()
+        assert not harness.pings()
+        assert harness.bodies()[0][1] == b'event: delta\ndata: {"text":"first"}\n\n'
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("mode", ["slow_second", "done", "error", "slow_first"])
+def test_sse_no_heartbeat_after_first_event(mode):
+    async def scenario():
+        harness = HeartbeatHarness(mode=mode)
+        harness.start()
+        await harness.finish()
+        count = len(harness.messages)
+        await asyncio.sleep(2.2 if mode in ("done", "error") else 0)
+        assert len(harness.messages) == count
+        assert len(harness.pings()) >= 2
+        assert all(stamp < harness.prepared_at for stamp in harness.pings())
+        if mode in ("done", "error"):
+            assert len(harness.events()) == 1
+            assert harness.messages[-2][1]["body"] == harness.events()[0]
+        first = next(
+            index
+            for index, (_, body) in enumerate(harness.bodies())
+            if body.startswith(b"event:")
+        )
+        assert all(not body.startswith(b":") for _, body in harness.bodies()[first:])
+        assert harness.events()[0].startswith(
+            b"event: "
+            + (b"done" if mode == "done" else b"error" if mode == "error" else b"delta")
+        )
+        assert harness.messages[-1][1] == {
+            "type": "http.response.body",
+            "body": b"",
+            "more_body": False,
+        }
+
+    asyncio.run(scenario())
+
+
+def test_sse_no_heartbeat_when_prepare_is_fast():
+    async def scenario():
+        harness = HeartbeatHarness(interval=15, delay=0)
+        harness.start()
+        await harness.finish()
+        assert harness.settings.assistant_sse_heartbeat_seconds == 15
+        assert [body for _, body in harness.bodies()] == [
+            b'event: delta\ndata: {"text":"first"}\n\n',
+            b'event: done\ndata: {"tool_calls":[],"stop_reason":"completed","usage":null}\n\n',
+        ]
+
+    asyncio.run(scenario())
+
+
+def test_sse_heartbeat_stops_at_deadline():
+    async def scenario():
+        harness = HeartbeatHarness(timeout=1, delay=60)
+        harness.start()
+        await harness.finish(limit=2)
+        assert harness.messages[-1][0] - harness.started < 2
+        assert all(stamp < harness.deadline for stamp in harness.pings())
+        assert harness.events() == [
+            b'event: done\ndata: {"tool_calls":[],"stop_reason":"timeout","usage":null}\n\n'
+        ]
+        assert harness.observed == [True]
+
+    asyncio.run(scenario())
+
+
+def test_sse_default_deadline_times_out_before_cloud_run_cap():
+    async def scenario():
+        harness = HeartbeatHarness(delay=120)
+        harness.start()
+        await harness.finish(limit=29.5)
+        assert harness.settings.assistant_timeout_seconds == 25
+        assert 25 <= harness.messages[-1][0] - harness.started < 30
+        assert harness.events() == [
+            b'event: done\ndata: {"tool_calls":[],"stop_reason":"timeout","usage":null}\n\n'
+        ]
+
+    asyncio.run(scenario())
+
+
+def test_sse_disconnect_stops_heartbeat():
+    async def scenario():
+        import time
+
+        before = asyncio.all_tasks()
+        harness = HeartbeatHarness(delay=60)
+        harness.start()
+        try:
+            await asyncio.sleep(1.2)
+            assert harness.pings()
+        finally:
+            disconnected = time.monotonic()
+            harness.incoming.put_nowait({"type": "http.disconnect"})
+            await harness.finish()
+        assert harness.observed == [True]
+        assert all(stamp < disconnected for stamp, _ in harness.bodies())
+        assert asyncio.all_tasks() <= before
+
+    asyncio.run(scenario())
+
+
+def test_sse_heartbeat_backpressure_stops_at_deadline():
+    async def scenario():
+        harness = HeartbeatHarness(timeout=2, delay=60)
+        harness.body_gate = asyncio.Event()
+        harness.start()
+        await harness.finish(limit=3)
+        assert not harness.bodies()
+        assert harness.observed == [True]
+        assert not harness.closed
+        assert harness.messages[-1][0] - harness.started < 3
+
+    asyncio.run(scenario())
+
+
+def test_sse_heartbeat_blocked_send_stops_when_prepare_finishes():
+    async def scenario():
+        harness = HeartbeatHarness(delay=1.2)
+        harness.body_gate = asyncio.Event()
+        harness.start()
+        try:
+            assert await asyncio.to_thread(harness.finished.wait, 2)
+            await asyncio.sleep(0.1)
+        finally:
+            harness.body_gate.set()
+            await harness.finish()
+        assert not harness.pings()
+        assert harness.events()[0] == b'event: delta\ndata: {"text":"first"}\n\n'
+
+    asyncio.run(scenario())

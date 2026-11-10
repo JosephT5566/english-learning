@@ -37,7 +37,9 @@ test("opens from navigation, shows tools and sends only text history", async ({
     return route.fulfill({
       contentType: "text/event-stream",
       body:
+        ": ping\n\n" +
         event("delta", { text: "Start with " }) +
+        ": ping\n\n" +
         event("delta", { text: "間に合う." }) +
         event("done", {
           tool_calls: [
