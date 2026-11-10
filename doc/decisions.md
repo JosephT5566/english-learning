@@ -646,3 +646,22 @@ See [verification](issues/issue-70-verification.md#sse-follow-up).
 
 Add `PUT` to the API's CORS method allowlist so an allowed frontend origin can complete the
 preflight for `PUT /v1/me/genai-consent` before submitting the authenticated consent grant.
+
+## 2026-11-10: Bound assistant planning heartbeats and shorten the default deadline
+
+Issue #91 emits only SSE comments (`: ping`) while `prepare()` is pending after
+headers. The interval defaults to 15 seconds, accepts integers from 0 through 60,
+and 0 disables it. Preparation completion, failure, cancellation, disconnect or
+the absolute deadline stops comments; later token gaps do not restart them.
+Comments share the frame sender and deadline/backpressure limits. Event encoding,
+terminal payloads, consent ordering and logging fields remain unchanged.
+
+Lower the shared JSON/SSE assistant deadline default from 60 to 25 seconds, with
+the same 1-120 range. Keep Cloud Run at 30 seconds for cost control and leave the
+generation timeout at 30, capped by the remaining assistant budget. Slow setup
+before the budget starts can still exhaust the platform margin. Preserve the
+historical #70 default and the independent #71 60-second evaluation pin.
+
+Idle proxy disconnection remains an inferred risk, not an observed failure.
+Production override absence is the maintainer's report; no production, proxy or
+Vertex timing was independently verified for this change.
