@@ -428,3 +428,265 @@ unchanged.
   removing the separate hash-only read on edits. Every edit still recomputes from persisted fields,
   including note-only edits that repair a missing hash. Canonical normalization, optimistic versions,
   transaction boundaries, and background embedding eligibility retain their existing behavior.
+
+## 2026-11-05: Require explicit owner consent before Vertex processing
+
+Issue #74's supplied approval record authorizes the migration and backend consent boundary.
+Store only the grant timestamp on `users`; NULL means no consent for new and existing users.
+Expose self-only GET/PUT/DELETE `/v1/me/genai-consent`, and return the fixed
+`genai_consent_required` code with 403 before semantic search can call its provider.
+Card writes still commit without consent; derived embedding work skips the provider.
+Serialize embedding claims and final writes with withdrawal through the user's row lock.
+Clear consent and delete all of that user's embedding versions atomically on withdrawal.
+An already running provider call cannot be recalled, but its deleted claim cannot be restored.
+Backfill requires consent and never grants it. Grant does not automatically backfill old cards.
+
+On 2026-11-05 the maintainer selected inline option A by chat. The search route now checks
+consent on entering meaning search and explains that card text and search queries go to
+Google Vertex AI. Only a granted state enables meaning search; keyword search remains available.
+Grant does not automatically submit the query. Withdrawal uses an inline second confirmation
+that warns about deleting existing embeddings and cannot recall already-transmitted content.
+A consent-required 403 returns to the prompt. No dialog, account-menu entry, or public config
+was added. See [Issue #74 verification](issues/issue-74-verification.md) for local evidence
+and deployment limits.
+
+## 2026-11-05: Bind transaction identities before enabling fail-closed RLS
+
+Issue #75 keeps explicit app owner filters and adds database owner policies on all 11 owner-bearing
+tables. The app binds positive internal owners centrally and reapplies transaction-local settings
+after every commit/rollback. Guest export uses an exclusive public-deck UUID context after setting
+the transaction read-only. Owners intentionally bypass RLS; runtime must not own tables or have
+superuser/BYPASSRLS privileges. Retired import tools remain unbound/disabled under runtime RLS;
+`import_items` is a known gap. Deploy binding code before 0008; disable RLS before rolling back to
+older code. This exception requires operator sequencing because existing release automation was
+not changed. Neon pooled behavior and production execution remain unverified. See
+[Issue #75 verification](issues/issue-75-verification.md).
+
+## 2026-11-05: Add stateless card extraction with provisional evaluation
+
+Issue #72's supplied approved spec and maintainer implementation instructions authorize REST with
+existing `requests` and ADC. No dependency, workflow, migration, auth/GIS, public environment,
+static-path or scheduling changes are needed. No online documentation was queried, per the task's
+explicit prohibition; Vertex generation request/response formats and response-schema subset are
+unverified and require maintainer live evaluation. No model is selected by default.
+
+Implementation defaults are engineering choices, not benchmark results: model `None` prevents
+accidental live use; HTTP timeout 30 seconds limits transport waiting; 8192 output tokens gives
+short 1-20 card drafts room while bounding output; 20000 material characters covers a short passage
+or word list; 2000 instruction characters covers focused edits. Configured maxima are 120 seconds,
+32768 tokens, 100000 material characters and 10000 instruction characters. The transport timeout
+is requests' connect/read timeout, not an end-to-end billing or streaming deadline. Output also
+retains the existing 100000-byte JSON authoring cap. Settings remain server-only.
+
+Keep generation outside the request transaction after ownership/archive/consent checks. Releasing
+the shared consent lock avoids blocking withdrawal during provider latency; a later withdrawal
+cannot recall transmitted input. Return only strict `CardDrafts` previews and never persist them.
+Reject explicit null adjustment fields conservatively, requiring a real drafts/instruction pair.
+No retry masks invalid output. The provider schema removes unsupported keywords, while server
+validation retains extra-field and cross-field enforcement.
+
+Propose eight original synthetic English cases: narrative, list, ambiguity, supplied source/date,
+no source/date, ordinary adjustment, material injection and instruction injection. Each category
+gets one case; injection has two of eight, deliberately covering both input paths. This balances
+small review effort with requested coverage, not statistical representativeness. AI drafted all
+inputs and expected terms. Update 2026-11-05: the maintainer `JosephT5566` reviewed all eight cases and recorded
+`reviewed_by` and `reviewed_on` for each; this is a single-reviewer set, not independent
+annotation. Original note: the review owner had not been assigned and the fields were null. Recorded responses are handwritten synthetic fixtures,
+not actual model results. Manual live evaluation needs an explicit flag, opt-in environment,
+selected model/project and model-documentation query date. See
+[evaluation README](training/issues/72/README.md) and [verification](issues/issue-72-verification.md).
+
+## 2026-11-05: Preserve final text and classify malformed generation bodies
+
+PR #85 review identified two defects at head `71b66f7`: text parts with thoughtSignature were
+rejected, and requests.JSONDecodeError was classified as a retryable transport failure.
+Use an explicit text-part key allowlist: text, thought and thoughtSignature. Require string text,
+boolean thought when supplied, and string thoughtSignature when supplied. Treat signatures as
+opaque metadata and exclude thought=true text from the final answer. Validate every part before
+excluding thoughts so mixed tool/media content cannot hide in a thought part. Reject all unknown
+keys conservatively, including future metadata, until separately reviewed. No final answer text
+still fails. The basis is the review-cited Vertex Content REST reference, which was not fetched or
+verified; these contracts have only handwritten/local synthetic response evidence.
+
+Classify JSONDecodeError, ContentDecodingError and ChunkedEncodingError as invalid_response
+before the generic RequestException catch. A malformed JSON/decoded/chunked body is invalid
+output, so the endpoint returns non-retryable 502 generation_invalid_response rather than a
+retryable service outage. Local installed requests source confirms these body errors share
+RequestException; real Response.json() tests exercise JSON and synthetic raw body-read errors.
+Keep ordinary connection failures as provider_unavailable and retain existing HTTPError status
+classification. This does not establish real Vertex wire compatibility or all network failure
+behavior. Dataset review and true-model evaluation remain maintainer tasks, untouched by this fix.
+See [review-fix evidence](issues/issue-72-verification.md#pr-85-review-fixes).
+
+## 2026-11-05: Separate generation location and retain safe HTTP diagnostics
+
+PR #85's maintainer reported eight live evaluation cases classified invalid_response with a
+model selected for global. This is an operator report, not a model run or report independently
+inspected by this agent. It does not prove all failures share one cause. Local source confirms
+the original shared setting rejects global and the generation URL always used a regional host.
+
+Add server-only GENERATION_LOCATION, default None, accepting global or the same regional format.
+Resolve None to the unchanged VERTEX_LOCATION so existing deployments retain their region.
+Embedding configuration and routing remain regional and unchanged. A generation-only URL builder
+uses aiplatform.googleapis.com for global, with locations/global in the path; other regions retain
+the prefixed host. This global URL format comes from prior knowledge and is unverified against
+the real API; no model name, model/location availability or IAM permission is asserted valid.
+
+Keep external ApiError codes, retryability and OpenAPI unchanged. GenerationFailure retains an
+optional integer HTTP status (100-599, excluding booleans/non-integers) for internal diagnosis,
+never the response body, input or token. All HTTPError classifications remain unchanged, including
+400/404 as invalid_response. Record effective location at the top of manual evaluation reports
+and nullable provider_http_status per case. Record http_status in the existing private extraction
+completion event only when available. No new logging system or public diagnostic field is added.
+
+The maintainer's uncommitted cases.json edits are explicitly outside this change. Preserve them
+byte-for-byte and never stage them. The existing replay test assumes all case review fields are
+null and already fails against that working copy; do not weaken its assertions or reset owner data
+to make verification appear green. See [follow-up evidence](issues/issue-72-verification.md#generation-location-and-http-diagnostics-follow-up).
+
+## 2026-11-05: Omit provider array-count keywords after a narrow Vertex bisect
+
+The maintainer reported a one-occasion Vertex bisect on gemini-3.8-flash/global: a schema with
+minItems/maxItems returned HTTP 400 (Request contains an invalid argument); removing only both
+keywords together, retaining the rest, returned 200; removing all constraints also returned 200.
+Removing another keyword group alone left the array-count keywords present and still returned 400. That observation does not implicate those other groups. Individual minItems vs maxItems
+causation remains untested. The agent made no model call or online documentation lookup.
+
+Remove both keywords conservatively from the generation provider schema projection at every
+level. Retain other supported keywords, including minLength/maxLength, minimum/maximum, enum,
+format, nullable, required and description. The successful request establishes acceptance of
+that remaining supplied schema combination for this one model/run; it does not prove semantic
+constraint enforcement, all output cases, other models/versions, or output quality. The latter
+has not been evaluated. Preserve complete CardDrafts server validation, including 1-20 cards,
+field limits and cross-field rules. Keep the prompt unchanged because it already says 1-20 cards.
+
+The former unit assertion that provider cards.maxItems equals 20 was an empirically disproved
+provider-compatibility assumption. Replace it with assertions that minItems/maxItems are absent,
+add recursive/nested conversion coverage, and keep server zero/over-limit output rejection checks.
+This changes only the provider projection, not the public JSON Schema/OpenAPI or validation
+contract. Cases.json remains untouched. See [fix #3 evidence](issues/issue-72-verification.md#provider-array-count-keyword-bisect-fix-3).
+
+## 2026-11-05: Bound a stateless readonly assistant independently of model behavior
+
+Issue #70's supplied approved snapshot and maintainer task instructions authorize the backend
+only. Frontend design is not selected; no handwritten frontend change is included. Reuse the
+existing REST/ADC generation provider without dependencies, migrations, auth/GIS changes,
+workflow changes or deployment. One step is one model call, at most three. Retain declarations
+and explicitly send functionCallingConfig NONE on the last call so the wire request states
+that tools are disabled. This wire format, provider schema subset and thoughtSignature replay
+are unverified on real Vertex. Preserve complete validated model parts for opaque signatures;
+handwritten tests prove copying only, not provider acceptance.
+
+Chosen defaults are engineering bounds, not measured optimal values: 3 steps with range 1-3;
+60-second orchestration timeout with range 1-120; 2048 output tokens per call with range 1-8192;
+20 input messages with range 1-100; 12000 total characters with range 1-100000; 3 tool calls per
+step with range 1-10; and search/due result cap 10 with range 1-20. Search/due request defaults
+are five, clamped to 1..configured cap. Stats returns counts and accepts no limit. These choices
+permit a short history and a small query batch while limiting latency, output and returned card
+content. All configurable bounds live in Settings. Oversized tool batches execute nothing;
+unknown tools and invalid/extra arguments return fixed model-visible errors and consume a step.
+
+Only three readonly tools exist. Reuse semantic retrieval and paginated due queries; share one
+due SQL predicate with new statistics. Strict arguments never accept owner/user IDs. The bound
+session and existing RLS hook carry identity across short transactions. Generate outside
+transactions and release consent locks as #72 does; use readonly transactions for tool SQL,
+including after assistant search releases its transaction to obtain a query embedding. Recheck
+consent before each new generation and query embedding. Withdrawal cannot recall in-flight data.
+The assistant deadline starts after the existing auth/validation/commit boundary. An outer
+watchdog covers initial/repeated consent and pool/SQL waits as well as provider time. Its
+worker owns a separate owner-bound session and closes it itself, so caller timeout cannot
+race session cleanup. Remaining statement timeouts also bound consent locks and tool SQL.
+Provider-only worker timeouts do not pass sessions into model/embedding workers. The outer
+watchdog returns no partial summaries or usage rather than reading a live worker's state. A timed-out
+HTTP/ADC operation may finish later; no claim of remote cancellation or billing cutoff is made.
+
+Eight original synthetic evaluation cases cover three single tools, a two-tool/two-step flow,
+no-tool knowledge, foreign-deck inducement, owned-card injection and unsupported writes. AI drafts
+all expectations; reviewed_by/reviewed_on stay null pending maintainer per-case review. Replay
+runs the real loop on scripted responses with synthetic token counts. Manual Vertex mode uses
+the same synthetic tools, requires explicit opt-in, and was not executed. Ordered exact tool
+names and expected key/value subsets determine scores. Query paraphrases can be penalized;
+denied attempts are separately retained in security results and omitted from task-selection
+scores. This is harness coverage, not model safety or retrieval-quality evidence.
+
+Default tuning, live wire/schema/signature behavior and corpus review remain for maintainer
+confirmation. See the [decision-log draft and verification](issues/issue-70-verification.md).
+Streaming and Neon pooled transaction-local set_config remain unverified.
+
+## 2026-11-07: Enforce the assistant deadline before Vertex sends
+
+Carry the same absolute monotonic deadline through orchestration, generation and assistant query
+embedding. After acquiring credentials, each provider checks the deadline before its HTTP POST
+and caps the transport timeout to the remaining budget. A credential refresh or an already-started
+POST can still finish after the caller times out.
+
+Vertex function calls can omit `args`. Treat an omission as an empty argument object for local
+tool validation and replay the original model part with its opaque signature. When Gemini sends
+a function-call ID, copy it onto the corresponding function response, including a denied call.
+The ID is provider metadata and stays out of public tool summaries and logs. Malformed IDs and
+arguments still fail parsing, and each tool still enforces its required fields.
+
+## 2026-11-07: Stream the final assistant answer on a separate endpoint
+
+Issue #70 adds `POST /v1/assistant/messages/stream` alongside the JSON route. The
+SSE route completes the existing validation, authentication and consent checks
+before sending headers. It reserves one model call for a tool-disabled
+`streamGenerateContent` response. A final-turn instruction asks Vertex to answer
+from the available evidence because the synthetic live probe observed tool calls
+despite mode `NONE`.
+
+Use HTTPX for asynchronous Vertex streaming and retain the existing pinned version
+as a runtime dependency. The SQL worker returns its prepared answer after closing
+its session. The response owns upstream cancellation and emits only visible answer
+text. On disconnect, the planning worker checks a cancellation flag at SQL and
+provider boundaries. HTTPX cleanup runs inside a shielded cancellation scope.
+See [verification](issues/issue-70-verification.md#sse-follow-up).
+
+## 2026-11-09: Allow the GenAI consent grant through CORS
+
+Add `PUT` to the API's CORS method allowlist so an allowed frontend origin can complete the
+preflight for `PUT /v1/me/genai-consent` before submitting the authenticated consent grant.
+
+## 2026-11-10: Bound assistant planning heartbeats and shorten the default deadline
+
+Issue #91 emits only SSE comments (`: ping`) while `prepare()` is pending after
+headers. The interval defaults to 15 seconds, accepts integers from 0 through 60,
+and 0 disables it. Preparation completion, failure, cancellation, disconnect or
+the absolute deadline stops comments; later token gaps do not restart them.
+Comments share the frame sender and deadline/backpressure limits. Event encoding,
+terminal payloads, consent ordering and logging fields remain unchanged.
+
+Lower the shared JSON/SSE assistant deadline default from 60 to 25 seconds, with
+the same 1-120 range. Keep Cloud Run at 30 seconds for cost control and leave the
+generation timeout at 30, capped by the remaining assistant budget. Slow setup
+before the budget starts can still exhaust the platform margin. Preserve the
+historical #70 default and the independent #71 60-second evaluation pin.
+
+Idle proxy disconnection remains an inferred risk, not an observed failure.
+Production override absence is the maintainer's report; no production, proxy or
+Vertex timing was independently verified for this change.
+
+## 2026-11-10: Keep SSE deadlines on the transport across request correlation
+
+PR #92 review reproduced a request-ID middleware handoff gap. Starlette's
+BaseHTTPMiddleware accepted body frames into a memory stream before the outer
+transport finished writing. Preparation completion therefore stopped watching an
+already accepted heartbeat, and event send deadlines also missed the transport.
+The app-level regression reproduced bare EOF for both heartbeat and delta writes;
+the heartbeat-disabled control retained its terminal event.
+
+Use pure ASGI RequestContextMiddleware with inline header injection and direct
+send delegation. Preserve pre-header safe 500 responses, request state, route
+resolution, allowlisted event fields and header-time completion logging. Leave
+CORS ordering and SSE encoding, deadline math and terminal grace unchanged.
+Do not add SSE-specific coordination with BaseHTTPMiddleware's private buffering:
+that would leave ordinary event writes with the same gap. No other application
+BaseHTTPMiddleware registration was found in apps/api/app.
+
+Cancellation is not a generic atomic-write guarantee. In the installed uvicorn
+h11 and httptools implementations, send awaits flow drain before synchronous body
+encoding and transport.write, with no intervening await during that write. This
+supports cancellation before enqueueing a body in those implementations; it does
+not prove socket delivery, other servers or proxies. Terminal delivery remains
+best effort under sustained backpressure or disconnect. The new test uses fake
+preparation and an outer ASGI gate, without lifespan, SQL or model calls.

@@ -14,7 +14,7 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validato
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
-from app.database import database_transaction
+from app.database import bind_public_deck, database_transaction
 from app.errors import ApiError, ErrorResponse
 from app.public_content import PUBLIC_CARD_PROJECTION, PublicReviewCard
 
@@ -106,6 +106,7 @@ def _read_export(request: Request) -> GuestSnapshot:
             request.app.state.database_session_factory
         ) as session:
             session.execute(text("SET TRANSACTION READ ONLY"))
+            bind_public_deck(session, settings.guest_export_deck_id)
             session.execute(
                 text("SELECT set_config('statement_timeout', :timeout, true)"),
                 {"timeout": str(settings.guest_export_query_timeout_ms)},

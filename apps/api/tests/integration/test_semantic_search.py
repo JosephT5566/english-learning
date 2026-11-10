@@ -47,6 +47,7 @@ def search_client(
     monkeypatch.setenv("GOOGLE_ALLOWED_EMAILS", "search@example.test")
     with TestClient(create_app(), raise_server_exceptions=False) as client:
         client.app.state.token_verifier = Verifier()
+        assert client.put("/v1/me/genai-consent", headers=headers()).status_code == 200
         yield client
 
 
@@ -64,6 +65,14 @@ def owner_id(engine: Engine) -> int:
 def add_indexed_card(
     engine: Engine, owner: int, deck_id: object, term: str, vector: list[float]
 ) -> object:
+    # Synthetic indexed corpora represent owners who explicitly opted in.
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "UPDATE users SET genai_consent_at = CURRENT_TIMESTAMP WHERE id = :id"
+            ),
+            {"id": owner},
+        )
     table = Table("learning_cards", MetaData(), autoload_with=engine)
     card_id = insert_card(
         engine,

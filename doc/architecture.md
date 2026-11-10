@@ -1,6 +1,6 @@
 # Architecture Memory
 
-Last updated: 2026-10-24
+Last updated: 2026-11-04
 
 ## Stack
 
@@ -75,6 +75,32 @@ Last updated: 2026-10-24
 - `apps/api/app/writes.py`: server-owned deck/card create, optimistic edit, and archive operations.
 - `apps/api/app/reviews.py`: authenticated atomic review submissions, scheduling transitions,
   idempotent replay, and deterministic row-lock concurrency control.
+- `apps/api/app/genai_consent.py`: authenticated `GET`, `PUT`, and `DELETE`
+  `/v1/me/genai-consent` routes and reusable fresh consent checks. Only the authenticated
+  owner is addressable. Responses contain nullable `genai_consent_at`; PUT retains an existing
+  grant time. DELETE clears consent and deletes every owned embedding in one transaction.
+  Semantic search returns `403 genai_consent_required` before coverage or provider work when
+  consent is absent. Its shared user-row lock lasts through the request transaction.
+  Card embedding claim and final-result transactions acquire the same shared user-row lock
+  before card locks. Withdrawal's user update serializes with both. Provider document calls
+  stay outside transactions; a running call cannot restore deleted claims, even after regrant.
+  Backfill scans only consented owners and processing rechecks consent independently.
+  Revision `20261105_0007` adds nullable `users.genai_consent_at` with no default or inferred
+  grants and drops it on downgrade. The inline consent prompt in
+  `src/routes/search/+page.svelte` names card text and search queries as content sent to
+  Google Vertex AI. Semantic search is blocked until consent is granted. Withdrawal requires
+  a second inline confirmation and warns that it deletes existing embeddings and cannot recall
+  content already sent. A `403 genai_consent_required` returns the page to the consent prompt.
+
+  Known limit: `process_card` checks consent in the claim transaction
+  ([embeddings.py:179](../apps/api/app/embeddings.py#L179)); its shared user-row lock is released
+  when that transaction ends. The provider call runs outside any transaction
+  ([embeddings.py:260](../apps/api/app/embeddings.py#L260)). Withdrawal between claim commit and
+  provider call start can therefore still send that one card's text to the provider. The final
+  write recheck ([embeddings.py:268](../apps/api/app/embeddings.py#L268)) prevents storing the
+  result. The maintainer accepted this limit and rejected holding a database lock across a
+  network call.
+
 - `apps/api/app/semantic_search.py`: bounded query validation and owner-scoped index coverage before
   one Vertex query embedding and exact pgvector ranking. Zero current embeddings skip both provider
   and ranking work after deck and provider-configuration checks. Coverage and ranking apply
@@ -119,9 +145,12 @@ Last updated: 2026-10-24
 - `compose.yaml`: verified local `postgres:17-alpine` service with persistent development volume and
   health check, run through OrbStack's Docker-compatible engine.
 - `.github/workflows/ci.yml`: independent frontend and PostgreSQL-backed backend verification jobs.
-- `.github/workflows/ai-agent.yml`: issue-driven Codex implementation with disposable full-stack
-  test dependencies, workflow/HEAD guards, and mandatory candidate verification before draft PR
-  publication. See [`development.md`](development.md#automated-issue-verification) for the gate.
+- `.github/workflows/ai-agent.yml`: checked-in Codex workflow. The automatic `issues` labeled
+  trigger is disabled. `ai-ready` currently only means an issue is approved for an agent to read
+  and implement. It does not automatically trigger this workflow. Manual `workflow_dispatch`
+  remains, and the file still prepares disposable full-stack test dependencies, guards workflow
+  and HEAD changes, and requires candidate verification before draft PR publication. See
+  [`development.md`](development.md#automated-issue-verification).
 - `.github/workflows/publish-api-image.yml`: protected manual WIF workflow that builds and publishes
   an immutable commit-tagged API image through an Artifact-Registry-only identity.
 - `.github/workflows/migrate-production.yml`: protected manual OIDC workflow that serializes Neon
@@ -160,8 +189,9 @@ Last updated: 2026-10-24
 10. HTTP middleware assigns a new request UUID. Expected, validation, framework, and unexpected
     failures return one stable envelope and never serialize internal exception details.
 11. The outer CORS middleware permits only configured HTTP(S) frontend origins, the product's
-    `GET`/`POST`/`PATCH`/`DELETE` methods, and its bearer/content/idempotency headers. It exposes `X-Request-ID` for
-    browser-visible support diagnostics without enabling credentialed cookies.
+    `GET`/`POST`/`PUT`/`PATCH`/`DELETE` methods, and its bearer/content/idempotency headers. It
+    exposes `X-Request-ID` for browser-visible support diagnostics without enabling credentialed
+    cookies.
 12. The production container starts `app.serve` directly as PID 1. Uvicorn owns SIGTERM handling,
     stops accepting work, completes FastAPI lifespan cleanup within its bounded drain window, and
     exits. Schema migrations use the same image but run as a separate pre-deploy command; web
@@ -552,3 +582,131 @@ CI validates the source snapshot before building. Browser fixtures replace only 
 output after compilation, preserving the tracked source. The local validator and browser/export
 transports share the generated strict schema, duplicate-ID check and 512 KiB streaming limit.
 Live WIF, Actions PR creation and deployment are not verified by repository tests.
+
+## Transaction-local row level security (2026-11-05)
+
+Migration `20261105_0008` enables fail-closed RLS on all 11 owner-bearing tables.
+The owner policy uses `owner_id = NULLIF(current_setting('app.user_id', true), '')::bigint`
+for both visibility and writes. Missing, empty, or unknown owner context exposes no rows.
+Existing application owner predicates remain required. `users` stays outside RLS so authentication
+can resolve the internal owner before accessing private tables.
+
+`database.bind_owner` validates a positive integer and stores it in the short-lived session's
+`info`. The SQLAlchemy `Session.after_begin` listener parameterizes
+`SELECT set_config('app.user_id', :owner_id, true)` on every transaction, including after a
+mid-request commit or rollback. Binding after authentication's first query also applies it to the
+active transaction. An identity cannot change within one session. Request sessions bind in
+`auth.current_user`; `database_transaction(owner_id=...)` binds embedding claim/final-write
+transactions and backfill scans. Consent locks and document-provider calls outside transactions
+retain their existing boundaries.
+
+Guest export opens a separate unowned session, executes `SET TRANSACTION READ ONLY` first,
+then `database.bind_public_deck` sets only `app.public_deck_id` to the configured UUID.
+The two public SELECT policies expose only that deck and its cards; they grant no writes and no
+access to the other nine tables. Owner and public identities cannot coexist in an app session.
+All identity settings are transaction-local (`true`); pooled physical connections retain neither
+identity after commit/rollback. Local PostgreSQL pool reuse is tested. Neon pooled transaction
+mode, production pooling behavior and per-transaction latency remain unverified.
+
+RLS is not forced: table owners and superusers/BYPASSRLS roles intentionally bypass it for
+migration and maintenance. Runtime must use a non-owner role with neither elevated flag.
+Operator report (2026-11-05), not programmatically verified: production runtime uses
+`app_runtime_limited`, whose `rolsuper` and `rolbypassrls` are false; all 11 tables are owned by
+`neondb_owner`. No production connection was inspected by this implementation.
+
+The old `imports.py` and `confirmed_imports.py` tools are considered disabled under runtime RLS;
+they do not bind an owner and cannot access the protected import tables. Their historical tests
+use explicit owner maintenance sessions. `import_items` lacks `owner_id` and remains a known RLS
+gap; its logical ownership is through `import_runs`. Removing retired tools/tables is separate work.
+
+For this migration, override the ordinary migrate-before-app release sequence above:
+
+1. Deploy and verify the app revision that binds `app.user_id` while the previous schema is still
+   active. Ensure every serving runtime revision supports transaction identity before migration.
+2. Apply migration 0008, then verify authenticated reads/writes, embedding, backfill and export
+   with the restricted runtime role before completing rollout.
+3. Before rolling back to an app without identity binding, first disable RLS on all 11 tables
+   (`ALTER TABLE ... DISABLE ROW LEVEL SECURITY`) or explicitly downgrade 0008 using the migration
+   role. Only then roll back application traffic. An ordinary application-only rollback is unsafe.
+
+These are operator instructions, not an executed rollout. Existing release workflows/scripts were
+not changed and still require a separately reviewed operational sequence for this exception.
+See [Issue #75 verification](issues/issue-75-verification.md) for local evidence and limits.
+
+## Stateless card extraction (2026-11-05)
+
+`app/extraction.py` registers `POST /v1/decks/{deck_id}/card-drafts/extract` alongside the
+unchanged draft validation/bulk creation routes. It shares the authenticated RLS-bound session,
+reads only the owned active deck's languages, then calls `require_genai_consent`. It explicitly
+commits this short transaction before invoking the app-scoped generation provider. No connection
+or consent lock spans model latency; a later consent withdrawal cannot recall in-flight data.
+There is no draft storage or generated-card write, so there is no derived persistence to reconcile.
+
+`app/generation.py` owns a general generation Protocol, lazy ADC REST adapter, bounded error codes,
+request/response contract functions and schema conversion. Structured JSON is an optional request
+capability, leaving future tool calling to #70. Extraction uses the existing `CardDrafts` schema,
+projects it to an explicit provider subset and strictly validates returned JSON with the complete
+server model. Material, instruction and existing drafts stay in a JSON data message; fixed prompt
+rules are separate. Prompt alignment tests compare frontend/server key rules. No frontend flow,
+auth contract, migration, scheduling or bulk-create behavior changes.
+
+Vertex request/response/schema compatibility is unverified; tests use handwritten and scripted
+responses only. Missing explicit model/project configuration fails closed with 503. Structured
+completion logs contain identifiers, adjustment, timing, tokens and result code only. The eight
+AI-drafted synthetic evaluation cases remain unreviewed. See
+[Issue #72 verification](issues/issue-72-verification.md) for acceptance evidence and limits.
+
+## Stateless readonly assistant (2026-11-05)
+
+`app/assistant/routes.py` adds the authenticated, consent-gated non-streaming
+`POST /v1/assistant/messages` contract. It validates text-only user/assistant history and
+configured message/character limits before checking consent. No conversation storage,
+write tools or migrations are added. The browser UI is deferred pending design selection;
+only generated API types change under `src/`.
+
+`app/assistant/loop.py` runs at most three model calls through #72's generation Protocol.
+`GenerationRequest` now optionally carries multi-turn contents, fixed function declarations
+and explicit tool disabling. `GenerationResult` preserves complete validated model parts,
+including opaque thoughtSignature, plus parsed function calls. Extraction still rejects
+unsolicited function calls. Unknown/mixed media parts and malformed calls fail closed;
+existing malformed-body error classification and generation location routing remain intact.
+The final call sends `NONE`. Parsed calls normalize omitted arguments to an empty object
+and echo a supplied call ID in the matching tool response. Signed parts are replayed intact.
+The synthetic live evaluation exercised this protocol on Gemini 3.5 Flash-Lite. The server
+blocked a tool call the model still proposed on its final step.
+See the [dated evaluation](training/issues/70/README.md#live-result-on-2026-11-07).
+
+`app/assistant/tools.py` owns the fixed registry and strict argument models. Unknown names,
+extra owner/user fields and invalid arguments never reach tools. Owner identity comes from
+the request session. Shared `semantic_search.search_cards` retains the old HTTP query logic;
+its assistant-only transaction-release option also reapplies readonly SQL settings before
+ranking. `reads.get_due_cards` retains pagination and filter behavior. Statistics reuses
+`reads.DUE_CONDITION` rather than duplicating due rules. Tools use a common request-time
+snapshot, explicit owner predicates and transaction-local RLS binding.
+
+The existing auth transaction completes before starting the assistant budget. An orchestration
+worker creates and exclusively owns a separate session, binds the same authenticated owner,
+and closes it itself even after the caller times out. One absolute deadline covers initial
+and repeated consent, pool waits, tool SQL and provider waits. SQL gets the remaining statement
+timeout before consent and tool reads. Auth/validation remain framework preconditions. Consent
+work commits before generation; tools open short readonly transactions and roll them back. Assistant embedding latency also runs without a database transaction.
+Every new transaction uses the existing after_begin identity binding. Provider-only worker
+threads bound waits, cannot access sessions or execute tools, and may finish after a timeout;
+remote cancellation is not guaranteed. Consent is checked again before each generated turn
+and before query embedding. Already-transmitted data cannot be recalled after withdrawal.
+Per-step structured logs contain only correlation, bounded state, timing and nullable usage.
+
+[Issue #70 verification](issues/issue-70-verification.md) maps backend acceptance to local
+checks. [Evaluation assets](training/issues/70/README.md) use a synthetic tool sandbox in both
+modes; replay is provisional and true Vertex mode requires explicit flag/environment opt-in.
+The first evaluation covers the non-streaming route. Production and Neon pool behavior
+remain unverified. See the [assistant evaluation](training/issues/70/README.md).
+
+`POST /v1/assistant/messages/stream` accepts the same request and checks consent before
+the HTTP response starts. The planning worker uses the same loop and an owner-bound
+SQL session. It reserves one call for a tool-disabled Vertex stream and returns the
+request and summaries after closing the session. The async response emits only visible
+answer fragments and one terminal event. Its ASGI listener cancels the response on
+disconnect, signals the planning worker to stop dispatching, and closes the upstream
+HTTPX stream. Both phases use the same absolute deadline.
+See [SSE verification](issues/issue-70-verification.md#sse-follow-up).

@@ -1,6 +1,6 @@
 # Development Memory
 
-Last updated: 2026-10-22
+Last updated: 2026-11-04
 
 ## Instruction Ownership
 
@@ -14,13 +14,23 @@ Maintain each instruction in its owning source and link to it from task entry po
 | Durable technical decisions and known follow-up areas                                                 | [`decisions.md`](decisions.md)                                                      |
 | Setup, environment variables, command usage, and CI behavior                                          | This file; [`apps/api/README.md`](../apps/api/README.md) for API command details    |
 | Training context loading, coaching modes, and task closure                                            | [`full-stack-training-coach`](../.agents/skills/full-stack-training-coach/SKILL.md) |
+| Issue-first rule, untrusted issue and PR text, maintainer-approval list, and merge authorization      | [`AGENTS.md`](../AGENTS.md#issue-first)                                             |
+| Agent stage order from an idea through maintainer merge                                               | [`agent-workflow.md`](agent-workflow.md)                                            |
+| Rewriting an idea and adding `ai-ready` only after maintainer confirmation                            | [`issue-enhance`](../.agents/skills/issue-enhance/SKILL.md)                         |
+| GitHub pull-request review comments                                                                   | [`review-pr`](../.agents/skills/review-pr/SKILL.md)                                 |
+| Implementing one approved issue, including red-first tests and stop conditions                        | [`implement-from-issue`](../.agents/skills/implement-from-issue/SKILL.md)           |
+| Design options before a visible UI change                                                             | [`ui-design-gate`](../.agents/skills/ui-design-gate/SKILL.md)                       |
+| Commands from package.json and CI, plus how to report them                                            | [`verify`](../.agents/skills/verify/SKILL.md)                                       |
+| Codex planner, worker, and reviewer handoffs and PASS/FAIL verdicts                                   | [`codex-subagents.md`](codex-subagents.md)                                          |
 | Active training milestone, evidence limits, and next action                                           | [`training/project-memory.md`](training/project-memory.md)                          |
 | Detailed verification evidence and historical checkpoints                                             | Linked training issue artifacts and relevant weekly-log excerpts                    |
 
 Root instructions apply across tasks. The training skill is loaded for training, coaching,
 roadmap, milestone, retrospective, or project-evidence work; ordinary coding does not require
 that workflow. Keep its detailed closure procedure in the skill rather than duplicating it
-in root instructions.
+in root instructions. Issue stage order lives in [`agent-workflow.md`](agent-workflow.md).
+Link to the owning source in the table above instead of copying the merge rule or the
+GitHub review-comment procedure.
 
 Add a directory-local `AGENTS.md` when a source subtree needs additional conventions. Create a
 skill when a recurring task needs a reusable method and observed agent failures justify that
@@ -154,6 +164,12 @@ They require OIDC-based Google authentication and a protected `production` GitHu
 GitHub runner never receives `DATABASE_URL`; the migration job and API revision read separate direct
 and pooled Neon URLs from Secret Manager through their own runtime identities.
 
+To enable Vertex-backed generation on the API candidate, set `VERTEX_PROJECT_ID` and
+`GENERATION_MODEL` as nonsecret variables in the protected GitHub `production` environment.
+Set `GENERATION_LOCATION` if the model uses a separate endpoint such as `global`. The workflow
+passes configured generation values to the revision. Without a generation location override,
+the API uses `VERTEX_LOCATION`, which also controls embedding requests.
+
 ## Validation Expectations
 
 Use the change-to-check table in [`AGENTS.md`](../AGENTS.md#verification) for required local checks.
@@ -173,11 +189,24 @@ must pass their checks now; unrelated baseline failures do not exempt newly chan
 
 ## Automated Issue Verification
 
-The `AI Agent` workflow runs on an `ai-ready` issue label or a manual issue-number dispatch. It
-checks out the default branch and prepares Node 22, Python 3.12, locked npm/uv dependencies,
-Chrome, and disposable PostgreSQL 17 with pgvector. Public frontend values are placeholders;
-backend configuration uses test mode and local database credentials, with no production provider
-configuration. Browser/system dependencies are installed before Codex removes sudo access.
+`.github/workflows/ai-agent.yml` is checked in. Its automatic `issues` labeled trigger is
+disabled. `ai-ready` currently only means the issue is approved for an agent to read and implement.
+Adding the label does not automatically trigger any workflow. The maintainer reports that
+`OPENAI_API_KEY` is not configured. Manual `workflow_dispatch` remains, and the job guards stay in
+the file. This section describes that remaining file. `ai-ready` is the approval label in
+[`AGENTS.md`](../AGENTS.md#issue-first).
+
+The file no longer starts from an issue label. Its job `if` still accepts `workflow_dispatch` and
+still names `ai-ready`, so restoring the commented `issues` trigger is a small edit. A manual
+issue-number dispatch checks out the default branch and prepares Node 22, Python 3.12, locked
+npm/uv dependencies, Chrome, and disposable PostgreSQL 17 with pgvector. Public frontend values
+are placeholders; backend configuration uses test mode and local database credentials, with no
+production provider configuration. Browser/system dependencies are installed before Codex removes
+sudo access.
+
+The approval checklist and decision log stay with the Issue-first rule in
+[`AGENTS.md`](../AGENTS.md#issue-first). A mechanical checklist check inside the workflow is a
+separate change and needs maintainer approval.
 
 Codex follows `AGENTS.md` and leaves changes for the workflow. It must not modify workflows or Git
 HEAD, publish, or deploy. The workflow guards those outputs, then creates a local candidate commit
@@ -188,14 +217,15 @@ container verification. The verified commit and working tree must remain unchang
 
 Only a passing candidate is pushed and opened as a draft PR with a verification summary and run
 link. Failure or cancellation is reported in the Actions summary; an empty diff creates no PR and
-makes no completion claim. The job is bounded to 60 minutes, with 30 minutes for Codex itself.
-The workflow does not automatically retry failed verification or declare acceptance criteria met.
+makes no completion claim. The job is bounded to 60 minutes, with 30 minutes for Codex itself. The
+workflow does not automatically retry failed verification or declare acceptance criteria met.
 
-Draft PRs require human acceptance review. PR workflows started by `GITHUB_TOKEN` may await a
-maintainer's approval; approve those checks in GitHub before merging. See
+Draft PRs require human acceptance review. Merging is defined in
+[`AGENTS.md`](../AGENTS.md#issue-first). PR workflows started by `GITHUB_TOKEN` may await a
+maintainer's approval; the maintainer approves those checks in GitHub before merging. See
 [GitHub's workflow-triggering rules](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow).
-Changing the workflow requires local verification first; do not trigger an API-backed agent run
-merely to validate YAML or shell syntax.
+Changing the workflow requires maintainer approval and local verification first; do not trigger an
+API-backed agent run merely to validate YAML or shell syntax.
 
 ## Style Notes
 

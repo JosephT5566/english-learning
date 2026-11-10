@@ -1,3 +1,4 @@
+import type { components } from "./generated";
 import { env } from "$env/dynamic/public";
 import { getTokenIfValid, isCurrentToken, signOut } from "$lib/auth";
 import {
@@ -76,10 +77,10 @@ async function parseJson(response: Response): Promise<unknown> {
   }
 }
 
-async function authenticatedRequest(
+async function authenticatedResponse(
   path: string,
   init: RequestInit = {},
-): Promise<unknown> {
+): Promise<Response> {
   const token = getTokenIfValid();
   if (!token) {
     throw new ApiClientError(
@@ -100,7 +101,8 @@ async function authenticatedRequest(
         Authorization: `Bearer ${token}`,
       },
     });
-  } catch {
+  } catch (cause) {
+    if (init.signal?.aborted) throw cause;
     throw new ApiClientError(
       "We could not reach the service. The result is not confirmed yet.",
       "network",
@@ -108,8 +110,8 @@ async function authenticatedRequest(
     );
   }
 
-  const data = await parseJson(response);
   if (!response.ok) {
+    const data = await parseJson(response);
     const error: ApiErrorBody = isApiErrorEnvelope(data)
       ? data.error
       : {
@@ -129,7 +131,149 @@ async function authenticatedRequest(
       error.details,
     );
   }
-  return data;
+  return response;
+}
+
+async function authenticatedRequest(
+  path: string,
+  init?: RequestInit,
+): Promise<unknown> {
+  return parseJson(await authenticatedResponse(path, init));
+}
+
+export type AssistantMessage = components["schemas"]["Message"];
+type AssistantStop = components["schemas"]["AssistantResponse"]["stop_reason"];
+export type AssistantTool = Pick<
+  components["schemas"]["ToolCallSummary"],
+  "name" | "status"
+>;
+
+function invalidAssistantStream(): ApiClientError {
+  return new ApiClientError(
+    "The assistant response was interrupted.",
+    "invalid_response",
+    true,
+  );
+}
+
+export async function streamAssistantReply(
+  messages: AssistantMessage[],
+  onText: (text: string) => void,
+  signal: AbortSignal,
+): Promise<{ stop: AssistantStop; tools: AssistantTool[] }> {
+  const response = await authenticatedResponse(
+    "/v1/assistant/messages/stream",
+    {
+      method: "POST",
+      headers: {
+        Accept: "text/event-stream",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        messages,
+      } satisfies components["schemas"]["AssistantRequest"]),
+      signal,
+    },
+  );
+  const contentType = response.headers
+    .get("Content-Type")
+    ?.split(";")[0]
+    ?.trim();
+  if (!response.body || contentType !== "text/event-stream")
+    throw invalidAssistantStream();
+
+  const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
+  let buffer = "";
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) throw invalidAssistantStream();
+      buffer += value;
+      let boundary = /\r?\n\r?\n/.exec(buffer);
+      while (boundary) {
+        const lines = buffer.slice(0, boundary.index).split(/\r?\n/);
+        buffer = buffer.slice(boundary.index + boundary[0].length);
+        boundary = /\r?\n\r?\n/.exec(buffer);
+        const event = lines
+          .find((line) => line.startsWith("event:"))
+          ?.slice(6)
+          .trim();
+        const data = lines
+          .filter((line) => line.startsWith("data:"))
+          .map((line) => line.slice(5).replace(/^ /, ""))
+          .join("\n");
+        if (!event || !data) continue;
+        const payload: unknown = JSON.parse(data);
+        if (typeof payload !== "object" || payload === null)
+          throw invalidAssistantStream();
+
+        if (
+          event === "delta" &&
+          "text" in payload &&
+          typeof payload.text === "string"
+        ) {
+          onText(payload.text);
+          continue;
+        }
+        if (
+          event === "error" &&
+          "code" in payload &&
+          typeof payload.code === "string" &&
+          "message" in payload &&
+          typeof payload.message === "string" &&
+          "retryable" in payload &&
+          typeof payload.retryable === "boolean"
+        ) {
+          throw new ApiClientError(
+            payload.message,
+            "api",
+            payload.retryable,
+            undefined,
+            payload.code,
+          );
+        }
+        if (
+          event === "done" &&
+          "stop_reason" in payload &&
+          "tool_calls" in payload &&
+          (payload.stop_reason === "completed" ||
+            payload.stop_reason === "max_steps" ||
+            payload.stop_reason === "timeout") &&
+          Array.isArray(payload.tool_calls)
+        ) {
+          const tools = payload.tool_calls.map((tool: unknown) => {
+            if (
+              typeof tool !== "object" ||
+              tool === null ||
+              !("name" in tool) ||
+              typeof tool.name !== "string" ||
+              !("status" in tool)
+            )
+              throw invalidAssistantStream();
+            switch (tool.status) {
+              case "ok":
+              case "invalid_call":
+              case "too_many_calls":
+              case "tool_unavailable":
+              case "tools_disabled":
+              case "timeout":
+                return { name: tool.name, status: tool.status };
+              default:
+                throw invalidAssistantStream();
+            }
+          });
+          return { stop: payload.stop_reason, tools };
+        }
+        throw invalidAssistantStream();
+      }
+    }
+  } catch (cause) {
+    if (signal.aborted || cause instanceof ApiClientError) throw cause;
+    throw invalidAssistantStream();
+  } finally {
+    void reader.cancel().catch(() => {});
+    reader.releaseLock();
+  }
 }
 
 function queryString(
@@ -459,4 +603,41 @@ export async function semanticSearch(
     );
   }
   return data;
+}
+
+type GenAIConsent = components["schemas"]["GenAIConsentResponse"];
+
+async function requestGenAIConsent(
+  method: "GET" | "PUT" | "DELETE",
+): Promise<GenAIConsent> {
+  const data = await authenticatedRequest("/v1/me/genai-consent", { method });
+  if (
+    !data ||
+    typeof data !== "object" ||
+    !("genai_consent_at" in data) ||
+    !(
+      data.genai_consent_at === null ||
+      (typeof data.genai_consent_at === "string" &&
+        Number.isFinite(Date.parse(data.genai_consent_at)))
+    )
+  ) {
+    throw new ApiClientError(
+      "The consent response was invalid.",
+      "invalid_response",
+      true,
+    );
+  }
+  return { genai_consent_at: data.genai_consent_at };
+}
+
+export function getGenAIConsent(): Promise<GenAIConsent> {
+  return requestGenAIConsent("GET");
+}
+
+export function grantGenAIConsent(): Promise<GenAIConsent> {
+  return requestGenAIConsent("PUT");
+}
+
+export function withdrawGenAIConsent(): Promise<GenAIConsent> {
+  return requestGenAIConsent("DELETE");
 }

@@ -119,6 +119,32 @@ class Settings(BaseSettings):
     vertex_location: Annotated[
         str, StringConstraints(pattern=r"^[a-z]+-[a-z]+[0-9]$")
     ] = "us-central1"
+    generation_location: (
+        Annotated[str, StringConstraints(pattern=r"^(global|[a-z]+-[a-z]+[0-9])$")]
+        | None
+    ) = None
+
+    @property
+    def effective_generation_location(self) -> str:
+        """Keep regional embedding settings independent of generation overrides."""
+        return self.generation_location or self.vertex_location
+
+    generation_model: (
+        Annotated[str, StringConstraints(pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")]
+        | None
+    ) = None
+    generation_timeout_seconds: Annotated[int, Field(gt=0, le=120)] = 30
+    generation_max_output_tokens: Annotated[int, Field(gt=0, le=32768)] = 8192
+    generation_material_max_chars: Annotated[int, Field(gt=0, le=100000)] = 20000
+    generation_instruction_max_chars: Annotated[int, Field(gt=0, le=10000)] = 2000
+    assistant_max_steps: Annotated[int, Field(ge=1, le=3)] = 3
+    assistant_timeout_seconds: Annotated[int, Field(ge=1, le=120)] = 25
+    assistant_sse_heartbeat_seconds: Annotated[int, Field(ge=0, le=60)] = 15
+    assistant_max_output_tokens: Annotated[int, Field(ge=1, le=8192)] = 2048
+    assistant_max_messages: Annotated[int, Field(ge=1, le=100)] = 20
+    assistant_max_chars: Annotated[int, Field(ge=1, le=100000)] = 12000
+    assistant_max_tool_calls: Annotated[int, Field(ge=1, le=10)] = 3
+    assistant_tool_limit: Annotated[int, Field(ge=1, le=20)] = 10
     cors_allowed_origins: Annotated[tuple[str, ...], Field(min_length=1)] = (
         DEFAULT_CORS_ALLOWED_ORIGINS
     )

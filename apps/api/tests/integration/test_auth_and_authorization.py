@@ -54,6 +54,12 @@ def api_client(
     )
     with TestClient(create_app(), raise_server_exceptions=False) as client:
         client.app.state.token_verifier = SwitchingTokenVerifier()
+        assert (
+            client.put(
+                "/v1/me/genai-consent", headers=bearer("fixture-token")
+            ).status_code
+            == 200
+        )
         yield client
 
 
@@ -504,6 +510,7 @@ def test_only_semantic_card_edits_call_provider(
 )
 def test_card_save_refreshes_hash_from_one_semantic_snapshot(
     api_client: TestClient,
+    migrated_database_engine: Engine,
     operation: str,
     hash_writes: int,
 ) -> None:
@@ -531,7 +538,7 @@ def test_card_save_refreshes_hash_from_one_semantic_snapshot(
         assert created.status_code == 201
         original = created.json()
         if operation == "missing_hash_note":
-            with engine.begin() as connection:
+            with migrated_database_engine.begin() as connection:
                 connection.execute(
                     text(
                         "UPDATE learning_cards SET semantic_content_hash = NULL WHERE id = :id"
@@ -575,7 +582,7 @@ def test_card_save_refreshes_hash_from_one_semantic_snapshot(
     assert saved["term"] == expected["term"].strip()
     assert saved["meaning"] == expected["meaning"]
     assert saved["note"] == expected.get("note")
-    with engine.connect() as connection:
+    with migrated_database_engine.connect() as connection:
         stored_hash = connection.execute(
             text("SELECT semantic_content_hash FROM learning_cards WHERE id = :id"),
             {"id": saved["id"]},
@@ -663,3 +670,98 @@ def test_owner_can_edit_and_archive_with_version_conflict_protection(
     assert stale.status_code == 409
     assert stale.json()["error"]["code"] == "version_conflict"
     assert archived_card.status_code == archived_deck.status_code == 204
+
+
+def test_http_identity_rebinds_after_commit_and_isolates_both_users(
+    api_client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app import writes
+
+    original = writes._create_card_in_transaction
+    seen = []
+
+    def commit_then_read(session, payload, owner_id, key):
+        detail = original(session, payload, owner_id, key)
+        session.commit()
+        row = session.execute(
+            text("""
+            SELECT current_user, current_setting('app.user_id', true),
+                   current_setting('app.public_deck_id', true)
+        """)
+        ).one()
+        assert row[0] == "app_rls_test"
+        assert row[1] == str(owner_id)
+        assert not row[2]
+        assert writes._card_detail(session, detail.id, owner_id) == detail
+        seen.append(owner_id)
+        return detail
+
+    monkeypatch.setattr(writes, "_create_card_in_transaction", commit_then_read)
+    resources = []
+    for token in ("fixture-token", "attacker-token"):
+        deck = api_client.post(
+            "/v1/decks",
+            headers=create_headers(token),
+            json={
+                "title": "Owned RLS deck",
+                "target_language": "en",
+                "explanation_language": "zh-TW",
+            },
+        )
+        assert deck.status_code == 201
+        card = api_client.post(
+            "/v1/cards",
+            headers=create_headers(token),
+            json={
+                "deck_id": deck.json()["id"],
+                "term": "RLS card",
+                "meaning": "private",
+            },
+        )
+        assert card.status_code == 201
+        resources.append((token, deck.json()["id"], card.json()["id"]))
+    assert len(set(seen)) == 2
+    for index, (token, _, _) in enumerate(resources):
+        _, deck, card = resources[1 - index]
+        headers = bearer(token)
+        assert api_client.get(f"/v1/decks/{deck}", headers=headers).status_code == 404
+        assert api_client.get(f"/v1/cards/{card}", headers=headers).status_code == 404
+        assert (
+            api_client.patch(
+                f"/v1/decks/{deck}",
+                headers=headers,
+                json={"version": 1, "title": "stolen"},
+            ).status_code
+            == 404
+        )
+        assert (
+            api_client.patch(
+                f"/v1/cards/{card}",
+                headers=headers,
+                json={"version": 1, "meaning": "stolen"},
+            ).status_code
+            == 404
+        )
+        assert (
+            api_client.delete(f"/v1/cards/{card}", headers=headers).status_code == 404
+        )
+        assert (
+            api_client.delete(f"/v1/decks/{deck}", headers=headers).status_code == 404
+        )
+        review = api_client.post(
+            "/v1/reviews",
+            headers=create_headers(token),
+            json={
+                "items": [{"card_id": card, "decision": "yes", "expected_version": 1}]
+            },
+        )
+        assert review.status_code == 404
+    for token, deck, card in resources:
+        assert (
+            api_client.get(f"/v1/decks/{deck}", headers=bearer(token)).json()["title"]
+            == "Owned RLS deck"
+        )
+        assert (
+            api_client.get(f"/v1/cards/{card}", headers=bearer(token)).json()["meaning"]
+            == "private"
+        )

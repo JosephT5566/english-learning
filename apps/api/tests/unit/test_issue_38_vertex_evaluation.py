@@ -40,3 +40,60 @@ def test_synthetic_run_uses_document_and_query_tasks(vertex_module) -> None:
     assert all(task == "RETRIEVAL_DOCUMENT" for _, task in seen[:10])
     assert all(task == "RETRIEVAL_QUERY" for _, task in seen[10:])
     assert seen[0][0].startswith("language: en\nterm: exhausted")
+    from app.semantic_text import canonical_text
+
+    assert [content for content, _ in seen[:10]] == [
+        canonical_text({"language": "en", **card}) for card in labels["cards"]
+    ]
+
+
+def test_dump_vectors_cli_writes_compatible_fixture(
+    vertex_module, monkeypatch, tmp_path
+):
+    import hashlib
+    from datetime import datetime
+    from types import SimpleNamespace
+
+    from app.semantic_text import MODEL_VERSION
+
+    destination = tmp_path / "fixtures" / "synthetic-en-v1.vectors.json"
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "evaluate_vertex.py",
+            "--project",
+            "synthetic-project",
+            "--dump-vectors",
+            str(destination),
+        ],
+    )
+    monkeypatch.setattr(
+        vertex_module.subprocess,
+        "run",
+        lambda *args, **kwargs: SimpleNamespace(stdout="fake-token"),
+    )
+    monkeypatch.setattr(
+        vertex_module,
+        "request_embedding",
+        lambda **kwargs: ([1.0] + [0.0] * 511, 3, 1.0),
+    )
+    vertex_module.main()
+    payload = json.loads(destination.read_text())
+    labels = json.loads(vertex_module.FIXTURE.read_text())
+    assert payload["schema_version"] == 1
+    assert payload["model"] == vertex_module.MODEL
+    assert payload["dim"] == 512
+    assert payload["model_version"] == MODEL_VERSION
+    assert (
+        payload["relevance_sha256"]
+        == hashlib.sha256(vertex_module.FIXTURE.read_bytes()).hexdigest()
+    )
+    assert (
+        datetime.fromisoformat(payload["created_at"]).utcoffset().total_seconds() == 0
+    )
+    assert set(payload["cards"]) == {card["id"] for card in labels["cards"]}
+    assert set(payload["queries"]) == {query["text"] for query in labels["queries"]}
+    assert all(
+        len(vector) == 512
+        for vector in [*payload["cards"].values(), *payload["queries"].values()]
+    )

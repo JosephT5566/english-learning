@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from app.assistant.routes import router as assistant_router
 from app.auth import GoogleTokenVerifier
 from app.auth import router as auth_router
 from app.config import load_settings
@@ -17,10 +18,13 @@ from app.database import (
 )
 from app.embeddings import VertexEmbeddingProvider
 from app.errors import register_error_handlers
+from app.extraction import router as extraction_router
+from app.genai_consent import router as genai_consent_router
+from app.generation import VertexGenerationProvider
 from app.guest_export import router as guest_export_router
 from app.health import router as health_router
 from app.reads import router as reads_router
-from app.request_context import add_request_id
+from app.request_context import RequestContextMiddleware
 from app.reviews import router as reviews_router
 from app.semantic_search import router as semantic_search_router
 from app.writes import router as writes_router
@@ -42,7 +46,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     database_session_factory = create_database_session_factory(database_engine)
 
     embedding_provider = VertexEmbeddingProvider()
+    generation_provider = VertexGenerationProvider()
     try:
+        app.state.generation_provider = generation_provider
         app.state.embedding_provider = embedding_provider
         # Expose application-scoped resources to request handlers.
         app.state.settings = settings
@@ -53,7 +59,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         yield
     finally:
         try:
-            embedding_provider.close()
+            try:
+                generation_provider.close()
+            finally:
+                embedding_provider.close()
         finally:
             dispose_database_engine(database_engine)
 
@@ -66,14 +75,17 @@ def create_app() -> FastAPI:
     """
 
     app = FastAPI(title="English Learning API", lifespan=lifespan)
-    app.middleware("http")(add_request_id)
+    app.add_middleware(RequestContextMiddleware)
     app.add_middleware(ConfiguredCORSMiddleware)
     register_error_handlers(app)
     app.include_router(health_router)
     app.include_router(guest_export_router)
     app.include_router(auth_router)
+    app.include_router(genai_consent_router)
     app.include_router(reads_router)
     app.include_router(writes_router)
+    app.include_router(extraction_router)
+    app.include_router(assistant_router)
     app.include_router(reviews_router)
     app.include_router(semantic_search_router)
     return app

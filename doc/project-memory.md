@@ -1,12 +1,55 @@
 # Project Memory
 
-Last updated: 2026-10-24
+Last updated: 2026-11-08
 
 This file is the current product-state index. Training milestones, evidence limits, and the next
 training action belong in [`training/project-memory.md`](training/project-memory.md); detailed
 verification records belong in the linked issue artifacts. Implementation and test results take
 precedence over stale documentation. Deployment statements below summarize recorded evidence, not
 a fresh inspection of the live services.
+
+## Stateless readonly assistant (2026-11-08)
+
+Issue #70 adds a non-streaming `POST /v1/assistant/messages` with consent,
+text-only history limits, a maximum of three generated turns and exactly three readonly
+owner-bound tools. Tool summaries omit card results; no conversation persists. Search/due
+queries are shared with existing endpoints; statistics reuses the same due predicate.
+Model and assistant query-embedding waits release database transactions; new transactions
+retain existing RLS binding. Settings bound turns, time, output, history and tool batches.
+The signed-in `/assistant` page streams replies in a single column with expandable tool
+summaries. It shares the AI consent panel with Search and keeps conversation history in
+page memory. Partial replies stay visible after an interruption. Only completed turns are
+sent as context for later questions.
+The PR #86 follow-up checks the shared deadline before sending content to Vertex and
+replays signed function calls with their IDs. The provisional live evaluation exercised
+eight synthetic cases on Gemini 3.5 Flash-Lite. Seven produced a reply and one reached
+the step cap. The same PR adds an authenticated SSE route with incremental final
+answer text, shared tool limits and a disconnect-aware Vertex stream. Production and
+Neon pooled behavior remain unverified.
+See [verification](issues/issue-70-verification.md) and the
+[dated evaluation](training/issues/70/README.md#live-result-on-2026-11-07).
+
+## Stateless card extraction (2026-11-05)
+
+Issue #72 adds a backend-only, consent-gated extraction/adjustment preview endpoint with strict
+`CardDrafts` validation. Deck languages come from owned rows; external generation runs after
+releasing the transaction/consent lock. No cards or drafts are persisted and hand-pasted JSON
+remains unchanged. Generation is disabled until an explicit model and project are configured.
+REST/schema compatibility, model/IAM and real quality are unverified; eight AI-drafted synthetic
+cases await maintainer review. Local evidence is in
+[Issue #72 verification](issues/issue-72-verification.md); evaluation tooling is in
+[the evaluation README](training/issues/72/README.md). No live model or production call occurred.
+
+## Owner isolation through RLS (2026-11-05)
+
+Issue #75 adds fail-closed RLS for 11 owner-bearing tables. Authentication binds the internal
+owner to every request transaction; embedding and backfill bind explicit owners. Guest export
+uses only its configured public deck UUID in a separate read-only transaction. Owner connections
+intentionally bypass policies. Retired import tools are disabled under runtime RLS; `import_items`
+remains a known gap. Deploy identity-binding code before migration 0008; disable RLS before
+rolling back to older code. Existing release automation does not implement this exception.
+Local evidence and production/Neon limits are in [Issue #75 verification](issues/issue-75-verification.md).
+No production deployment or external model call was performed.
 
 ## Guest review implementation (2026-10-22)
 

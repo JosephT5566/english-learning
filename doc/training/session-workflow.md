@@ -62,17 +62,16 @@ and create a draft PR that closes #4.
 
 ## Automated `ai-ready` mode
 
-Adding the `ai-ready` label triggers `.github/workflows/ai-agent.yml`. It asks Codex to implement the
-entire issue, then the workflow guards the output, creates a local candidate commit, and runs the
-full verification gate before pushing a branch and opening a draft pull request. An empty diff
-creates no PR; failure or cancellation is recorded in the Actions summary without claiming issue
-completion. Human acceptance review and any pending PR workflow approval remain required.
+`.github/workflows/ai-agent.yml` remains in the repository. Its automatic issue-label trigger is
+disabled. `ai-ready` currently only means the issue is approved for an agent to read and implement.
+Adding the label does not automatically trigger any workflow. Manual `workflow_dispatch`, the job
+guards, and the verification steps stay in the file. See
+[`../development.md`](../development.md#automated-issue-verification). Agents do not merge without explicit maintainer authorization
+([`../../AGENTS.md`](../../AGENTS.md#issue-first)).
 
-The environment, checks, and candidate-commit ordering are documented in
-[`../development.md`](../development.md#automated-issue-verification).
+Add `ai-ready` only through [issue-enhance](../../.agents/skills/issue-enhance/SKILL.md) after the
+maintainer confirms the spec. It is not the default training path because it reduces the design and
+implementation work Joseph performs.
 
-Use `ai-ready` only when intentionally delegating a well-understood task or boilerplate. It is not
-the default training path because it reduces the design and implementation work Joseph performs.
-
-Before using the workflow, commit and push `AGENTS.md`, `.agents/skills/`, and `doc/training/`; the
-remote agent cannot read local-only files.
+Commit and push `AGENTS.md`, `.agents/skills/`, and `doc/training/` before a remote agent reads
+those instruction changes. The remote agent cannot read local-only files.

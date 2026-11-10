@@ -67,6 +67,18 @@ def test_management_mutation_preflights_allow_patch_and_delete() -> None:
     assert "DELETE" in allowed_methods
 
 
+def test_genai_consent_preflight_allows_put() -> None:
+    with TestClient(create_app()) as client:
+        response = client.options(
+            "/v1/me/genai-consent",
+            headers=preflight_headers(LOCAL_ORIGIN, "PUT", "authorization"),
+        )
+
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == LOCAL_ORIGIN
+    assert "PUT" in response.headers["access-control-allow-methods"].split(", ")
+
+
 def test_preflight_rejects_unconfigured_origin() -> None:
     with TestClient(create_app()) as client:
         response = client.options(
@@ -86,7 +98,7 @@ def test_preflight_rejects_unapproved_method_and_header() -> None:
     with TestClient(create_app()) as client:
         response = client.options(
             "/v1/reviews",
-            headers=preflight_headers(LOCAL_ORIGIN, "PUT", "x-unsafe-header"),
+            headers=preflight_headers(LOCAL_ORIGIN, "TRACE", "x-unsafe-header"),
         )
 
     assert response.status_code == 400

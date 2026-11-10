@@ -1,8 +1,10 @@
 name: AI Agent
 
 on:
-  issues:
-    types: [labeled]
+  # Automatic trigger disabled. Adding `ai-ready` must not start this workflow.
+  # Uncomment the next two lines to restore `issues: labeled` dispatch.
+  # issues:
+  #   types: [labeled]
   workflow_dispatch:
     inputs:
       issue_number:
@@ -16,6 +18,7 @@ concurrency:
 
 jobs:
   run-agent:
+    # The label clause stays dormant so restoring the commented trigger above is enough.
     if: github.event_name == 'workflow_dispatch' || github.event.label.name == 'ai-ready'
     runs-on: ubuntu-latest
     timeout-minutes: 60

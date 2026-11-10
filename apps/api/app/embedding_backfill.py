@@ -11,7 +11,11 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.config import ConfigurationError, load_settings
-from app.database import create_database_engine, create_database_session_factory
+from app.database import (
+    create_database_engine,
+    create_database_session_factory,
+    database_transaction,
+)
 from app.embeddings import VertexEmbeddingProvider, process_card
 from app.semantic_text import MODEL_VERSION
 
@@ -37,12 +41,13 @@ def run(
     try:
         # Each page is short-lived; a card may change while the provider is running.
         while sum(counts.values()) < limit and time.monotonic() - started < 1800:
-            with factory() as session:
+            with database_transaction(factory, owner_id=owner_id) as session:
                 rows = (
                     session.execute(
                         text("""
                     SELECT c.id FROM learning_cards c
                     JOIN learning_decks d ON (d.id, d.owner_id) = (c.deck_id, c.owner_id)
+                    JOIN users u ON u.id = c.owner_id AND u.genai_consent_at IS NOT NULL
                     LEFT JOIN card_embeddings e ON (e.card_id, e.owner_id) = (c.id, c.owner_id)
                       AND e.model_version = :model
                     WHERE c.owner_id = :owner_id AND c.archived_at IS NULL
