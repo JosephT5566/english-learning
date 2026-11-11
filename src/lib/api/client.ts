@@ -148,6 +148,51 @@ export type AssistantTool = Pick<
   "name" | "status"
 >;
 
+export type AssistantPart = {
+  id: string;
+  type: "card_list";
+  payload: {
+    purpose: "due" | "search";
+    items: { id: string; deck_id: string; term: string; meaning: string }[];
+  };
+};
+
+function hasExactKeys(
+  value: unknown,
+  keys: string[],
+): value is Record<string, unknown> {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    !Array.isArray(value) &&
+    Object.keys(value).length === keys.length &&
+    keys.every((key) => Object.hasOwn(value, key))
+  );
+}
+
+function isAssistantPart(value: unknown): value is AssistantPart {
+  if (
+    !hasExactKeys(value, ["id", "type", "payload"]) ||
+    typeof value.id !== "string" ||
+    value.type !== "card_list"
+  )
+    return false;
+  const payload = value.payload;
+  return (
+    hasExactKeys(payload, ["purpose", "items"]) &&
+    (payload.purpose === "due" || payload.purpose === "search") &&
+    Array.isArray(payload.items) &&
+    payload.items.every(
+      (item: unknown) =>
+        hasExactKeys(item, ["id", "deck_id", "term", "meaning"]) &&
+        typeof item.id === "string" &&
+        typeof item.deck_id === "string" &&
+        typeof item.term === "string" &&
+        typeof item.meaning === "string",
+    )
+  );
+}
+
 function invalidAssistantStream(): ApiClientError {
   return new ApiClientError(
     "The assistant response was interrupted.",
@@ -160,6 +205,10 @@ export async function streamAssistantReply(
   messages: AssistantMessage[],
   onText: (text: string) => void,
   signal: AbortSignal,
+  options?: {
+    capabilities?: "parts.v1"[];
+    onPart?: (part: AssistantPart) => void;
+  },
 ): Promise<{ stop: AssistantStop; tools: AssistantTool[] }> {
   const response = await authenticatedResponse(
     "/v1/assistant/messages/stream",
@@ -171,7 +220,16 @@ export async function streamAssistantReply(
       },
       body: JSON.stringify({
         messages,
-      } satisfies components["schemas"]["AssistantRequest"]),
+        ...(options?.capabilities?.length
+          ? { capabilities: options.capabilities }
+          : {}),
+      } satisfies Omit<
+        components["schemas"]["AssistantStreamRequest"],
+        "capabilities"
+      > &
+        Partial<
+          Pick<components["schemas"]["AssistantStreamRequest"], "capabilities">
+        >),
       signal,
     },
   );
@@ -203,10 +261,17 @@ export async function streamAssistantReply(
           .map((line) => line.slice(5).replace(/^ /, ""))
           .join("\n");
         if (!event || !data) continue;
+        if (!["delta", "error", "done", "part"].includes(event)) continue;
         const payload: unknown = JSON.parse(data);
         if (typeof payload !== "object" || payload === null)
           throw invalidAssistantStream();
 
+        if (event === "part") {
+          if (!("type" in payload) || payload.type !== "card_list") continue;
+          if (!isAssistantPart(payload)) throw invalidAssistantStream();
+          options?.onPart?.(payload);
+          continue;
+        }
         if (
           event === "delta" &&
           "text" in payload &&

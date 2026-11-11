@@ -182,3 +182,48 @@ test("shows a rejected tool batch as attempts", async ({ page }) => {
     page.getByText("Get due cards · Rejected", { exact: true }),
   ).toHaveCount(4);
 });
+
+test("keeps text and tools with part and future events between deltas", async ({
+  page,
+}) => {
+  await page.route("**/v1/assistant/messages/stream", (route) =>
+    route.fulfill({
+      contentType: "text/event-stream",
+      body:
+        event("delta", { text: "Review " }) +
+        event("part", {
+          id: "p1",
+          type: "card_list",
+          payload: {
+            purpose: "due",
+            items: [
+              { id: "card", deck_id: "deck", term: "harbor", meaning: "port" },
+            ],
+          },
+        }) +
+        event("future", { value: true }) +
+        event("delta", { text: "harbor." }) +
+        event("done", {
+          tool_calls: [
+            {
+              name: "get_due_cards",
+              status: "ok",
+              arguments: {},
+              duration_ms: 0,
+            },
+          ],
+          stop_reason: "completed",
+          usage: null,
+        }),
+    }),
+  );
+  await page.goto("./assistant");
+  await page
+    .getByRole("textbox", { name: "Ask the assistant" })
+    .fill("What is due?");
+  await page.getByRole("button", { name: "Send", exact: true }).click();
+  await expect(page.getByText("Review harbor.", { exact: true })).toBeVisible();
+  await page.getByText("Tool call attempts · 1", { exact: true }).click();
+  await expect(page.getByText("Get due cards", { exact: true })).toBeVisible();
+  await expect(page.getByRole("alert")).toHaveCount(0);
+});

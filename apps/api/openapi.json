@@ -61,6 +61,35 @@
         "title": "AssistantResponse",
         "type": "object"
       },
+      "AssistantStreamRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "capabilities": {
+            "default": [],
+            "items": {
+              "pattern": "^[a-z][a-z0-9_.-]{0,31}$",
+              "type": "string"
+            },
+            "maxItems": 8,
+            "title": "Capabilities",
+            "type": "array"
+          },
+          "messages": {
+            "items": {
+              "$ref": "#/components/schemas/Message"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "title": "Messages",
+            "type": "array"
+          }
+        },
+        "required": [
+          "messages"
+        ],
+        "title": "AssistantStreamRequest",
+        "type": "object"
+      },
       "CardBulkCreate": {
         "additionalProperties": false,
         "properties": {
@@ -2883,7 +2912,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/AssistantRequest"
+                "$ref": "#/components/schemas/AssistantStreamRequest"
               }
             }
           },
@@ -2898,7 +2927,7 @@
                 }
               }
             },
-            "description": "Server-Sent Events. Each data field is JSON. delta: {text: string}. done: {tool_calls: ToolCallSummary[], stop_reason: completed | max_steps | timeout, usage: GenerationUsage | null}. error: {code: string, message: string, retryable: boolean}. A connected client receives exactly one terminal done or error event. : ping comment lines may arrive before the first event and must be ignored."
+            "description": "Server-Sent Events. Each data field is JSON. delta: {text: string}. part: {id: string, type: string, payload: object}. Parts are sent only when the request declares parts.v1, always before the terminal event. Clients must ignore unknown part types. done: {tool_calls: ToolCallSummary[], stop_reason: completed | max_steps | timeout, usage: GenerationUsage | null}. error: {code: string, message: string, retryable: boolean}. A connected client receives exactly one terminal done or error event. : ping comment lines may arrive before the first event and must be ignored."
           },
           "401": {
             "description": "Authentication required before streaming"

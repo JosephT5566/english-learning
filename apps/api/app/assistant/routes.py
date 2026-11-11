@@ -44,6 +44,13 @@ class AssistantRequest(BaseModel):
     messages: Annotated[list[Message], Field(min_length=1, max_length=100)]
 
 
+CapabilityToken = Annotated[str, StringConstraints(pattern=r"^[a-z][a-z0-9_.-]{0,31}$")]
+
+
+class AssistantStreamRequest(AssistantRequest):
+    capabilities: Annotated[list[CapabilityToken], Field(max_length=8)] = []
+
+
 def _validate_request(request, payload):
     _reject_unknown_filters(request, set())
     settings = request.app.state.settings
@@ -176,6 +183,9 @@ def assistant_messages(
             "description": (
                 "Server-Sent Events. Each data field is JSON. "
                 "delta: {text: string}. "
+                "part: {id: string, type: string, payload: object}. "
+                "Parts are sent only when the request declares parts.v1, always before "
+                "the terminal event. Clients must ignore unknown part types. "
                 "done: {tool_calls: ToolCallSummary[], stop_reason: completed | max_steps | timeout, "
                 "usage: GenerationUsage | null}. "
                 "error: {code: string, message: string, retryable: boolean}. "
@@ -194,7 +204,7 @@ def assistant_stream(
     user: CurrentUserDependency,
     session: SessionDependency,
     request: Request,
-    payload: Annotated[AssistantRequest, Body()],
+    payload: Annotated[AssistantStreamRequest, Body()],
 ):
     settings = _validate_request(request, payload)
     owner_id = user.id
@@ -246,7 +256,14 @@ def assistant_stream(
             )
 
     return AssistantSSE(
-        stream_events(prepare, provider, settings, deadline, request_id),
+        stream_events(
+            prepare,
+            provider,
+            settings,
+            deadline,
+            request_id,
+            parts_enabled="parts.v1" in payload.capabilities,
+        ),
         deadline=deadline,
         request_id=request_id,
         headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"},

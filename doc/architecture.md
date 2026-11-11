@@ -707,11 +707,22 @@ modes; replay is provisional and true Vertex mode requires explicit flag/environ
 The first evaluation covers the non-streaming route. Production and Neon pool behavior
 remain unverified. See the [assistant evaluation](training/issues/70/README.md).
 
-`POST /v1/assistant/messages/stream` accepts the same request and checks consent before
-the HTTP response starts. The planning worker uses the same loop and an owner-bound
+`POST /v1/assistant/messages/stream` accepts message history plus an optional
+`capabilities` list and checks consent before the HTTP response starts. Only `parts.v1`
+enables `part` events; unknown valid tokens are accepted and ignored. Clients without
+that token receive the existing byte stream. Negotiation uses the JSON body, not a header.
+The planning worker uses the same loop and an owner-bound
 SQL session. It reserves one call for a tool-disabled Vertex stream and returns the
-request and summaries after closing the session. The async response emits only visible
-answer fragments and one terminal event. Its ASGI listener cancels the response on
+request, summaries and server-built parts after closing the session. Successful nonempty
+`get_due_cards` and `search_cards` results produce `card_list` parts with per-stream ids
+`p1`, `p2`, and so on. Items allow only `id`, `deck_id`, `term` and `meaning`; model text
+never creates parts. When negotiated, parts precede the provider stream and terminal event,
+including preparation timeout responses. They share the existing non-terminal frame
+deadline and backpressure path. The async response emits visible answer fragments and
+one terminal event. JSON responses and terminal payloads exclude parts. Clients ignore
+unknown event names and part types, and validate known parts strictly. The page does
+not declare the capability or render parts; rendering is deferred to #98.
+Its ASGI listener cancels the response on
 disconnect, signals the planning worker to stop dispatching, and closes the upstream
 HTTPX stream. Both phases use the same absolute deadline.
 See [SSE verification](issues/issue-70-verification.md#sse-follow-up).
