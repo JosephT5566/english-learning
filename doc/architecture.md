@@ -676,9 +676,14 @@ The synthetic live evaluation exercised this protocol on Gemini 3.5 Flash-Lite. 
 blocked a tool call the model still proposed on its final step.
 See the [dated evaluation](training/issues/70/README.md#live-result-on-2026-11-07).
 
-`app/assistant/tools.py` owns the fixed registry and strict argument models. Unknown names,
-extra owner/user fields and invalid arguments never reach tools. Owner identity comes from
-the request session. Shared `semantic_search.search_cards` retains the old HTTP query logic;
+`app/assistant/tools.py` owns a validated registry of frozen tool specs with explicit
+`read`, `propose` or `write` tiers and strict argument models. The three existing tools
+are `read`. Only `read` and `propose` are model-visible; declarations, validation,
+safe log names and the direct session gate share that filtered view. Table-driven
+executors run tool SQL in read-only transactions, including injected `propose` tools.
+The search consent pre-step keeps its non-readonly lock-and-commit transaction.
+Unknown names, write-tier names, extra owner/user fields and invalid arguments never
+reach tools. Owner identity comes from the request session. Shared `semantic_search.search_cards` retains the old HTTP query logic;
 its assistant-only transaction-release option also reapplies readonly SQL settings before
 ranking. `reads.get_due_cards` retains pagination and filter behavior. Statistics reuses
 `reads.DUE_CONDITION` rather than duplicating due rules. Tools use a common request-time
