@@ -715,3 +715,20 @@ including search ranking after embedding. Search consent retains its non-readonl
 The three existing tools remain `read` with unchanged schemas and argument models.
 No write tool is registered. Card writes happen in the frontend through the existing
 REST `/cards` and `/cards/bulk` paths after user confirmation (D1).
+
+## 2026-11-11: Negotiate assistant display parts in the stream body (#95)
+
+Only the stream request accepts `capabilities`, with up to eight strict tokens.
+`parts.v1` enables server-built `part` events; unknown valid tokens are ignored.
+Use a JSON body field rather than a header so negotiation appears in OpenAPI and
+requires no CORS change. Clients ignore unknown event names and part types while
+strictly validating known `card_list` parts and existing terminal/tool statuses.
+
+Build one nonempty `card_list` per successful due/search call from validated tool
+outputs, with an explicit item allow-list of `id`, `deck_id`, `term` and `meaning`.
+Never derive a part from model text. Per-stream `p1`, `p2` ids track emission order.
+Parts precede final answer streaming or preparation-timeout `done` and use the
+existing bounded frame sender. Private loop fields keep parts out of JSON responses
+and terminal payloads. No capability preserves the existing wire bytes. The page
+remains opted out; rendering belongs to #98. New consumers in #96/#98 must deploy
+after the backend or handle older APIs rejecting `capabilities` with 422.
