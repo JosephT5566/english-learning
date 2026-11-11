@@ -701,3 +701,17 @@ Areas not named in scope still need separate approval.
 Keep the decision log `Approved by` column as a record of who made each decision,
 not a start gate. Compare later edits against the issue content at the time
 `ai-ready` was added. Approved by JosephT5566 in chat on 2026-11-11.
+
+## 2026-11-11: Enforce assistant tool permission tiers (#94)
+
+Tool specs declare `read`, `propose` or `write`. The model sees only `read` and
+`propose`; `write` is never model-visible. Registry validation rejects duplicate
+names, schema-name mismatches, invalid tiers and model-visible write specs.
+Declarations, call validation, safe log names and the direct session gate use the
+same filtered view. All model-visible tool SQL runs after `SET TRANSACTION READ ONLY`,
+including search ranking after embedding. Search consent retains its non-readonly
+`FOR SHARE` lock-and-commit pre-step, which writes no data.
+
+The three existing tools remain `read` with unchanged schemas and argument models.
+No write tool is registered. Card writes happen in the frontend through the existing
+REST `/cards` and `/cards/bulk` paths after user confirmation (D1).

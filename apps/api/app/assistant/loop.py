@@ -9,9 +9,9 @@ from typing import Literal
 from pydantic import BaseModel, PrivateAttr
 
 from app.assistant.tools import (
-    TOOL_SCHEMAS,
     AssistantDeadlineExceeded,
     check_budget,
+    model_visible_tools,
     validate_call,
 )
 from app.errors import ApiError
@@ -188,7 +188,9 @@ def run_assistant(
                 system=FINAL_ANSWER_SYSTEM if prepare_final and final else SYSTEM,
                 data={},
                 contents=deepcopy(contents),
-                tools=deepcopy(TOOL_SCHEMAS),
+                tools=deepcopy(
+                    [spec.schema for spec in model_visible_tools().values()]
+                ),
                 tools_disabled=final,
             )
             if prepare_final and final:
@@ -227,9 +229,7 @@ def run_assistant(
             calls = result.function_calls
             # Unknown names may contain hostile text. Only registry names enter logs
             # or public summaries; invalid arguments never enter either.
-            safe_name = lambda n: (
-                n if n in {t["name"] for t in TOOL_SCHEMAS} else "unknown"
-            )
+            safe_name = lambda n: n if n in model_visible_tools() else "unknown"
             names = [
                 safe_name(c["name"]) for c in calls[: settings.assistant_max_tool_calls]
             ]
