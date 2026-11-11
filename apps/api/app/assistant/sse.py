@@ -176,7 +176,9 @@ def _remaining(deadline):
     return remaining
 
 
-async def stream_events(prepare, provider, settings, deadline, request_id):
+async def stream_events(
+    prepare, provider, settings, deadline, request_id, *, parts_enabled=False
+):
     cancelled = Event()
     pending = None
     step_usage = None
@@ -215,10 +217,16 @@ async def stream_events(prepare, provider, settings, deadline, request_id):
                 asyncio.to_thread(prepare, cancelled.is_set), timeout=remaining
             )
         if isinstance(result, AssistantResponse):
+            if parts_enabled:
+                for part in result._parts:
+                    yield _Frame("part", part)
             yield _done(result, result._terminal_error_code)
             return
 
         pending = result
+        if parts_enabled:
+            for part in pending.parts:
+                yield _Frame("part", part)
         has_text = False
         model_id = settings.generation_model
         async with aclosing(

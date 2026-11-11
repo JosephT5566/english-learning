@@ -733,3 +733,157 @@ def test_sse_heartbeat_blocked_send_stops_when_prepare_finishes():
         assert harness.events()[0] == b'event: delta\ndata: {"text":"first"}\n\n'
 
     asyncio.run(scenario())
+
+
+def test_sse_parts_legacy_bytes_and_negotiated_due(api_client, provider, monkeypatch):
+    from app.assistant import loop
+
+    # Make wire comparisons independent of machine timing while preserving the field.
+    monkeypatch.setattr(loop, "round", lambda value: 0, raising=False)
+    api_client.app.state.settings = api_client.app.state.settings.model_copy(
+        update={"assistant_max_steps": 2, "assistant_sse_heartbeat_seconds": 0}
+    )
+    provider.generate.return_value = shared.tool_result(
+        [("get_due_cards", {"target_language": "en"})]
+    )
+
+    async def upstream(request, **options):
+        yield SimpleNamespace(text="Review harbor.", usage=None)
+
+    provider.stream = upstream
+    baseline = api_client.post(PATH, headers=HEADERS, json=BODY)
+    assert baseline.status_code == 200
+    assert b"event: part" not in baseline.content
+    for capabilities in ([], ["future.x"]):
+        response = api_client.post(
+            PATH, headers=HEADERS, json={**BODY, "capabilities": capabilities}
+        )
+        assert response.status_code == 200
+        assert response.content == baseline.content
+    response = api_client.post(
+        PATH, headers=HEADERS, json={**BODY, "capabilities": ["parts.v1"]}
+    )
+    assert response.status_code == 200
+    frames = response.content.split(b"\n\n")
+    assert frames[0].startswith(b"event: part\n")
+    part = json.loads(frames[0].split(b"data: ")[1])
+    assert part["id"] == "p1"
+    assert part["type"] == "card_list"
+    assert part["payload"]["purpose"] == "due"
+    assert part["payload"]["items"]
+    assert all(
+        set(item) == {"id", "deck_id", "term", "meaning"}
+        for item in part["payload"]["items"]
+    )
+    assert b"\n\n".join(frames[1:]) == baseline.content
+    done = json.loads(baseline.content.split(b"event: done\ndata: ")[1])
+    assert set(done) == {"tool_calls", "stop_reason", "usage"}
+    assert done["stop_reason"] == "completed"
+
+
+def test_sse_legacy_due_wire_regression(api_client, provider, monkeypatch):
+    from app.assistant import loop
+
+    monkeypatch.setattr(loop, "round", lambda value: 0, raising=False)
+    api_client.app.state.settings = api_client.app.state.settings.model_copy(
+        update={"assistant_max_steps": 2, "assistant_sse_heartbeat_seconds": 0}
+    )
+    provider.generate.return_value = shared.tool_result(
+        [("get_due_cards", {"target_language": "en"})]
+    )
+
+    async def upstream(request, **options):
+        yield SimpleNamespace(text="Review harbor.", usage=None)
+
+    provider.stream = upstream
+    response = api_client.post(PATH, headers=HEADERS, json=BODY)
+    assert response.status_code == 200
+    assert response.content == (
+        b'event: delta\ndata: {"text":"Review harbor."}\n\n'
+        b'event: done\ndata: {"tool_calls":[{"name":"get_due_cards","arguments":{"target_language":"en","limit":5},"status":"ok","duration_ms":0}],"stop_reason":"completed","usage":null}\n\n'
+    )
+
+
+@pytest.mark.parametrize("disconnect", [False, True])
+def test_sse_http_blocked_part_deadline_and_disconnect(
+    api_client, provider, disconnect
+):
+    import time
+    from unittest.mock import Mock
+
+    from app.assistant.sse import TERMINAL_SEND_GRACE_SECONDS
+
+    api_client.app.state.settings = api_client.app.state.settings.model_copy(
+        update={
+            "assistant_max_steps": 2,
+            "assistant_timeout_seconds": 1,
+            "assistant_sse_heartbeat_seconds": 0,
+        }
+    )
+    provider.generate.return_value = shared.tool_result(
+        [("get_due_cards", {"target_language": "en"})]
+    )
+    provider.stream = Mock()
+
+    async def scenario():
+        incoming = asyncio.Queue()
+        incoming.put_nowait(
+            {
+                "type": "http.request",
+                "body": json.dumps({**BODY, "capabilities": ["parts.v1"]}).encode(),
+                "more_body": False,
+            }
+        )
+        messages = []
+        blocked = asyncio.Event()
+        write_cancelled = asyncio.Event()
+        started = time.monotonic()
+
+        async def send(message):
+            if message.get("body", b"").startswith(b"event: part"):
+                blocked.set()
+                if disconnect:
+                    incoming.put_nowait({"type": "http.disconnect"})
+                try:
+                    await asyncio.Event().wait()
+                except asyncio.CancelledError:
+                    write_cancelled.set()
+                    raise
+            messages.append(message.copy())
+
+        scope = {
+            "type": "http",
+            "asgi": {"version": "3.0", "spec_version": "2.4"},
+            "http_version": "1.1",
+            "method": "POST",
+            "scheme": "http",
+            "path": PATH,
+            "raw_path": PATH.encode(),
+            "root_path": "",
+            "query_string": b"",
+            "headers": [
+                (b"host", b"testserver"),
+                (b"content-type", b"application/json"),
+                *[(k.lower().encode(), v.encode()) for k, v in HEADERS.items()],
+            ],
+            "client": ("127.0.0.1", 1234),
+            "server": ("testserver", 80),
+        }
+        await asyncio.wait_for(api_client.app(scope, incoming.get, send), 2)
+        assert blocked.is_set()
+        assert write_cancelled.is_set()
+        assert time.monotonic() - started <= 1 + TERMINAL_SEND_GRACE_SECONDS + 0.2
+        bodies = [m["body"] for m in messages if m["type"] == "http.response.body"]
+        assert not any(b"event: part" in body for body in bodies)
+        if not disconnect:
+            assert len(bodies) == 2
+            assert bodies[0].startswith(b"event: done\n")
+            assert json.loads(bodies[0].split(b"data: ")[1])["stop_reason"] == "timeout"
+            assert messages[-1] == {
+                "type": "http.response.body",
+                "body": b"",
+                "more_body": False,
+            }
+        provider.stream.assert_not_called()
+
+    asyncio.run(scenario())

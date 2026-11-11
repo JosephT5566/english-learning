@@ -369,6 +369,16 @@ export interface components {
             tool_calls: components["schemas"]["ToolCallSummary"][];
             usage?: components["schemas"]["GenerationUsage"] | null;
         };
+        /** AssistantStreamRequest */
+        AssistantStreamRequest: {
+            /**
+             * Capabilities
+             * @default []
+             */
+            capabilities: string[];
+            /** Messages */
+            messages: components["schemas"]["Message"][];
+        };
         /** CardBulkCreate */
         CardBulkCreate: {
             /** Cards */
@@ -1222,11 +1232,11 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["AssistantRequest"];
+                "application/json": components["schemas"]["AssistantStreamRequest"];
             };
         };
         responses: {
-            /** @description Server-Sent Events. Each data field is JSON. delta: {text: string}. done: {tool_calls: ToolCallSummary[], stop_reason: completed | max_steps | timeout, usage: GenerationUsage | null}. error: {code: string, message: string, retryable: boolean}. A connected client receives exactly one terminal done or error event. : ping comment lines may arrive before the first event and must be ignored. */
+            /** @description Server-Sent Events. Each data field is JSON. delta: {text: string}. part: {id: string, type: string, payload: object}. Parts are sent only when the request declares parts.v1, always before the terminal event. Clients must ignore unknown part types. done: {tool_calls: ToolCallSummary[], stop_reason: completed | max_steps | timeout, usage: GenerationUsage | null}. error: {code: string, message: string, retryable: boolean}. A connected client receives exactly one terminal done or error event. : ping comment lines may arrive before the first event and must be ignored. */
             200: {
                 headers: {
                     [name: string]: unknown;

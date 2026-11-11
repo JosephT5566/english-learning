@@ -3,11 +3,12 @@
 import time
 from concurrent.futures import ThreadPoolExecutor, TimeoutError
 from copy import deepcopy
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Literal
 
 from pydantic import BaseModel, PrivateAttr
 
+from app.assistant.parts import AssistantPart, build_part
 from app.assistant.tools import (
     AssistantDeadlineExceeded,
     check_budget,
@@ -53,6 +54,7 @@ class AssistantResponse(BaseModel):
     stop_reason: Literal["completed", "max_steps", "timeout"]
     usage: GenerationUsage | None = None
     _terminal_error_code: str | None = PrivateAttr(default=None)
+    _parts: list[AssistantPart] = PrivateAttr(default_factory=list)
 
 
 @dataclass
@@ -62,6 +64,7 @@ class PendingAnswer:
     started: float
     tool_calls: list[ToolCallSummary]
     totals: dict[str, int]
+    parts: list[AssistantPart] = field(default_factory=list)
 
 
 def add_usage(totals, usage):
@@ -163,6 +166,7 @@ def run_assistant(
         for m in messages
     ]
     summaries = []
+    parts = []
     totals = {}
     stop_reason = "max_steps"
     terminal_error_code = None
@@ -195,7 +199,7 @@ def run_assistant(
             )
             if prepare_final and final:
                 handed_off = True
-                return PendingAnswer(req, step, started, summaries, totals)
+                return PendingAnswer(req, step, started, summaries, totals, parts)
 
             model_id = settings.generation_model
             result = bounded_call(
@@ -280,6 +284,11 @@ def run_assistant(
                         try:
                             output = execute(c["name"], arguments, deadline)
                             tool_status = "ok"
+                            part = build_part(
+                                c["name"], output, tool_status, len(parts) + 1
+                            )
+                            if part is not None:
+                                parts.append(part)
                         except ApiError as error:
                             if prepare_final and error.code == "genai_consent_required":
                                 raise
@@ -338,4 +347,5 @@ def run_assistant(
         usage=GenerationUsage(**totals) if totals else None,
     )
     response._terminal_error_code = terminal_error_code
+    response._parts = parts
     return response

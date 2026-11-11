@@ -17,7 +17,7 @@ from app.config import Settings
 from app.main import create_app
 
 
-@pytest.mark.parametrize("mode", ["heartbeat", "disabled", "delta"])
+@pytest.mark.parametrize("mode", ["heartbeat", "disabled", "delta", "part"])
 def test_app_transport_write_keeps_terminal_event_within_deadline(mode):
     async def scenario():
         app = create_app()
@@ -38,7 +38,24 @@ def test_app_transport_write_keeps_terminal_event_within_deadline(mode):
         def prepare(cancelled):
             time.sleep(1.2 if mode != "delta" else 0)
             return SimpleNamespace(
-                request=object(), totals={}, tool_calls=[], step=1, started=started
+                request=object(),
+                totals={},
+                tool_calls=[],
+                step=1,
+                started=started,
+                **(
+                    {
+                        "parts": [
+                            {
+                                "id": "p1",
+                                "type": "card_list",
+                                "payload": {"purpose": "due", "items": []},
+                            }
+                        ]
+                    }
+                    if mode == "part"
+                    else {}
+                ),
             )
 
         async def upstream(*args, **kwargs):
@@ -56,6 +73,7 @@ def test_app_transport_write_keeps_terminal_event_within_deadline(mode):
                     settings,
                     deadline,
                     str(request.state.request_id),
+                    **({"parts_enabled": True} if mode == "part" else {}),
                 ),
                 deadline=deadline,
                 request_id=str(request.state.request_id),
@@ -67,6 +85,8 @@ def test_app_transport_write_keeps_terminal_event_within_deadline(mode):
                 body == b": ping\n\n"
                 or body.startswith(b"event: delta")
                 and mode == "delta"
+                or body.startswith(b"event: part")
+                and mode == "part"
             ):
                 blocked.set()
                 try:
@@ -101,14 +121,19 @@ def test_app_transport_write_keeps_terminal_event_within_deadline(mode):
         ]
         assert len(terminal) == 1, bodies
         payload = json.loads(terminal[0].split(b"data: ", 1)[1])
-        assert payload["stop_reason"] == ("timeout" if mode == "delta" else "completed")
+        assert payload["stop_reason"] == (
+            "timeout" if mode in ("delta", "part") else "completed"
+        )
         assert messages[-1][1] == {
             "type": "http.response.body",
             "body": b"",
             "more_body": False,
         }
         assert messages[-1][0] <= deadline + TERMINAL_SEND_GRACE_SECONDS + 0.1
-        assert upstream_closed.is_set()
+        if mode == "part":
+            assert not upstream_closed.is_set()
+        else:
+            assert upstream_closed.is_set()
         assert b"x-request-id" in dict(messages[0][1]["headers"])
         if mode == "disabled":
             assert not blocked.is_set()
