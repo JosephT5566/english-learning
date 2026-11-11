@@ -204,9 +204,10 @@ are placeholders; backend configuration uses test mode and local database creden
 production provider configuration. Browser/system dependencies are installed before Codex removes
 sudo access.
 
-The approval checklist and decision log stay with the Issue-first rule in
-[`AGENTS.md`](../AGENTS.md#issue-first). A mechanical checklist check inside the workflow is a
-separate change and needs maintainer approval.
+The `ai-ready` label is the sole implementation approval gate in
+[`AGENTS.md`](../AGENTS.md#issue-first). The decision log records who made each decision; it is
+not a start gate. A mechanical check inside the workflow remains a separate change that needs
+maintainer approval.
 
 Codex follows `AGENTS.md` and leaves changes for the workflow. It must not modify workflows or Git
 HEAD, publish, or deploy. The workflow guards those outputs, then creates a local candidate commit

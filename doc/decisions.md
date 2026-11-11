@@ -690,3 +690,14 @@ supports cancellation before enqueueing a body in those implementations; it does
 not prove socket delivery, other servers or proxies. Terminal delivery remains
 best effort under sustained backpressure or disconnect. The new test uses fake
 preparation and an outer ASGI gate, without lifespan, SQL or model calls.
+
+## 2026-11-11: Use ai-ready as the sole implementation approval gate
+
+The `ai-ready` label is the sole implementation approval gate. Remove approval
+checkboxes and the approver field. Adding `ai-ready` means the maintainer approved
+the whole spec, including maintainer-approval areas explicitly named in scope.
+Areas not named in scope still need separate approval.
+
+Keep the decision log `Approved by` column as a record of who made each decision,
+not a start gate. Compare later edits against the issue content at the time
+`ai-ready` was added. Approved by JosephT5566 in chat on 2026-11-11.
