@@ -8,11 +8,13 @@ verification records belong in the linked issue artifacts. Implementation and te
 precedence over stale documentation. Deployment statements below summarize recorded evidence, not
 a fresh inspection of the live services.
 
-## Stateless readonly assistant (2026-11-08)
+## Stateless assistant with proposals and no writes (2026-11-12)
 
 Issue #70 adds a non-streaming `POST /v1/assistant/messages` with consent,
-text-only JSON history limits, a maximum of three generated turns and exactly three readonly
-owner-bound tools. Tool summaries omit card results; no conversation persists. Search/due
+text-only JSON history limits and a maximum of three generated turns. As of #97,
+three owner-bound read tools are followed by the first propose tool, `propose_cards`.
+All tool SQL stays readonly and rolls back. Tool summaries omit card results;
+no conversation persists. Search/due
 queries are shared with existing endpoints; statistics reuses the same due predicate.
 Model and assistant query-embedding waits release database transactions; new transactions
 retain existing RLS binding. Settings bound turns, time, output, history and tool batches.
@@ -30,6 +32,20 @@ content. Foreign and nonexistent refs are silently dropped identically. Ref tota
 before consent. API #96 must deploy before Pages; there is no client 422 retry.
 Real backend/browser round trips and real Vertex second-text-part acceptance remain
 unverified; scripted and mocked coverage does not establish those outcomes.
+Issue #97 adds propose-without-write for 1-20 validated `CardFields` drafts.
+An explicit deck must be owned and active; without an id only exactly one active
+owned deck is selected. Otherwise `needs_deck` asks the user through the final
+tools-disabled answer. Duplicate terms produce warnings, never writes. One
+successful proposal emits a `card_proposal` part under `parts.v1`, with an unsigned
+correlation-only `proposal_id`, deck summary, allow-listed drafts and warnings.
+The parser accepts this part while the page does not render or retain it; only
+`card_list` updates card refs. Parser and page narrowing must ship together.
+No inbound `proposal_state` or request-body change is added, so no new 422 risk is
+inferred; cross-version deployment remains unverified. Deploy the API before #98's
+confirmation UI. #98 must generate and retain separate `crypto.randomUUID()` write
+idempotency keys for retries; `proposal_id` is not such a key. Real Vertex function
+declaration acceptance and the full proposal/confirmation browser flow remain
+unverified; see [e2e gaps](e2e-todo.md).
 The PR #86 follow-up checks the shared deadline before sending content to Vertex and
 replays signed function calls with their IDs. The provisional live evaluation exercised
 eight synthetic cases on Gemini 3.5 Flash-Lite. Seven produced a reply and one reached

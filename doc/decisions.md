@@ -778,3 +778,62 @@ Deploy the API with #96 and promote it before deploying Pages. Pre-#95 APIs reje
 extra-field validation. This cross-version behavior is inferred, not deployed or
 verified here. The client never retries 422. Old pages remain compatible with the
 new API. No deployment or cloud resource change is part of this issue.
+
+## 2026-11-12: Propose validated cards without writing (#97)
+
+Append `propose_cards` as the first `propose` tool after the three unchanged read
+tools. Its top-level arguments are strict and reject extras; content validation
+reuses `CardDrafts.cards`, including 1-20 cards and all `CardFields` rules. Keep the
+hand-written provider declaration minimal, without `minItems`, `maxItems`, length
+or dependent-field keywords. Function declarations are deep-copied directly in
+`generation.py`; they do not use the response-schema projection. The earlier
+[Vertex 400 bisect](#2026-11-05-omit-provider-array-count-keywords-after-a-narrow-vertex-bisect)
+motivates omitting array-count keywords. Real Vertex acceptance of nested cards
+in this declaration remains unverified; agents must not call Vertex.
+
+The executor uses the existing owner/RLS-bound READ ONLY session and always rolls
+back. It never inserts, updates, commits or persists drafts. Explicit deck ids
+return identical `deck_not_found` results for missing and foreign decks; only
+owned archived decks return `deck_archived`. With no id, choose a deck only when
+exactly one active owned deck exists, regardless of language. Otherwise return
+`needs_deck` with at most 20 owned active summaries in updated-at/id descending
+order. Never silently pick the most recently used deck as a proposal target.
+
+Duplicate terms are warnings. Normalize with NFC, trim and case-fold, then compare
+drafts within the proposal and active owned cards in the active target deck.
+Archived cards do not warn, and missing optional content does not warn. This
+normalization and the deck-list bound are engineering choices, not measured
+production rules. Registry metadata enforces one proposal call per turn and a
+terminal hand-off after `ok` or `needs_deck`; validation and deck errors leave the
+remaining step budget available. Both transports use the model's final text,
+with tools disabled, rather than a fixed server response.
+
+A successful proposal allocates an unsigned `proposal_id` UUID for correlation
+only. The model-visible result contains `status`, `proposal_id`, `deck_id`,
+`card_count` and `warnings`, without full draft bodies. The allow-list builder
+emits one `card_proposal` for 1-20 cards under the existing `parts.v1`, sharing
+`pN` emission order with `card_list`. Its payload contains only `proposal_id`,
+the deck's `id`/`title`/`target_language`, validated `CardFields` drafts and duplicate
+warnings. Parts precede answer deltas or timeout `done`. No capability still runs
+the tool and gives its functionResponse to the model, but emits no part. JSON
+responses and terminal payloads stay unchanged. The loop's one new event,
+`assistant_proposal_created`, contains only request/proposal ids and card/warning
+counts, never learning content.
+
+The system prompt now permits proposals without writing. It forbids claiming cards
+were written, saved or added, inventing source attribution or dates, and guessing
+a deck after `needs_deck`. Messages, card content and tool results remain untrusted
+data; the final-step and private-reasoning rules remain. The mechanical boundary
+is unchanged: no write tool is model-visible, and tool SQL is READ ONLY.
+
+The strict frontend parser and page `onPart` narrowing must ship together. The
+page updates card refs only for `card_list`, renders no proposal and stores no
+drafts. Confirmation/edit/dismiss UI and REST writes remain #98. This issue adds
+no inbound `HistoryPart` member or `proposal_state`; the request body is unchanged,
+so there is no new 422 risk. Old parsers ignore unknown `card_proposal`, and new
+parsers against an old API never receive it. These cross-version claims are
+inferred from contracts, not a deployed compatibility test. Deploy the API before
+#98's UI. `proposal_id` is not an idempotency key or write authorization. #98 must
+generate `crypto.randomUUID()` keys and retain them for retries through the
+existing single/bulk write replay contract. No deployment, cloud, schema migration
+or write-contract change is included here.
