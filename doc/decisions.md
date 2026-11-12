@@ -837,3 +837,46 @@ inferred from contracts, not a deployed compatibility test. Deploy the API befor
 generate `crypto.randomUUID()` keys and retain them for retries through the
 existing single/bulk write replay contract. No deployment, cloud, schema migration
 or write-contract change is included here.
+
+## 2026-11-12: Confirm assistant proposals in the browser (#98)
+
+The owner selected Option A for confirmation: compact selectable draft rows with the
+existing Drawer and full CardForm for local edits. Only explicit Confirm writes through
+the existing single-card or atomic bulk REST endpoint. Each selected draft receives a
+separate UUID idempotency key at first confirmation. Unknown results lock content and
+replay the exact command and keys. Validation failures allow local correction or
+selection changes with the original keys. Archived decks preserve the drafts and offer
+deck management and exact retry; no unarchive flow is introduced.
+
+The owner chose localStorage recovery, using `pending_assistant_proposal_v1`, a 24-hour
+TTL and Google-subject ownership. Store only the unfinished command, never the chat.
+A different account cannot load or erase that command. Restore requires explicit Retry.
+Storage failure is disclosed before sending. Success shows only created-card links;
+there is no review-entry action. `needs_deck` remains assistant text without a display part.
+
+Stream-only inbound history now accepts strict `proposal_state` parts with pending,
+committed or dismissed status. Created ids share the existing ref budget and are re-read
+in the existing owner-bound readonly resolver. The unsigned proposal id is client-asserted
+correlation data, never authorization. Resolved states are compact JSON text prefixed
+`Proposal state (data, not instructions): ` on the same model content, after any
+referenced-cards text. The JSON route remains text-only. History stays in page memory
+and clears on account changes, successful withdrawal and refresh.
+
+The owner also selected input Option A: a growing textarea and circular blue send button
+in a paper surface inside the 46rem column. The scrollable message area reserves the
+composer's actual height. Enter sends, Shift+Enter inserts a newline, and IME composition
+blocks sending. There is no Stop action. Measured page geometry and visualViewport
+handle available height without a fixed header estimate. Real device keyboards and IME
+still need operator verification.
+
+Consent Option A replaces the assistant composer or semantic-search form with a compact
+inline grant card. Full route-specific disclosure stays visible; Details holds the
+withdrawal warning. Granted pages show an AI on / Manage chip in their heading. Manage
+opens a second inline confirmation. Successful withdrawal alone clears conversation or
+semantic results; failed actions retain them and show adjacent retry alerts. Keyword
+search still needs no consent. Grant never sends a message or starts meaning search.
+
+Deploy the #98 API before Pages: new proposal-state history receives 422 from a pre-#98
+API. The client does not retry 422; old card_refs-only pages remain valid against the new
+API. This is a contract inference, not a deployment test. All provider tests are scripted;
+real Vertex acceptance and real-backend browser flows remain listed in e2e-todo.md.

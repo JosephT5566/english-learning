@@ -1,6 +1,6 @@
 # Architecture Memory
 
-Last updated: 2026-11-04
+Last updated: 2026-11-12
 
 ## Stack
 
@@ -724,8 +724,8 @@ The first evaluation covers the non-streaming route. Production and Neon pool be
 remain unverified. See the [assistant evaluation](training/issues/70/README.md).
 
 `POST /v1/assistant/messages/stream` accepts stream-only `StreamMessage` history
-plus an optional `capabilities` list. Optional assistant-message `parts` carry only
-`card_refs` UUIDs. The JSON route retains the unchanged text-only `Message`.
+plus an optional `capabilities` list. Optional assistant-message `parts` carry
+ids-only `card_refs` or `proposal_state` data with a proposal id, status and created ids. The JSON route retains the unchanged text-only `Message`.
 Message content plus compact serialized nonempty parts count toward the character
 budget; the request ref budget defaults to 40 (range 0..200). These checks run
 before consent and the HTTP response starts. The preparation worker resolves the
@@ -757,14 +757,49 @@ opts into `parts.v1`, collects card ids in emission order in page memory, and se
 refs only from completed turns through `src/lib/assistant/history.ts`. Its mirrored
 12000-character, 20-message and 40-ref budgets drop oldest whole turns. A single
 kept turn retains at most its first 40 ids. Auth changes, consent withdrawal and
-reload clear the conversation. The parser validates known `card_proposal` parts,
-but the page uses only `card_list` for card refs and does not retain proposal drafts.
-Parts are not rendered; rendering and confirmation are deferred to #98. Without
-`parts.v1`, proposal tools still run and the model receives their functionResponses;
-the stream emits no parts and the JSON route stays text-only. No inbound
-`proposal_state` is added. Ship the parser and page narrowing together, and deploy
-the API before #98's UI. API #96 must deploy before Pages; no client 422 retry is provided.
+reload clear the conversation. The parser validates known `card_proposal` parts.
+As of #98 the page renders those drafts for explicit confirmation, while `card_list`
+only supplies refs and remains unrendered. Confirmation outcomes are sent as inbound
+`proposal_state`; details are below. Without `parts.v1`, proposal tools still run and
+the model receives their functionResponses; the stream emits no parts and the JSON
+route stays text-only. Deploy API #98 before Pages; no client 422 retry is provided.
 Its ASGI listener cancels the response on
 disconnect, signals the planning worker to stop dispatching, and closes the upstream
 HTTPX stream. Both phases use the same absolute deadline.
 See [SSE verification](issues/issue-70-verification.md#sse-follow-up).
+
+## Browser-confirmed assistant proposals (#98, 2026-11-12)
+
+`AssistantCardProposal.svelte` renders only `card_proposal` parts as compact draft rows.
+It reuses Drawer and CardForm for local edits, preserving original warning indices.
+Confirm invokes the existing `createCard` for one selection or atomic `createCards` for
+2-20. `src/lib/assistant/pending.ts` stores an owner-scoped unfinished command and parallel
+UUID keys under `pending_assistant_proposal_v1`, with a 24-hour TTL and validated load.
+It preserves another owner's entry. Unknown-result retries replay exact content and keys;
+reload shows an explicit Retry surface, without restoring the transcript or auto-submitting.
+
+`src/lib/assistant/history.ts` includes each proposal's latest pending, committed or
+dismissed state on completed assistant turns. Created ids count toward the shared 40-ref
+limit, and serialized states count toward the 12000-character limit; oldest whole turns
+are dropped. The stream-only HistoryPart union is `HistoryCardRefs | HistoryProposalState`.
+The strict proposal state carries a UUID proposal id and unique created ids: 1-20 for
+committed, none for pending/dismissed. Validation occurs before consent and streaming.
+The existing resolver reads the union of ref and created ids once under owner RLS.
+`run_assistant` adds `Proposal state (data, not instructions): ` plus compact JSON after
+any referenced-cards text in the same model content. Committed state contains only resolved
+id/deck_id/term records in client order, including an empty list if all ids are dropped.
+Pending/dismissed omit created_cards. No server proposal storage or write grant exists.
+The JSON route remains text-only, and card_refs-only wire behavior is preserved.
+
+The assistant's 46rem column reserves a non-shrinking bottom composer and scrolls messages
+above it. Its textarea grows to `min(9rem, 30dvh)`, then scrolls internally; composition
+state blocks Enter submission. Page-top measurements include the actual header; a
+visualViewport resize adjusts available height without fixing the bar to the viewport.
+The shared GenAIConsentPanel has chip/panel presentations on assistant and search, with
+route-specific disclosure, explicit grant, inline second-confirm withdrawal, adjacent errors
+and retry. Until granted, it replaces the composer or semantic-search form. Keyword search
+is unaffected. Only successful withdrawal clears displayed conversation or semantic results.
+
+API must precede Pages for #98: new proposal_state history is 422 on a pre-#98 API and
+is never automatically retried. Old pages remain valid. Deployment, real Vertex text-part
+acceptance, real device IME and virtual keyboards remain unverified; see e2e-todo.md.
