@@ -121,7 +121,7 @@
         {
           capabilities: ["parts.v1"],
           onPart: (part) => {
-            if (version === sessionVersion)
+            if (version === sessionVersion && part.type === "card_list")
               turn.cardIds = [
                 ...new Set([
                   ...turn.cardIds,

@@ -141,6 +141,55 @@ def test_assistant_registry_is_fixed_with_exact_minimal_schemas():
             "parameters": {"type": "object", "properties": filters},
         },
     ]
+    expected.append(
+        {
+            "name": "propose_cards",
+            "description": "Propose owned card drafts without writing or saving cards.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "deck_id": {"type": "string"},
+                    "cards": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                **{
+                                    key: {"type": "string"}
+                                    for key in (
+                                        "term",
+                                        "meaning",
+                                        "reading",
+                                        "pronunciation",
+                                        "romanization",
+                                        "target_language_definition",
+                                        "example_sentence",
+                                        "example_translation",
+                                        "example_source",
+                                        "part_of_speech",
+                                        "part_of_speech_detail",
+                                        "note",
+                                        "supplementary_note",
+                                        "learned_on",
+                                    )
+                                },
+                                "synonyms": {
+                                    "type": "array",
+                                    "items": {"type": "string"},
+                                },
+                                "antonyms": {
+                                    "type": "array",
+                                    "items": {"type": "string"},
+                                },
+                            },
+                            "required": ["term", "meaning"],
+                        },
+                    },
+                },
+                "required": ["cards"],
+            },
+        }
+    )
     assert TOOL_SCHEMAS == expected
     for schema in TOOL_SCHEMAS:
         name = schema["name"]
