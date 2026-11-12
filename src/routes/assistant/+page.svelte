@@ -1,9 +1,8 @@
 <script lang="ts">
   import { onMount, tick, untrack } from "svelte";
   import AssistantCardProposal from "$lib/components/AssistantCardProposal.svelte";
-  import { getProfile } from "$lib/auth";
   import {
-    loadPendingAssistantProposal,
+    loadPendingAssistantProposals,
     type PendingAssistantProposal,
   } from "$lib/assistant/pending";
   import { shouldSendOnEnter } from "$lib/assistant/composer";
@@ -58,8 +57,8 @@
   let consentError = $state("");
   let failedAction = $state<"read" | "grant" | "withdraw" | undefined>();
   let focusConsentHeading = $state(false);
-  let restored = $state<PendingAssistantProposal | null>(null);
-  let restoredState = $state<ProposalState | undefined>();
+  let restored = $state<PendingAssistantProposal[]>([]);
+  let restoredStates = $state<ProposalState[]>([]);
   let composing = false;
   let pageElement: HTMLElement;
   let messageList: HTMLDivElement;
@@ -80,18 +79,17 @@
       consentError = "";
       failedAction = undefined;
       focusConsentHeading = false;
-      restoredState = undefined;
+      restoredStates = [];
       restored =
         session.kind === "authenticated"
-          ? loadPendingAssistantProposal(getProfile()?.sub ?? "")
-          : null;
-      if (restored)
-        restoredState = {
-          type: "proposal_state",
-          proposal_id: restored.proposal_id,
-          status: "pending",
-          created_card_ids: [],
-        };
+          ? loadPendingAssistantProposals(session.profile.sub ?? "")
+          : [];
+      restoredStates = restored.map((command) => ({
+        type: "proposal_state",
+        proposal_id: command.proposal_id,
+        status: "pending",
+        created_card_ids: [],
+      }));
       if (session.kind === "authenticated") void updateConsent("read");
     });
     return () => {
@@ -117,8 +115,8 @@
         consent = result.genai_consent_at ? "granted" : "required";
         if (action === "withdraw") {
           turns = [];
-          restored = null;
-          restoredState = undefined;
+          restored = [];
+          restoredStates = [];
           focusConsentHeading = true;
         }
       }
@@ -193,18 +191,17 @@
     event?.preventDefault();
     const question = draft.trim();
     if (!question || sending || consentBusy || consent !== "granted") return;
-    const restoreHistory: HistoryTurn[] =
-      restored && restoredState
-        ? [
-            {
-              question: "Recovered unfinished card proposal",
-              reply: "Your unfinished card proposal.",
-              complete: true,
-              cardIds: [],
-              proposalStates: [restoredState],
-            },
-          ]
-        : [];
+    const restoreHistory: HistoryTurn[] = restoredStates.length
+      ? [
+          {
+            question: "Recovered unfinished card proposal",
+            reply: "Your unfinished card proposal.",
+            complete: true,
+            cardIds: [],
+            proposalStates: restoredStates,
+          },
+        ]
+      : [];
     const messages = requestMessages([...restoreHistory, ...turns], question);
     const version = sessionVersion;
     const controller = new AbortController();
@@ -275,7 +272,7 @@
         cause instanceof ApiClientError
           ? cause.message
           : "Could not get a reply.";
-      if (turn.reply) {
+      if (turn.reply || turn.proposals.length || turn.proposalStates?.length) {
         turn.issue = message;
       } else {
         turns.pop();
@@ -327,19 +324,24 @@
         64;
     }}
   >
-    {#if restored}
+    {#each restored as command (`${command.ownerSubject}:${command.proposal_id}`)}
       <AssistantCardProposal
         proposal={{
-          proposal_id: restored.proposal_id,
-          deck: restored.deck,
-          drafts: restored.drafts,
+          proposal_id: command.proposal_id,
+          deck: command.deck,
+          drafts: command.drafts,
           warnings: [],
         }}
-        {restored}
+        restored={command}
         onstate={(state) =>
-          (restoredState = { type: "proposal_state", ...state })}
+          (restoredStates = [
+            ...restoredStates.filter(
+              (item) => item.proposal_id !== state.proposal_id,
+            ),
+            { type: "proposal_state", ...state },
+          ])}
       />
-    {/if}
+    {/each}
     {#if turns.length > 0}
       <ol class="conversation" aria-label="Conversation">
         {#each turns as turn (turn)}
@@ -448,7 +450,7 @@
       </form>
     {/if}
     <p class="hint">Refreshing the page clears this conversation.</p>
-    {#if restored}<p class="hint">
+    {#if restored.length}<p class="hint">
         Your unfinished commit is restored. Retry when you are ready.
       </p>{/if}
   </div>

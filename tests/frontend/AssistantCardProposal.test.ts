@@ -13,7 +13,11 @@ import {
   createCards,
 } from "$lib/api/client";
 import AssistantCardProposal from "$lib/components/AssistantCardProposal.svelte";
-import { PENDING_ASSISTANT_STORAGE_KEY } from "$lib/assistant/pending";
+import {
+  createPendingAssistantProposal,
+  savePendingAssistantProposal,
+  loadPendingAssistantProposal,
+} from "$lib/assistant/pending";
 
 const api = vi.hoisted(() => ({
   createCard: vi.fn(),
@@ -112,7 +116,7 @@ describe("assistant card proposal", () => {
     expect(screen.getAllByRole("checkbox")).toHaveLength(3);
     expect(api.createCard).not.toHaveBeenCalled();
     expect(api.createCards).not.toHaveBeenCalled();
-    expect(localStorage.getItem(PENDING_ASSISTANT_STORAGE_KEY)).toBeNull();
+    expect(localStorage.length).toBe(0);
   });
   it("deselects and applies local CardForm edits before one bulk confirm", async () => {
     const onstate = vi.fn();
@@ -160,7 +164,7 @@ describe("assistant card proposal", () => {
     expect(
       screen.queryByRole("button", { name: /^Add to/ }),
     ).not.toBeInTheDocument();
-    expect(localStorage.getItem(PENDING_ASSISTANT_STORAGE_KEY)).toBeNull();
+    expect(localStorage.length).toBe(0);
   });
   it("locks unknown results and retries the identical single-card payload and key", async () => {
     const p = proposal();
@@ -176,10 +180,9 @@ describe("assistant card proposal", () => {
     expect(await screen.findByText("Result not confirmed")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Edit wander" })).toBeDisabled();
     expect(screen.getByRole("checkbox")).toBeDisabled();
-    const command = JSON.parse(
-      localStorage.getItem(PENDING_ASSISTANT_STORAGE_KEY)!,
-    );
-    expect(command.idempotencyKeys).toHaveLength(1);
+    const command = loadPendingAssistantProposal("owner-a");
+    expect(command).not.toBeNull();
+    expect(command!.idempotencyKeys).toHaveLength(1);
     await fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     await waitFor(() => expect(api.createCard).toHaveBeenCalledTimes(2));
     expect(api.createCard.mock.calls[1]).toEqual(api.createCard.mock.calls[0]);
@@ -284,15 +287,12 @@ describe("assistant card proposal", () => {
 });
 
 describe("assistant recovery boundaries", () => {
-  it("warns when storage fails, sends only after Confirm and never claims a safe save", async () => {
+  it("blocks Confirm when storage reservation fails and never claims a safe save", async () => {
     const store = vi
       .spyOn(Storage.prototype, "setItem")
       .mockImplementation(() => {
         throw new Error("quota");
       });
-    api.createCard.mockRejectedValueOnce(
-      new ApiClientError("network", "network", true),
-    );
     try {
       const p = proposal();
       p.drafts = p.drafts.slice(0, 1);
@@ -304,14 +304,83 @@ describe("assistant recovery boundaries", () => {
       );
       expect(
         await screen.findByText(
-          "The request can still be sent, but a reload may not restore it.",
+          "Could not safely save this request. No cards were sent. Please retry.",
         ),
       ).toBeInTheDocument();
-      expect(api.createCard).toHaveBeenCalledTimes(1);
+      expect(api.createCard).not.toHaveBeenCalled();
     } finally {
       store.mockRestore();
     }
   });
+  it("preserves an uncertain visible proposal after another visible proposal succeeds", async () => {
+    const a = {
+      ...proposal(),
+      drafts: proposal().drafts.slice(0, 1),
+      warnings: [],
+    };
+    const b = {
+      ...a,
+      proposal_id: createdId,
+      deck: { ...a.deck, title: "Second deck" },
+    };
+    api.createCard.mockRejectedValueOnce(
+      new ApiClientError("network", "network", true),
+    );
+    render(AssistantCardProposal, { proposal: a });
+    render(AssistantCardProposal, { proposal: b });
+    await fireEvent.click(
+      screen.getByRole("button", { name: "Add to Travel English · 1 card" }),
+    );
+    await screen.findByText("Result not confirmed");
+    const saved = loadPendingAssistantProposal("owner-a");
+    expect(saved).not.toBeNull();
+    await fireEvent.click(
+      screen.getByRole("button", { name: "Add to Second deck · 1 card" }),
+    );
+    await screen.findByRole("link", { name: "wander" });
+    expect(api.createCard).toHaveBeenCalledTimes(2);
+    expect(loadPendingAssistantProposal("owner-a")).toEqual(saved);
+    await fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(api.createCard).toHaveBeenCalledTimes(3));
+    expect(api.createCard.mock.calls[2]).toEqual(api.createCard.mock.calls[0]);
+  });
+  it.each(["owner-a", "owner-b"])(
+    "blocks a competing POST on reservation failure without erasing %s's command",
+    async (ownerSubject) => {
+      const p = {
+        ...proposal(),
+        drafts: proposal().drafts.slice(0, 1),
+        warnings: [],
+      };
+      const saved = createPendingAssistantProposal({
+        ownerSubject,
+        proposal_id: createdId,
+        deck: p.deck,
+        drafts: p.drafts,
+        idempotencyKeys: [createdId],
+      });
+      savePendingAssistantProposal(saved);
+      const store = vi
+        .spyOn(Storage.prototype, "setItem")
+        .mockImplementation(() => {
+          throw new Error("quota");
+        });
+      try {
+        render(AssistantCardProposal, { proposal: p });
+        await fireEvent.click(
+          screen.getByRole("button", {
+            name: "Add to Travel English · 1 card",
+          }),
+        );
+        await screen.findByRole("alert");
+        expect(api.createCard).not.toHaveBeenCalled();
+        expect(api.createCards).not.toHaveBeenCalled();
+        expect(loadPendingAssistantProposal(ownerSubject)).toEqual(saved);
+      } finally {
+        store.mockRestore();
+      }
+    },
+  );
   it("shows the server idempotency conflict message without replacing the keys", async () => {
     api.createCards.mockRejectedValueOnce(
       new ApiClientError(

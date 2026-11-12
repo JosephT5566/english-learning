@@ -110,6 +110,31 @@ describe("assistant proposal history", () => {
       expect(result[1].parts).toEqual([state]);
     }
   });
+  it.each(["pending", "committed", "dismissed"] as const)(
+    "reports %s state for an interrupted empty reply with honest nonempty content",
+    (status) => {
+      const state = {
+        type: "proposal_state" as const,
+        proposal_id: proposalId,
+        status,
+        created_card_ids: status === "committed" ? [ids[0]] : [],
+      };
+      expect(
+        requestMessages(
+          [turn({ complete: false, reply: "  ", proposalStates: [state] })],
+          "next",
+        ),
+      ).toEqual([
+        { role: "user", content: "find cards" },
+        {
+          role: "assistant",
+          content: "The reply was interrupted.",
+          parts: [state],
+        },
+        { role: "user", content: "next" },
+      ]);
+    },
+  );
   it("counts created ids with card refs and drops oldest whole turns", () => {
     const newer = turn({
       cardIds: ids.slice(0, 25),

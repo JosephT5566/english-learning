@@ -3,7 +3,7 @@ import { expect, test, type Page } from "@playwright/test";
 const deckId = "10000000-0000-4000-8000-000000000098";
 const proposalId = "30000000-0000-4000-8000-000000000098";
 const existingId = "20000000-0000-4000-8000-000000000097";
-const storageKey = "pending_assistant_proposal_v1";
+const storageKey = `pending_assistant_proposal_v2:browser-test-assistant:${proposalId}`;
 const deck = {
   id: deckId,
   title: "Travel English",

@@ -29,11 +29,15 @@ export function requestMessages(
   let refs = 0;
   const seenProposals = new Set<string>();
   for (const turn of turns.toReversed()) {
-    if (!turn.complete || !turn.reply.trim()) continue;
+    if ((!turn.complete || !turn.reply.trim()) && !turn.proposalStates?.length)
+      continue;
+    const content = turn.reply.trim()
+      ? turn.reply
+      : "The reply was interrupted.";
     const cardIds = [...new Set(turn.cardIds)].slice(0, historyCardRefLimit);
     const assistant: AssistantMessage = {
       role: "assistant",
-      content: turn.reply,
+      content,
     };
     const states: ProposalState[] = [];
     for (const state of (turn.proposalStates ?? []).toReversed()) {
@@ -50,7 +54,7 @@ export function requestMessages(
       states.reduce((sum, state) => sum + state.created_card_ids.length, 0);
     characters +=
       turn.question.length +
-      turn.reply.length +
+      content.length +
       (assistant.parts ? JSON.stringify(assistant.parts).length : 0);
     if (
       characters > historyCharacterLimit ||

@@ -62,7 +62,6 @@
   let error = $state("");
   let errorTitle = $state("");
   let archived = $state(false);
-  let saveWarning = $state("");
   let outcome = $state<"committed" | "dismissed" | null>(null);
   let created = $state<CardDetail[]>([]);
   let editing = $state<Row | null>(null);
@@ -227,10 +226,13 @@
     if (!command) return;
     try {
       savePendingAssistantProposal(command);
-      saveWarning = "";
     } catch {
-      saveWarning =
-        "The request can still be sent, but a reload may not restore it.";
+      errorTitle = "Request not sent";
+      error =
+        "Could not safely save this request. No cards were sent. Please retry.";
+      await tick();
+      alertElement?.focus();
+      return;
     }
     busy = true;
     error = "";
@@ -308,6 +310,13 @@
           cause instanceof Error
             ? cause.message
             : "Keep your drafts here and retry the same request.";
+      }
+      if (!uncertain) {
+        try {
+          clearPendingAssistantProposal(ownerSubject, proposal.proposal_id);
+        } catch {
+          /* A stale reservation will fail closed on the next confirmation. */
+        }
       }
       await tick();
       if (!fieldError) alertElement?.focus();
@@ -424,9 +433,6 @@
           >{/if}
       </div>
     {/if}
-    {#if saveWarning}<p class="proposal-error" role="alert">
-        {saveWarning}
-      </p>{/if}
     <div
       class="proposal-actions"
       tabindex="-1"
