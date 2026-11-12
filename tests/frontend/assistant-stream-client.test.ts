@@ -98,6 +98,28 @@ const cardPart = {
 const partFrame = (part: unknown) =>
   `event: part\ndata: ${JSON.stringify(part)}\n\n`;
 
+const proposalPart = {
+  id: "p2",
+  type: "card_proposal",
+  payload: {
+    proposal_id: "30000000-0000-0000-0000-000000000097",
+    deck: {
+      id: "10000000-0000-0000-0000-000000000097",
+      title: "English",
+      target_language: "en",
+    },
+    drafts: [{ term: "harbor", meaning: "port", synonyms: [], antonyms: [] }],
+    warnings: [
+      {
+        code: "duplicate_term",
+        term: "harbor",
+        draft_index: 0,
+        existing_card_ids: ["20000000-0000-0000-0000-000000000097"],
+      },
+    ],
+  },
+};
+
 async function readPart(
   part: unknown,
   options: Parameters<typeof streamAssistantReply>[3] = {},
@@ -122,6 +144,81 @@ it("delivers a strictly allow-listed card_list to onPart", async () => {
   const onPart = vi.fn();
   await readPart(cardPart, { capabilities: ["parts.v1"], onPart });
   expect(onPart.mock.calls).toEqual([[cardPart]]);
+});
+
+it("delivers a strictly allow-listed card_proposal without disturbing text or tools", async () => {
+  const onPart = vi.fn();
+  const result = await read(
+    [
+      ": ping\n\n",
+      partFrame(cardPart),
+      partFrame(proposalPart),
+      ": ping\n\n",
+      delta("A draft is ready."),
+      done,
+    ],
+    { capabilities: ["parts.v1"], onPart },
+  );
+  expect(onPart.mock.calls).toEqual([[cardPart], [proposalPart]]);
+  expect(result).toEqual({
+    text: "A draft is ready.",
+    stop: "completed",
+    tools: [{ name: "get_due_cards", status: "ok" }],
+  });
+});
+
+it.each([
+  {
+    ...proposalPart,
+    payload: { ...proposalPart.payload, proposal_id: undefined },
+  },
+  { ...proposalPart, payload: { ...proposalPart.payload, extra: true } },
+  {
+    ...proposalPart,
+    payload: {
+      ...proposalPart.payload,
+      drafts: [{ ...proposalPart.payload.drafts[0], owner_id: "private" }],
+    },
+  },
+  { ...proposalPart, payload: { ...proposalPart.payload, proposal_id: "bad" } },
+  {
+    ...proposalPart,
+    payload: {
+      ...proposalPart.payload,
+      deck: { ...proposalPart.payload.deck, id: "bad" },
+    },
+  },
+  {
+    ...proposalPart,
+    payload: {
+      ...proposalPart.payload,
+      deck: { ...proposalPart.payload.deck, owner_id: "private" },
+    },
+  },
+  { ...proposalPart, payload: { ...proposalPart.payload, drafts: [] } },
+  {
+    ...proposalPart,
+    payload: {
+      ...proposalPart.payload,
+      warnings: [
+        { ...proposalPart.payload.warnings[0], existing_card_ids: ["bad"] },
+      ],
+    },
+  },
+  {
+    ...proposalPart,
+    payload: {
+      ...proposalPart.payload,
+      warnings: [{ ...proposalPart.payload.warnings[0], owner_id: "private" }],
+    },
+  },
+])("rejects malformed card_proposal: %j", async (part) => {
+  const onPart = vi.fn();
+  await readPart(proposalPart, { onPart });
+  expect(onPart).toHaveBeenCalledWith(proposalPart);
+  await expect(readPart(part)).rejects.toMatchObject({
+    kind: "invalid_response",
+  });
 });
 
 it.each([

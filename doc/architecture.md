@@ -677,8 +677,11 @@ blocked a tool call the model still proposed on its final step.
 See the [dated evaluation](training/issues/70/README.md#live-result-on-2026-11-07).
 
 `app/assistant/tools.py` owns a validated registry of frozen tool specs with explicit
-`read`, `propose` or `write` tiers and strict argument models. The three existing tools
-are `read`. Only `read` and `propose` are model-visible; declarations, validation,
+`read`, `propose` or `write` tiers and strict argument models. The three read tools
+are followed by `propose_cards`, the first `propose` tool. Its top-level arguments
+are strict and reuse the bounded `CardDrafts.cards` content validation. Provider
+schemas omit array-count and dependent-field keywords; server validation retains
+those rules. Only `read` and `propose` are model-visible; declarations, validation,
 safe log names and the direct session gate share that filtered view. Table-driven
 executors run tool SQL in read-only transactions, including injected `propose` tools.
 The search consent pre-step keeps its non-readonly lock-and-commit transaction.
@@ -688,6 +691,19 @@ its assistant-only transaction-release option also reapplies readonly SQL settin
 ranking. `reads.get_due_cards` retains pagination and filter behavior. Statistics reuses
 `reads.DUE_CONDITION` rather than duplicating due rules. Tools use a common request-time
 snapshot, explicit owner predicates and transaction-local RLS binding.
+
+`app/assistant/propose.py` resolves an explicitly requested owned deck, rejecting
+archived decks without exposing foreign rows. With no deck id it selects a deck
+only when exactly one active owned deck exists; otherwise it returns `needs_deck`
+with at most 20 active deck summaries. Duplicate warnings compare NFC-normalized,
+trimmed, case-folded terms within the proposal and against active cards in that
+deck. Proposals never write or persist drafts. The model receives only status,
+an unsigned correlation UUID, resolved deck id, card count and warnings.
+Registry metadata limits this tool to one call per turn and makes `ok` and
+`needs_deck` terminal, handing off to the tools-disabled final answer. The prompt
+allows proposals, forbids claiming saves or inventing sources/dates, and asks for
+a deck rather than guessing after `needs_deck`. A successful proposal logs only
+request/proposal ids and card/warning counts.
 
 The existing auth transaction completes before starting the assistant budget. An orchestration
 worker creates and exclusively owns a separate session, binds the same authenticated owner,
@@ -726,9 +742,13 @@ that token receive the existing byte stream. Negotiation uses the JSON body, not
 The planning worker uses the same loop and an owner-bound
 SQL session. It reserves one call for a tool-disabled Vertex stream and returns the
 request, summaries and server-built parts after closing the session. Successful nonempty
-`get_due_cards` and `search_cards` results produce `card_list` parts with per-stream ids
-`p1`, `p2`, and so on. Items allow only `id`, `deck_id`, `term` and `meaning`; model text
-never creates parts. When negotiated, parts precede the provider stream and terminal event,
+`get_due_cards` and `search_cards` results produce `card_list` parts; successful
+`propose_cards` results produce one `card_proposal` under the same `parts.v1`
+capability. Both share per-stream ids `p1`, `p2`, and so on. Card-list items allow
+only `id`, `deck_id`, `term` and `meaning`. Proposal payloads allow only
+`proposal_id`, an `id`/`title`/`target_language` deck summary, validated `CardFields`
+drafts and duplicate warnings. Model text never creates parts. When negotiated,
+parts precede the provider stream and terminal event,
 including preparation timeout responses. They share the existing non-terminal frame
 deadline and backpressure path. The async response emits visible answer fragments and
 one terminal event. JSON responses and terminal payloads exclude parts. Clients ignore
@@ -737,8 +757,13 @@ opts into `parts.v1`, collects card ids in emission order in page memory, and se
 refs only from completed turns through `src/lib/assistant/history.ts`. Its mirrored
 12000-character, 20-message and 40-ref budgets drop oldest whole turns. A single
 kept turn retains at most its first 40 ids. Auth changes, consent withdrawal and
-reload clear the conversation. Parts are not rendered; rendering is deferred to
-#98. API #96 must deploy before Pages; no client 422 retry is provided.
+reload clear the conversation. The parser validates known `card_proposal` parts,
+but the page uses only `card_list` for card refs and does not retain proposal drafts.
+Parts are not rendered; rendering and confirmation are deferred to #98. Without
+`parts.v1`, proposal tools still run and the model receives their functionResponses;
+the stream emits no parts and the JSON route stays text-only. No inbound
+`proposal_state` is added. Ship the parser and page narrowing together, and deploy
+the API before #98's UI. API #96 must deploy before Pages; no client 422 retry is provided.
 Its ASGI listener cancels the response on
 disconnect, signals the planning worker to stop dispatching, and closes the upstream
 HTTPX stream. Both phases use the same absolute deadline.

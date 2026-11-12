@@ -15,6 +15,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
+from app.assistant.propose import PROPOSE_SCHEMA, ProposeArguments, propose_cards
 from app.config import Settings
 from app.genai_consent import require_genai_consent
 from app.generation import GenerationFailure
@@ -54,6 +55,8 @@ class ToolSpec:
     schema: dict
     args_model: type[BaseModel]
     tier: Tier
+    terminal: bool = False
+    max_calls_per_turn: int | None = None
 
 
 def build_registry(
@@ -119,6 +122,14 @@ REGISTRY: tuple[ToolSpec, ...] = build_registry(
                 "parameters": {"type": "object", "properties": FILTER_SCHEMA},
             },
         ),
+        ToolSpec(
+            name="propose_cards",
+            schema=PROPOSE_SCHEMA,
+            args_model=ProposeArguments,
+            tier="propose",
+            terminal=True,
+            max_calls_per_turn=1,
+        ),
     )
 )
 
@@ -142,6 +153,12 @@ def validate_call(name: str, arguments: dict, settings: Settings) -> dict:
     # UUIDs arrive as JSON strings. Pydantic's JSON mode keeps other strict checks.
     import json
 
+    if (
+        spec.args_model is ProposeArguments
+        and isinstance(arguments.get("cards"), list)
+        and len(arguments["cards"]) > 20
+    ):
+        raise ValueError("too_many_cards")
     try:
         validated = spec.args_model.model_validate_json(json.dumps(arguments))
         if isinstance(validated, SearchArguments):
@@ -242,6 +259,7 @@ class SessionTools:
             "get_review_stats": self._get_review_stats,
             "get_due_cards": self._get_due_cards,
             "search_cards": self._search_cards,
+            "propose_cards": self._propose_cards,
         }
         if executors is not None:
             self.executors.update(executors)
@@ -271,6 +289,9 @@ class SessionTools:
         finally:
             # Release every readonly transaction, including failed queries.
             session.rollback()
+
+    def _propose_cards(self, arguments, deadline):
+        return propose_cards(self.session, self.owner_id, arguments)
 
     def _get_review_stats(self, arguments, deadline):
         return get_review_stats(

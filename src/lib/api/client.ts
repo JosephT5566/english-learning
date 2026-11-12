@@ -151,14 +151,30 @@ export type AssistantTool = Pick<
   "name" | "status"
 >;
 
-export type AssistantPart = {
-  id: string;
-  type: "card_list";
-  payload: {
-    purpose: "due" | "search";
-    items: { id: string; deck_id: string; term: string; meaning: string }[];
-  };
-};
+export type AssistantPart =
+  | {
+      id: string;
+      type: "card_list";
+      payload: {
+        purpose: "due" | "search";
+        items: { id: string; deck_id: string; term: string; meaning: string }[];
+      };
+    }
+  | {
+      id: string;
+      type: "card_proposal";
+      payload: {
+        proposal_id: string;
+        deck: Pick<Deck, "id" | "title" | "target_language">;
+        drafts: CardDraft[];
+        warnings: {
+          code: "duplicate_term";
+          term: string;
+          draft_index: number;
+          existing_card_ids: string[];
+        }[];
+      };
+    };
 
 function hasExactKeys(
   value: unknown,
@@ -176,12 +192,47 @@ function hasExactKeys(
 function isAssistantPart(value: unknown): value is AssistantPart {
   if (
     !hasExactKeys(value, ["id", "type", "payload"]) ||
-    typeof value.id !== "string" ||
-    value.type !== "card_list"
+    typeof value.id !== "string"
   )
     return false;
   const payload = value.payload;
+  if (value.type === "card_proposal") {
+    if (
+      !hasExactKeys(payload, ["proposal_id", "deck", "drafts", "warnings"]) ||
+      !isUuid(payload.proposal_id) ||
+      !hasExactKeys(payload.deck, ["id", "title", "target_language"]) ||
+      !isUuid(payload.deck.id) ||
+      typeof payload.deck.title !== "string" ||
+      (payload.deck.target_language !== "en" &&
+        payload.deck.target_language !== "ja") ||
+      !Array.isArray(payload.drafts) ||
+      payload.drafts.length < 1 ||
+      payload.drafts.length > JSON_CARD_LIMIT ||
+      !payload.drafts.every(isCardDraft) ||
+      !Array.isArray(payload.warnings)
+    )
+      return false;
+    const draftCount = payload.drafts.length;
+    return payload.warnings.every(
+      (warning: unknown) =>
+        hasExactKeys(warning, [
+          "code",
+          "term",
+          "draft_index",
+          "existing_card_ids",
+        ]) &&
+        warning.code === "duplicate_term" &&
+        typeof warning.term === "string" &&
+        typeof warning.draft_index === "number" &&
+        Number.isInteger(warning.draft_index) &&
+        warning.draft_index >= 0 &&
+        warning.draft_index < draftCount &&
+        Array.isArray(warning.existing_card_ids) &&
+        warning.existing_card_ids.every(isUuid),
+    );
+  }
   return (
+    value.type === "card_list" &&
     hasExactKeys(payload, ["purpose", "items"]) &&
     (payload.purpose === "due" || payload.purpose === "search") &&
     Array.isArray(payload.items) &&
@@ -192,6 +243,15 @@ function isAssistantPart(value: unknown): value is AssistantPart {
         typeof item.deck_id === "string" &&
         typeof item.term === "string" &&
         typeof item.meaning === "string",
+    )
+  );
+}
+
+function isUuid(value: unknown): value is string {
+  return (
+    typeof value === "string" &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+      value,
     )
   );
 }
@@ -269,7 +329,11 @@ export async function streamAssistantReply(
           throw invalidAssistantStream();
 
         if (event === "part") {
-          if (!("type" in payload) || payload.type !== "card_list") continue;
+          if (
+            !("type" in payload) ||
+            (payload.type !== "card_list" && payload.type !== "card_proposal")
+          )
+            continue;
           if (!isAssistantPart(payload)) throw invalidAssistantStream();
           options?.onPart?.(payload);
           continue;

@@ -304,3 +304,108 @@ test("keeps text and tools with part and future events between deltas", async ({
   await expect(page.getByText("Get due cards", { exact: true })).toBeVisible();
   await expect(page.getByRole("alert")).toHaveCount(0);
 });
+
+test("accepts a proposal without rendering or persisting drafts", async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  const writes: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  page.on("request", (request) => {
+    if (
+      request.method() === "POST" &&
+      /\/v1\/(cards|decks\/[^/]+\/cards)/.test(request.url())
+    )
+      writes.push(request.url());
+  });
+  const proposal = {
+    id: "p1",
+    type: "card_proposal",
+    payload: {
+      proposal_id: "30000000-0000-0000-0000-000000000097",
+      deck: {
+        id: "10000000-0000-0000-0000-000000000097",
+        title: "Unrendered proposal deck",
+        target_language: "en",
+      },
+      drafts: [
+        {
+          term: "Unrendered proposal term",
+          meaning: "Unrendered proposal meaning",
+          synonyms: [],
+          antonyms: [],
+        },
+      ],
+      warnings: [],
+    },
+  };
+  await page.route("**/v1/assistant/messages/stream", (route) =>
+    route.fulfill({
+      contentType: "text/event-stream",
+      body:
+        ": ping\n\n" +
+        event("part", proposal) +
+        ": ping\n\n" +
+        event("delta", { text: "A draft is " }) +
+        ": ping\n\n" +
+        event("delta", { text: "ready for confirmation." }) +
+        event("done", {
+          tool_calls: [
+            {
+              name: "propose_cards",
+              arguments: {},
+              duration_ms: 0,
+              status: "ok",
+            },
+          ],
+          stop_reason: "completed",
+          usage: null,
+        }),
+    }),
+  );
+  await page.goto("./assistant");
+  await page
+    .getByRole("textbox", { name: "Ask the assistant" })
+    .fill("Propose a card");
+  await page.getByRole("button", { name: "Send", exact: true }).click();
+  await expect(
+    page.getByText("A draft is ready for confirmation.", { exact: true }),
+  ).toBeVisible();
+  await page.getByText("Tool call attempts · 1", { exact: true }).click();
+  // The existing summary treats tool names without a UI label as unknown.
+  await expect(page.getByText("Unknown tool", { exact: true })).toBeVisible();
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  await expect(page.locator(".conversation .turn")).toHaveCount(1);
+  await expect(page.locator(".turn > *, .reply > *")).toHaveCount(5);
+  await expect(
+    page.locator(
+      ".conversation button, .conversation input, .conversation table, .conversation a",
+    ),
+  ).toHaveCount(0);
+  for (const text of [
+    proposal.payload.deck.title,
+    proposal.payload.drafts[0].term,
+    proposal.payload.drafts[0].meaning,
+  ])
+    await expect(page.getByText(text, { exact: true })).toHaveCount(0);
+  const storage = await page.evaluate(() =>
+    JSON.stringify({
+      local: { ...localStorage },
+      session: { ...sessionStorage },
+    }),
+  );
+  for (const text of [
+    proposal.payload.proposal_id,
+    proposal.payload.deck.title,
+    proposal.payload.drafts[0].term,
+    proposal.payload.drafts[0].meaning,
+    "Propose a card",
+    "A draft is ready for confirmation.",
+  ])
+    expect(storage).not.toContain(text);
+  expect(writes).toEqual([]);
+  expect(errors).toEqual([]);
+  await page.reload();
+  await expect(page.locator(".conversation")).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
