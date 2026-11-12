@@ -8,6 +8,41 @@ verification records belong in the linked issue artifacts. Implementation and te
 precedence over stale documentation. Deployment statements below summarize recorded evidence, not
 a fresh inspection of the live services.
 
+## Browser-confirmed assistant proposals (2026-11-12)
+
+Issue #98 implements the selected Option A confirmation UI: compact selectable drafts,
+local Drawer/CardForm edits, undoable removal and explicit REST confirmation. One card
+uses single create; 2-20 use one atomic bulk request. Keys are minted at first Confirm
+and reused on retries. Unknown outcomes lock content until replay confirms the result.
+Unfinished commands are stored independently for 24 hours under
+`pending_assistant_proposal_v2:<encoded-owner>:<proposal-id>`; legacy v1 recovery is
+retained. Reload restores every command for the signed-in owner and requires explicit
+Retry. Storage reservation must succeed before any write. The transcript clears.
+Success shows created-card links; dismiss sends no write. `card_list` remains unrendered
+and `needs_deck` stays assistant text only.
+
+As of the 2026-11-12 PR #114 review fixes, restored components are keyed by owner and
+proposal. Proposal-bearing turns survive interrupted answer streams, including before
+any text arrives, and send pending/committed/dismissed `proposal_state` on the next
+stream request with honest nonempty interrupted-reply content when needed. The API
+validates before consent, re-reads created ids together with card refs under existing
+owner RLS, and supplies compact data-only state text to the model.
+The JSON route stays text-only. Deploy API before Pages; pre-#98 APIs reject new states
+with 422, which the client does not retry. This compatibility statement is inferred.
+
+Input Option A reserves a rounded, growing composer below scrollable messages. Enter
+sends, Shift+Enter inserts a newline, and IME composition blocks submission. No Stop
+control is added. Consent Option A uses compact inline disclosure instead of the composer
+or meaning-search form until explicit grant, followed by a heading Manage chip and inline
+withdrawal confirmation. Search retains its own copy and consent-free keyword mode.
+Grant never auto-sends or auto-searches; only successful withdrawal clears turns/results.
+
+Scripted unit and mocked browser coverage do not establish real-backend browser flows,
+Vertex acceptance, deployment, mobile keyboards or real IME behavior. See
+[e2e gaps](e2e-todo.md) and the #98 implementation report supplied to the operator.
+The #94-#97 descriptions below record their original scope; #98 supersedes their
+no-render/no-inbound-proposal-state limitations.
+
 ## Stateless assistant with proposals and no writes (2026-11-12)
 
 Issue #70 adds a non-streaming `POST /v1/assistant/messages` with consent,

@@ -85,3 +85,114 @@ describe("assistant history", () => {
     );
   });
 });
+
+const proposalId = "30000000-0000-0000-0000-000000000098";
+describe("assistant proposal history", () => {
+  it("sends latest pending, committed and dismissed states without parallel refs", () => {
+    for (const status of ["pending", "committed", "dismissed"] as const) {
+      const state = {
+        type: "proposal_state" as const,
+        proposal_id: proposalId,
+        status,
+        created_card_ids: status === "committed" ? ids.slice(0, 2) : [],
+      };
+      const result = requestMessages(
+        [
+          turn({
+            proposalStates: [
+              { ...state, status: "pending", created_card_ids: [] },
+              state,
+            ],
+          }),
+        ],
+        "next",
+      );
+      expect(result[1].parts).toEqual([state]);
+    }
+  });
+  it.each(["pending", "committed", "dismissed"] as const)(
+    "reports %s state for an interrupted empty reply with honest nonempty content",
+    (status) => {
+      const state = {
+        type: "proposal_state" as const,
+        proposal_id: proposalId,
+        status,
+        created_card_ids: status === "committed" ? [ids[0]] : [],
+      };
+      expect(
+        requestMessages(
+          [turn({ complete: false, reply: "  ", proposalStates: [state] })],
+          "next",
+        ),
+      ).toEqual([
+        { role: "user", content: "find cards" },
+        {
+          role: "assistant",
+          content: "The reply was interrupted.",
+          parts: [state],
+        },
+        { role: "user", content: "next" },
+      ]);
+    },
+  );
+  it("counts created ids with card refs and drops oldest whole turns", () => {
+    const newer = turn({
+      cardIds: ids.slice(0, 25),
+      proposalStates: [
+        {
+          type: "proposal_state",
+          proposal_id: proposalId,
+          status: "committed",
+          created_card_ids: ids.slice(25, 40),
+        },
+      ],
+    });
+    expect(
+      requestMessages([turn({ cardIds: [ids[41]] }), newer], "next"),
+    ).toEqual(requestMessages([newer], "next"));
+    expect(requestMessages([newer], "next")).toHaveLength(3);
+  });
+  it("counts serialized proposal state in the character budget", () => {
+    expect(
+      requestMessages(
+        [
+          turn({
+            question: "x".repeat(11800),
+            proposalStates: [
+              {
+                type: "proposal_state",
+                proposal_id: proposalId,
+                status: "committed",
+                created_card_ids: ids.slice(0, 20),
+              },
+            ],
+          }),
+        ],
+        "next",
+      ),
+    ).toEqual([{ role: "user", content: "next" }]);
+  });
+  it("emits a proposal id only once using its latest status across turns", () => {
+    const pending = {
+      type: "proposal_state" as const,
+      proposal_id: proposalId,
+      status: "pending" as const,
+      created_card_ids: [],
+    };
+    const committed = {
+      ...pending,
+      status: "committed" as const,
+      created_card_ids: [ids[0]],
+    };
+    const messages = requestMessages(
+      [
+        turn({ proposalStates: [pending] }),
+        turn({ proposalStates: [committed] }),
+      ],
+      "next",
+    );
+    expect(messages.flatMap((message) => message.parts ?? [])).toEqual([
+      committed,
+    ]);
+  });
+});

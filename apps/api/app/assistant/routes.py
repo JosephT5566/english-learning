@@ -75,9 +75,37 @@ class HistoryCardRefs(BaseModel):
         return value
 
 
-# Extend this discriminated union when proposal_state, clarification_answer or
-# media_ref have producers and their own contracts.
-HistoryPart = Annotated[HistoryCardRefs, Field(discriminator="type")]
+class HistoryProposalState(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    type: Literal["proposal_state"]
+    proposal_id: UUID
+    status: Literal["pending", "committed", "dismissed"]
+    created_card_ids: Annotated[list[UUID], Field(max_length=20)] = []
+
+    @field_validator("proposal_id", mode="before")
+    @classmethod
+    def parse_json_proposal_id(cls, value):
+        return UUID(value) if isinstance(value, str) else value
+
+    @field_validator("created_card_ids", mode="before")
+    @classmethod
+    def parse_json_ids(cls, value):
+        if isinstance(value, list):
+            return [UUID(item) if isinstance(item, str) else item for item in value]
+        return value
+
+    @model_validator(mode="after")
+    def valid_created_ids(self):
+        if len(self.created_card_ids) != len(set(self.created_card_ids)):
+            raise ValueError("duplicate card ids")
+        if (self.status == "committed") != bool(self.created_card_ids):
+            raise ValueError("only committed proposals require created card ids")
+        return self
+
+
+HistoryPart = Annotated[
+    HistoryCardRefs | HistoryProposalState, Field(discriminator="type")
+]
 
 
 class StreamMessage(Message):
@@ -104,7 +132,15 @@ def _validate_request(request, payload):
     history_parts = [
         m.parts for m in payload.messages if isinstance(m, StreamMessage) and m.parts
     ]
-    ref_count = sum(len(part.card_ids) for parts in history_parts for part in parts)
+    ref_count = sum(
+        len(
+            part.card_ids
+            if isinstance(part, HistoryCardRefs)
+            else part.created_card_ids
+        )
+        for parts in history_parts
+        for part in parts
+    )
     part_chars = sum(
         len(
             json.dumps(
@@ -276,7 +312,11 @@ def assistant_stream(
         id
         for message in payload.messages
         for part in message.parts
-        for id in part.card_ids
+        for id in (
+            part.card_ids
+            if isinstance(part, HistoryCardRefs)
+            else part.created_card_ids
+        )
     }
     state = request.app.state
     factory = state.database_session_factory

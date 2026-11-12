@@ -29,6 +29,9 @@
 	let error: { message: string; retryable: boolean; auth: boolean } | null = $state(null);
 	let consent: 'unknown' | 'required' | 'granted' | 'confirm-withdraw' = $state('unknown');
 	let busyMessage = $state('');
+	let consentError = $state('');
+	let failedConsentAction = $state<'read' | 'grant' | 'withdraw' | undefined>();
+	let focusConsentHeading = $state(false);
 	let maximumLength = $derived(mode === 'keyword' ? 200 : 500);
 
 	let sessionVersion = 0;
@@ -37,6 +40,9 @@
 		untrack(() => {
 			sessionVersion++;
 			consent = 'unknown';
+			consentError = '';
+			failedConsentAction = undefined;
+			focusConsentHeading = false;
 			keywordResult = null;
 			semanticResult = null;
 			query = '';
@@ -53,6 +59,8 @@
 		keywordResult = null;
 		semanticResult = null;
 		error = null;
+		consentError = '';
+		failedConsentAction = undefined;
 		submittedQuery = '';
 		if (mode === 'semantic') await updateConsent('read');
 	}
@@ -88,11 +96,14 @@
 		busy = true;
 		busyMessage =
 			action === 'read'
-				? 'Checking consent…'
+				? 'Checking AI consent…'
 				: action === 'grant'
 					? 'Saving consent…'
 					: 'Withdrawing consent…';
 		error = null;
+		consentError = '';
+		failedConsentAction = undefined;
+		focusConsentHeading = false;
 		if (action === 'read') consent = 'unknown';
 		try {
 			const result = await (action === 'read'
@@ -103,12 +114,17 @@
 			if (version !== sessionVersion) return;
 			consent = result.genai_consent_at === null ? 'required' : 'granted';
 			if (action === 'withdraw') {
+				focusConsentHeading = true;
 				semanticResult = null;
 				submittedQuery = '';
 			}
 		} catch (cause) {
 			if (version !== sessionVersion) return;
-			showError(cause, false);
+			failedConsentAction = action;
+			consentError =
+				cause instanceof ApiClientError
+					? cause.message
+					: `Could not ${action === 'read' ? 'check' : action} AI consent. Please try again.`;
 		} finally {
 			if (version === sessionVersion) busy = false;
 		}
@@ -164,7 +180,27 @@
 </svelte:head>
 
 <section class="search-page">
-	<h1>Find a card</h1>
+	<div class="heading-row">
+		<h1>Find a card</h1>
+		{#if mode === 'semantic'}
+			<GenAIConsentPanel
+				presentation="chip"
+				{consent}
+				{busy}
+				{updateConsent}
+				onConfirmWithdraw={() => {
+					consentError = '';
+					failedConsentAction = undefined;
+					consent = 'confirm-withdraw';
+				}}
+				onKeepConsent={() => {
+					consentError = '';
+					failedConsentAction = undefined;
+					consent = 'granted';
+				}}
+			/>
+		{/if}
+	</div>
 	<p class="intro">
 		Look up English and Japanese cards directly, or describe an idea to find related English words.
 	</p>
@@ -195,48 +231,59 @@
 			{consent}
 			{busy}
 			{updateConsent}
+			error={consentError}
+			failedAction={failedConsentAction}
+			focusHeading={focusConsentHeading}
 			onConfirmWithdraw={() => (consent = 'confirm-withdraw')}
-			onKeepConsent={() => (consent = 'granted')}
+			onKeepConsent={() => {
+				consentError = '';
+				failedConsentAction = undefined;
+				consent = 'granted';
+			}}
 		/>
 	{/if}
 
-	<form onsubmit={search} aria-busy={busy}>
-		<label for="search-query">
-			{mode === 'keyword' ? 'Word, phrase, or translation' : 'Describe the meaning or idea'}
-		</label>
-		<div class="search-controls">
-			<input
-				id="search-query"
-				bind:value={query}
-				minlength="2"
-				maxlength={maximumLength}
-				required
-				disabled={busy}
-				placeholder={mode === 'keyword'
-					? 'e.g. serendipity or べんきょう'
-					: 'e.g. a lucky discovery'}
-			/>
-			<button
-				type="submit"
-				aria-label={busy ? 'Searching…' : 'Search cards'}
-				title={busy ? 'Searching…' : 'Search cards'}
-				disabled={busy || query.trim().length < 2 || (mode === 'semantic' && consent !== 'granted')}
-			>
-				{#if busy}<LoaderCircleIcon
-						size={20}
-						class="loading-icon"
-						aria-hidden="true"
-					/>{:else}<SearchIcon size={20} aria-hidden="true" />{/if}
-			</button>
-		</div>
-		<p class="search-hint">
-			{mode === 'keyword'
-				? 'Matches card words, meanings, readings, and deck content.'
-				: 'Describe what you remember; exact wording is not required.'}
-		</p>
-	</form>
+	{#if mode === 'keyword' || consent === 'granted' || consent === 'confirm-withdraw'}
+		<form onsubmit={search} aria-busy={busy}>
+			<label for="search-query">
+				{mode === 'keyword' ? 'Word, phrase, or translation' : 'Describe the meaning or idea'}
+			</label>
+			<div class="search-controls">
+				<input
+					id="search-query"
+					bind:value={query}
+					minlength="2"
+					maxlength={maximumLength}
+					required
+					disabled={busy}
+					placeholder={mode === 'keyword'
+						? 'e.g. serendipity or べんきょう'
+						: 'e.g. a lucky discovery'}
+				/>
+				<button
+					type="submit"
+					aria-label={busy ? 'Searching…' : 'Search cards'}
+					title={busy ? 'Searching…' : 'Search cards'}
+					disabled={busy ||
+						query.trim().length < 2 ||
+						(mode === 'semantic' && consent !== 'granted')}
+				>
+					{#if busy}<LoaderCircleIcon
+							size={20}
+							class="loading-icon"
+							aria-hidden="true"
+						/>{:else}<SearchIcon size={20} aria-hidden="true" />{/if}
+				</button>
+			</div>
+			<p class="search-hint">
+				{mode === 'keyword'
+					? 'Matches card words, meanings, readings, and deck content.'
+					: 'Describe what you remember; exact wording is not required.'}
+			</p>
+		</form>
+	{/if}
 
-	{#if busy}
+	{#if busy && !busyMessage.includes('consent')}
 		<p class="state" aria-live="polite">{busyMessage}</p>
 	{:else if error}
 		<section class="state error" role="alert">
@@ -338,6 +385,13 @@
 	.search-page {
 		width: min(46rem, calc(100% - 2rem));
 		margin: clamp(2.5rem, 8vh, 5rem) auto 5rem;
+	}
+	.heading-row {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		flex-wrap: wrap;
+		gap: 1rem;
 	}
 	h1 {
 		margin: 0;
