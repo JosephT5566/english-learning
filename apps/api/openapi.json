@@ -76,7 +76,7 @@
           },
           "messages": {
             "items": {
-              "$ref": "#/components/schemas/Message"
+              "$ref": "#/components/schemas/StreamMessage"
             },
             "maxItems": 100,
             "minItems": 1,
@@ -1999,6 +1999,32 @@
         "title": "HTTPValidationError",
         "type": "object"
       },
+      "HistoryCardRefs": {
+        "additionalProperties": false,
+        "properties": {
+          "card_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 200,
+            "minItems": 1,
+            "title": "Card Ids",
+            "type": "array"
+          },
+          "type": {
+            "const": "card_refs",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "card_ids"
+        ],
+        "title": "HistoryCardRefs",
+        "type": "object"
+      },
       "LivenessResponse": {
         "description": "Response returned when the API process can handle requests.",
         "properties": {
@@ -2651,6 +2677,49 @@
           "indexed_count"
         ],
         "title": "SemanticSearchResponse",
+        "type": "object"
+      },
+      "StreamMessage": {
+        "additionalProperties": false,
+        "properties": {
+          "content": {
+            "maxLength": 100000,
+            "minLength": 1,
+            "title": "Content",
+            "type": "string"
+          },
+          "parts": {
+            "default": [],
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "card_refs": "#/components/schemas/HistoryCardRefs"
+                },
+                "propertyName": "type"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/HistoryCardRefs"
+                }
+              ]
+            },
+            "title": "Parts",
+            "type": "array"
+          },
+          "role": {
+            "enum": [
+              "user",
+              "assistant"
+            ],
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "role",
+          "content"
+        ],
+        "title": "StreamMessage",
         "type": "object"
       },
       "TagSummary": {

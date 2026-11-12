@@ -1,6 +1,6 @@
 # Project Memory
 
-Last updated: 2026-11-08
+Last updated: 2026-11-12
 
 This file is the current product-state index. Training milestones, evidence limits, and the next
 training action belong in [`training/project-memory.md`](training/project-memory.md); detailed
@@ -11,7 +11,7 @@ a fresh inspection of the live services.
 ## Stateless readonly assistant (2026-11-08)
 
 Issue #70 adds a non-streaming `POST /v1/assistant/messages` with consent,
-text-only history limits, a maximum of three generated turns and exactly three readonly
+text-only JSON history limits, a maximum of three generated turns and exactly three readonly
 owner-bound tools. Tool summaries omit card results; no conversation persists. Search/due
 queries are shared with existing endpoints; statistics reuses the same due predicate.
 Model and assistant query-embedding waits release database transactions; new transactions
@@ -19,7 +19,17 @@ retain existing RLS binding. Settings bound turns, time, output, history and too
 The signed-in `/assistant` page streams replies in a single column with expandable tool
 summaries. It shares the AI consent panel with Search and keeps conversation history in
 page memory. Partial replies stay visible after an interruption. Only completed turns are
-sent as context for later questions.
+sent as context for later questions. As of #96 (2026-11-12), the stream route uses
+`StreamMessage` with optional ids-only `card_refs`; the JSON route stays text-only.
+The page opts into `parts.v1`, remembers emitted card ids without rendering parts,
+and keeps all history in page memory. The server re-reads active cards in active
+decks under the existing owner-bound RLS session in one readonly query, rolls back,
+and adds resolved id/deck_id/term data as a second text part on the same model
+content. Foreign and nonexistent refs are silently dropped identically. Ref totals
+(default 40, range 0..200) and content plus compact serialized parts are bounded
+before consent. API #96 must deploy before Pages; there is no client 422 retry.
+Real backend/browser round trips and real Vertex second-text-part acceptance remain
+unverified; scripted and mocked coverage does not establish those outcomes.
 The PR #86 follow-up checks the shared deadline before sending content to Vertex and
 replays signed function calls with their IDs. The provisional live evaluation exercised
 eight synthetic cases on Gemini 3.5 Flash-Lite. Seven produced a reply and one reached

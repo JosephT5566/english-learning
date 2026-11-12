@@ -377,7 +377,7 @@ export interface components {
              */
             capabilities: string[];
             /** Messages */
-            messages: components["schemas"]["Message"][];
+            messages: components["schemas"]["StreamMessage"][];
         };
         /** CardBulkCreate */
         CardBulkCreate: {
@@ -847,6 +847,16 @@ export interface components {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
         };
+        /** HistoryCardRefs */
+        HistoryCardRefs: {
+            /** Card Ids */
+            card_ids: string[];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "card_refs";
+        };
         /**
          * LivenessResponse
          * @description Response returned when the API process can handle requests.
@@ -1083,6 +1093,21 @@ export interface components {
             indexed_count: number;
             /** Items */
             items: components["schemas"]["SemanticSearchItem"][];
+        };
+        /** StreamMessage */
+        StreamMessage: {
+            /** Content */
+            content: string;
+            /**
+             * Parts
+             * @default []
+             */
+            parts: components["schemas"]["HistoryCardRefs"][];
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "user" | "assistant";
         };
         /** TagSummary */
         TagSummary: {

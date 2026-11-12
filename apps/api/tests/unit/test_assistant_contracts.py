@@ -165,23 +165,26 @@ def test_assistant_registry_is_fixed_with_exact_minimal_schemas():
 
 
 @pytest.mark.parametrize(
-    "field,default,maximum",
+    "field,default,minimum,maximum",
     [
-        ("assistant_max_steps", 3, 3),
-        ("assistant_timeout_seconds", 25, 120),
-        ("assistant_max_output_tokens", 2048, 8192),
-        ("assistant_max_messages", 20, 100),
-        ("assistant_max_chars", 12000, 100000),
-        ("assistant_max_tool_calls", 3, 10),
-        ("assistant_tool_limit", 10, 20),
+        ("assistant_max_steps", 3, 1, 3),
+        ("assistant_timeout_seconds", 25, 1, 120),
+        ("assistant_max_output_tokens", 2048, 1, 8192),
+        ("assistant_max_messages", 20, 1, 100),
+        ("assistant_max_chars", 12000, 1, 100000),
+        ("assistant_max_tool_calls", 3, 1, 10),
+        ("assistant_tool_limit", 10, 1, 20),
+        ("assistant_max_history_card_refs", 40, 0, 200),
     ],
 )
-def test_assistant_settings_have_bounds_and_env(monkeypatch, field, default, maximum):
+def test_assistant_settings_have_bounds_and_env(
+    monkeypatch, field, default, minimum, maximum
+):
     assert getattr(settings(), field) == default
-    for invalid in (0, maximum + 1):
+    for invalid in (minimum - 1, maximum + 1):
         with pytest.raises(ValueError):
             settings(**{field: invalid})
-    for valid in (1, maximum):
+    for valid in (minimum, maximum):
         assert getattr(settings(**{field: valid}), field) == valid
     monkeypatch.setenv(field.upper(), "1")
     assert getattr(settings(), field) == 1

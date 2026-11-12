@@ -143,6 +143,7 @@ class Settings(BaseSettings):
     assistant_max_output_tokens: Annotated[int, Field(ge=1, le=8192)] = 2048
     assistant_max_messages: Annotated[int, Field(ge=1, le=100)] = 20
     assistant_max_chars: Annotated[int, Field(ge=1, le=100000)] = 12000
+    assistant_max_history_card_refs: Annotated[int, Field(ge=0, le=200)] = 40
     assistant_max_tool_calls: Annotated[int, Field(ge=1, le=10)] = 3
     assistant_tool_limit: Annotated[int, Field(ge=1, le=20)] = 10
     cors_allowed_origins: Annotated[tuple[str, ...], Field(min_length=1)] = (

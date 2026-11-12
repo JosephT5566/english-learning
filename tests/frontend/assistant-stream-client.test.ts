@@ -176,3 +176,43 @@ it("sends capabilities only when non-empty", async () => {
     { messages: [{ role: "user", content: "hello" }] },
   );
 });
+
+it("serializes stream history parts and does not retry a 422", async () => {
+  const messages = [
+    {
+      role: "assistant" as const,
+      content: "Earlier reply",
+      parts: [
+        {
+          type: "card_refs" as const,
+          card_ids: ["00000000-0000-0000-0000-000000000001"],
+        },
+      ],
+    },
+    { role: "user" as const, content: "those cards" },
+  ];
+  const send = vi.fn().mockResolvedValue(
+    new Response(
+      JSON.stringify({
+        error: {
+          code: "validation_failed",
+          request_id: "history-test",
+          message: "Invalid",
+          retryable: false,
+        },
+      }),
+      { status: 422, headers: { "Content-Type": "application/json" } },
+    ),
+  );
+  vi.stubGlobal("fetch", send);
+  await expect(
+    streamAssistantReply(messages, () => {}, new AbortController().signal, {
+      capabilities: ["parts.v1"],
+    }),
+  ).rejects.toMatchObject({ code: "validation_failed" });
+  expect(send).toHaveBeenCalledTimes(1);
+  expect(JSON.parse(send.mock.calls[0][1].body)).toEqual({
+    messages,
+    capabilities: ["parts.v1"],
+  });
+});
