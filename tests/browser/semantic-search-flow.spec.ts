@@ -101,22 +101,28 @@ test("inline consent gates meaning search and withdrawal requires confirmation",
   await expect(
     page.getByText(/card text and search queries are sent to Google Vertex AI/),
   ).toBeVisible();
+  await expect(page.getByLabel("Describe the meaning or idea")).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Search cards", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("heading", { name: "Allow AI meaning search?" }),
+  ).toBeVisible();
+  await page.getByText("Details", { exact: true }).click();
+  await expect(
+    page.getByText(/deletes your existing embeddings/),
+  ).toBeVisible();
+  expect(searches).toBe(0);
+  await page.getByRole("button", { name: "Grant consent" }).click();
+  await expect(page.getByLabel("Describe the meaning or idea")).toBeVisible();
+  expect(searches).toBe(0);
   await page
     .getByLabel("Describe the meaning or idea")
     .fill("recover after difficulty");
-  await expect(
-    page.getByRole("button", { name: "Search cards", exact: true }),
-  ).toBeDisabled();
-  await page.getByLabel("Describe the meaning or idea").press("Enter");
-  expect(searches).toBe(0);
-  await page.getByRole("button", { name: "Grant consent" }).click();
-  await expect(
-    page.getByRole("button", { name: "Search cards", exact: true }),
-  ).toBeEnabled();
   await page.getByRole("button", { name: "Search cards", exact: true }).click();
   await expect(page.getByText("resilient", { exact: true })).toBeVisible();
   await page
-    .getByRole("button", { name: "Withdraw consent", exact: true })
+    .getByRole("button", { name: /AI meaning search is allowed/ })
     .click();
   await expect(
     page.getByText(/deletes your existing embeddings/),
@@ -125,8 +131,11 @@ test("inline consent gates meaning search and withdrawal requires confirmation",
   expect(methods).toEqual(["GET", "PUT"]);
   await page.getByRole("button", { name: "Keep consent" }).click();
   expect(methods).toEqual(["GET", "PUT"]);
+  await expect(
+    page.getByRole("button", { name: /AI meaning search is allowed/ }),
+  ).toBeFocused();
   await page
-    .getByRole("button", { name: "Withdraw consent", exact: true })
+    .getByRole("button", { name: /AI meaning search is allowed/ })
     .click();
   await page.getByRole("button", { name: "Confirm withdrawal" }).click();
   await expect(
@@ -135,7 +144,109 @@ test("inline consent gates meaning search and withdrawal requires confirmation",
   await expect(page.getByRole("link", { name: /resilient/ })).toHaveCount(0);
   expect(methods).toEqual(["GET", "PUT", "DELETE"]);
   expect(searches).toBe(1);
+  await expect(page.getByLabel("Describe the meaning or idea")).toHaveCount(0);
   await expect(
-    page.getByRole("button", { name: "Search cards", exact: true }),
-  ).toBeDisabled();
+    page.getByRole("heading", { name: "Allow AI meaning search?" }),
+  ).toBeFocused();
+});
+
+test("consent checks and failed grant keep meaning search unavailable", async ({
+  page,
+}) => {
+  let releaseRead: () => void = () => {};
+  const readGate = new Promise<void>((resolve) => {
+    releaseRead = resolve;
+  });
+  let grants = 0;
+  let searches = 0;
+  await page.route("**/v1/me/genai-consent", async (route) => {
+    const method = route.request().method();
+    if (method === "GET") {
+      await readGate;
+      return route.fulfill({ json: { genai_consent_at: null } });
+    }
+    grants++;
+    if (grants === 1)
+      return route.fulfill({
+        status: 503,
+        json: {
+          error: {
+            code: "unavailable",
+            request_id: "test-consent-error",
+            message: "Could not grant AI consent.",
+            retryable: true,
+          },
+        },
+      });
+    return route.fulfill({
+      json: { genai_consent_at: "2026-11-12T00:00:00Z" },
+    });
+  });
+  page.on("request", (request) => {
+    if (new URL(request.url()).pathname === "/v1/cards/semantic-search")
+      searches++;
+  });
+  await page.goto("/search");
+  await page.getByRole("button", { name: "Meaning & concepts" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Checking AI consent…" }),
+  ).toBeVisible();
+  await expect(page.getByRole("status")).toBeVisible();
+  await expect(page.getByLabel("Describe the meaning or idea")).toHaveCount(0);
+  releaseRead();
+  await page.getByRole("button", { name: "Grant consent" }).click();
+  await expect(page.getByRole("alert")).toBeVisible();
+  await expect(page.getByRole("alert")).toBeFocused();
+  await expect(page.getByLabel("Describe the meaning or idea")).toHaveCount(0);
+  await page.getByRole("button", { name: "Retry grant" }).click();
+  await expect(page.getByLabel("Describe the meaning or idea")).toBeVisible();
+  expect(searches).toBe(0);
+});
+
+test("withdrawal failure preserves meaning results until successful retry", async ({
+  page,
+}) => {
+  let deletes = 0;
+  await page.route("**/v1/me/genai-consent", (route) => {
+    if (route.request().method() === "DELETE") {
+      deletes++;
+      if (deletes === 1)
+        return route.fulfill({
+          status: 503,
+          json: {
+            error: {
+              code: "unavailable",
+              message: "Could not withdraw AI consent.",
+              retryable: true,
+            },
+          },
+        });
+      return route.fulfill({ json: { genai_consent_at: null } });
+    }
+    return route.fulfill({
+      json: { genai_consent_at: "2026-11-12T00:00:00Z" },
+    });
+  });
+  await page.goto("/search");
+  await page.getByRole("button", { name: "Meaning & concepts" }).click();
+  await page
+    .getByLabel("Describe the meaning or idea")
+    .fill("recover after difficulty");
+  await page.getByRole("button", { name: "Search cards", exact: true }).click();
+  await expect(page.getByRole("link", { name: /resilient/ })).toBeVisible();
+  const manage = page.getByRole("button", {
+    name: /AI meaning search is allowed/,
+  });
+  await expect(page.locator(".heading-row")).toContainText("AI on · Manage");
+  await manage.click();
+  await page.getByRole("button", { name: "Confirm withdrawal" }).click();
+  await expect(page.getByRole("alert")).toBeFocused();
+  await expect(page.getByRole("link", { name: /resilient/ })).toBeVisible();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await page.getByRole("button", { name: "Retry withdrawal" }).click();
+  await expect(
+    page.getByRole("button", { name: "Grant consent" }),
+  ).toBeVisible();
+  await expect(page.getByRole("link", { name: /resilient/ })).toHaveCount(0);
+  expect(deletes).toBe(2);
 });

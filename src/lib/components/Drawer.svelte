@@ -7,12 +7,14 @@
 		wide = false,
 		dismissible = true,
 		onclose,
+		onOpenAutoFocus,
 		children,
 	}: {
 		title: string;
 		wide?: boolean;
 		dismissible?: boolean;
 		onclose: () => void;
+		onOpenAutoFocus?: (event: Event) => void;
 		children: Snippet;
 	} = $props();
 
@@ -32,6 +34,7 @@
 		class={`drawer w-auto max-w-none gap-0 text-base sm:max-w-none${wide ? ' wide' : ''}`}
 		escapeKeydownBehavior={dismissible ? 'close' : 'ignore'}
 		interactOutsideBehavior={dismissible ? 'close' : 'ignore'}
+		{onOpenAutoFocus}
 	>
 		<header>
 			<Sheet.Title class="drawer-title">{title}</Sheet.Title>

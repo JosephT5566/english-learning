@@ -98,6 +98,8 @@ describe("Search page", () => {
       "/cards/20000000-0000-0000-0000-000000000002?language=ja",
     );
     expect(api.semanticSearch).not.toHaveBeenCalled();
+    expect(api.getGenAIConsent).not.toHaveBeenCalled();
+    expect(api.grantGenAIConsent).not.toHaveBeenCalled();
   });
 
   it("preserves the query when switching to English-only semantic search", async () => {
@@ -169,28 +171,25 @@ describe("Search page", () => {
     const grant = await screen.findByRole("button", { name: "Grant consent" });
     expect(
       screen.getByText(
-        /card text and search queries are sent to Google Vertex AI/,
+        "Your card text and search queries are sent to Google Vertex AI for semantic search. You can withdraw consent here at any time.",
       ),
     ).toBeVisible();
-    await fireEvent.input(
-      screen.getByLabelText("Describe the meaning or idea"),
-      {
-        target: { value: "a lucky discovery" },
-      },
-    );
-    expect(screen.getByRole("button", { name: "Search cards" })).toBeDisabled();
-    const form = screen
-      .getByLabelText("Describe the meaning or idea")
-      .closest("form");
-    if (!form) throw new Error("Search form missing");
-    await fireEvent.submit(form);
+    expect(
+      screen.getByRole("heading", { name: "Allow AI meaning search?" }),
+    ).toBeVisible();
+    expect(
+      screen.queryByLabelText("Describe the meaning or idea"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Search cards" }),
+    ).not.toBeInTheDocument();
+    await fireEvent.click(screen.getByText("Details"));
+    expect(screen.getByText(/deletes your existing embeddings/)).toBeVisible();
     expect(api.semanticSearch).not.toHaveBeenCalled();
     await fireEvent.click(grant);
-    await waitFor(() =>
-      expect(
-        screen.getByRole("button", { name: "Search cards" }),
-      ).toBeEnabled(),
-    );
+    const input = await screen.findByLabelText("Describe the meaning or idea");
+    expect(api.semanticSearch).not.toHaveBeenCalled();
+    await fireEvent.input(input, { target: { value: "a lucky discovery" } });
     await fireEvent.click(screen.getByRole("button", { name: "Search cards" }));
     await waitFor(() => expect(api.semanticSearch).toHaveBeenCalledTimes(1));
     expect(api.grantGenAIConsent).toHaveBeenCalledTimes(1);
@@ -203,16 +202,26 @@ describe("Search page", () => {
     );
     await fireEvent.click(
       await screen.findByRole("button", {
-        name: "Withdraw consent",
+        name: /AI meaning search is allowed/,
       }),
     );
     expect(screen.getByText(/deletes your existing embeddings/)).toBeVisible();
+    await waitFor(() =>
+      expect(
+        screen.getByRole("heading", { name: "Withdraw AI consent?" }),
+      ).toHaveFocus(),
+    );
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(api.withdrawGenAIConsent).not.toHaveBeenCalled();
     await fireEvent.click(screen.getByRole("button", { name: "Keep consent" }));
     expect(api.withdrawGenAIConsent).not.toHaveBeenCalled();
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: /AI meaning search is allowed/ }),
+      ).toHaveFocus(),
+    );
     await fireEvent.click(
-      screen.getByRole("button", { name: "Withdraw consent" }),
+      screen.getByRole("button", { name: /AI meaning search is allowed/ }),
     );
     await fireEvent.click(
       screen.getByRole("button", { name: "Confirm withdrawal" }),
@@ -237,7 +246,7 @@ describe("Search page", () => {
       screen.getByRole("button", { name: "Meaning & concepts" }),
     );
     await screen.findByRole("button", {
-      name: "Withdraw consent",
+      name: /AI meaning search is allowed/,
     });
     await fireEvent.input(
       screen.getByLabelText("Describe the meaning or idea"),
@@ -248,16 +257,135 @@ describe("Search page", () => {
     await fireEvent.click(screen.getByRole("button", { name: "Search cards" }));
     await screen.findByRole("button", { name: "Grant consent" });
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(
+      screen.queryByLabelText("Describe the meaning or idea"),
+    ).not.toBeInTheDocument();
   });
   it("checks consent again when the signed-in account changes", async () => {
     render(SearchPage);
     await fireEvent.click(
       screen.getByRole("button", { name: "Meaning & concepts" }),
     );
-    await screen.findByRole("button", { name: "Withdraw consent" });
+    await screen.findByRole("button", { name: /AI meaning search is allowed/ });
     api.getGenAIConsent.mockResolvedValue({ genai_consent_at: null });
     authSession.set({ kind: "authenticated", profile: { sub: "owner-b" } });
     await screen.findByRole("button", { name: "Grant consent" });
     expect(api.semanticSearch).not.toHaveBeenCalled();
+  });
+  it("shows a polite initial consent check without the form", async () => {
+    api.getGenAIConsent.mockReturnValue(new Promise(() => {}));
+    render(SearchPage);
+    await fireEvent.click(
+      screen.getByRole("button", { name: "Meaning & concepts" }),
+    );
+    expect(screen.getByText("Checking AI consent…")).toBeVisible();
+    expect(
+      screen.getByText(
+        "Your card text and search queries are sent to Google Vertex AI for semantic search. You can withdraw consent here at any time.",
+      ),
+    ).toBeVisible();
+    expect(screen.getByRole("status")).toBeInTheDocument();
+    expect(
+      screen.queryByLabelText("Describe the meaning or idea"),
+    ).not.toBeInTheDocument();
+    expect(api.semanticSearch).not.toHaveBeenCalled();
+  });
+
+  it("keeps the full provider description visible when the initial consent check fails", async () => {
+    api.getGenAIConsent.mockRejectedValueOnce(new Error("offline"));
+    render(SearchPage);
+    await fireEvent.click(
+      screen.getByRole("button", { name: "Meaning & concepts" }),
+    );
+    await screen.findByRole("button", { name: "Retry consent check" });
+    expect(
+      screen.getByRole("heading", { name: "AI consent unavailable" }),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        "Your card text and search queries are sent to Google Vertex AI for semantic search. You can withdraw consent here at any time.",
+      ),
+    ).toBeVisible();
+    expect(screen.getByRole("alert")).toBeVisible();
+    expect(
+      screen.queryByLabelText("Describe the meaning or idea"),
+    ).not.toBeInTheDocument();
+    expect(api.semanticSearch).not.toHaveBeenCalled();
+  });
+
+  it("offers Retry grant beside the focused alert without showing the form", async () => {
+    api.getGenAIConsent.mockResolvedValue({ genai_consent_at: null });
+    api.grantGenAIConsent.mockRejectedValueOnce(new Error("offline"));
+    render(SearchPage);
+    await fireEvent.click(
+      screen.getByRole("button", { name: "Meaning & concepts" }),
+    );
+    await fireEvent.click(
+      await screen.findByRole("button", { name: "Grant consent" }),
+    );
+    const alert = await screen.findByRole("alert");
+    await waitFor(() => expect(alert).toHaveFocus());
+    expect(
+      screen.queryByLabelText("Describe the meaning or idea"),
+    ).not.toBeInTheDocument();
+    await fireEvent.click(screen.getByRole("button", { name: "Retry grant" }));
+    await screen.findByLabelText("Describe the meaning or idea");
+    expect(api.semanticSearch).not.toHaveBeenCalled();
+  });
+
+  it("keeps results on failed withdrawal and clears them only after successful retry", async () => {
+    api.semanticSearch.mockResolvedValue({
+      items: [
+        {
+          id: japaneseCard.id,
+          term: "resilient",
+          meaning: "able to recover",
+          pronunciation: null,
+          score: 0.9,
+        },
+      ],
+      index_status: "complete",
+      eligible_count: 1,
+      indexed_count: 1,
+    });
+    api.withdrawGenAIConsent.mockRejectedValueOnce(new Error("offline"));
+    render(SearchPage);
+    await fireEvent.click(
+      screen.getByRole("button", { name: "Meaning & concepts" }),
+    );
+    const manage = await screen.findByRole("button", {
+      name: /AI meaning search is allowed/,
+    });
+    expect(manage).toHaveTextContent("AI on · Manage");
+    expect(manage.closest(".heading-row")).toContainElement(
+      screen.getByRole("heading", { name: "Find a card" }),
+    );
+    await fireEvent.input(
+      screen.getByLabelText("Describe the meaning or idea"),
+      { target: { value: "recover" } },
+    );
+    await fireEvent.click(screen.getByRole("button", { name: "Search cards" }));
+    await screen.findByRole("link", { name: /resilient/ });
+    await fireEvent.click(manage);
+    await fireEvent.click(
+      screen.getByRole("button", { name: "Confirm withdrawal" }),
+    );
+    await screen.findByRole("alert");
+    expect(screen.getByRole("link", { name: /resilient/ })).toBeVisible();
+    await fireEvent.click(
+      screen.getByRole("button", { name: "Retry withdrawal" }),
+    );
+    await screen.findByRole("button", { name: "Grant consent" });
+    await waitFor(() =>
+      expect(
+        screen.getByRole("heading", { name: "Allow AI meaning search?" }),
+      ).toHaveFocus(),
+    );
+    expect(
+      screen.queryByRole("link", { name: /resilient/ }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByLabelText("Describe the meaning or idea"),
+    ).not.toBeInTheDocument();
   });
 });

@@ -1,5 +1,12 @@
 <script lang="ts">
-  import { untrack } from "svelte";
+  import { onMount, tick, untrack } from "svelte";
+  import AssistantCardProposal from "$lib/components/AssistantCardProposal.svelte";
+  import { getProfile } from "$lib/auth";
+  import {
+    loadPendingAssistantProposal,
+    type PendingAssistantProposal,
+  } from "$lib/assistant/pending";
+  import { shouldSendOnEnter } from "$lib/assistant/composer";
   import SendIcon from "@lucide/svelte/icons/arrow-up";
   import GenAIConsentPanel from "$lib/components/GenAIConsentPanel.svelte";
   import { authSession } from "$lib/stores/auth";
@@ -10,20 +17,24 @@
     streamAssistantReply,
     withdrawGenAIConsent,
     type AssistantTool,
+    type AssistantPart,
   } from "$lib/api/client";
 
   import {
     historyCharacterLimit,
     requestMessages,
     type HistoryTurn,
+    type ProposalState,
   } from "$lib/assistant/history";
 
   type Turn = HistoryTurn & {
     tools: AssistantTool[];
     issue: string;
+    proposals: Extract<AssistantPart, { type: "card_proposal" }>["payload"][];
   };
 
   const toolLabels: Record<string, string> = {
+    propose_cards: "Propose cards",
     search_cards: "Search cards",
     get_due_cards: "Get due cards",
     get_review_stats: "Get review stats",
@@ -44,6 +55,16 @@
   let consentBusy = $state(false);
   let sending = $state(false);
   let formError = $state("");
+  let consentError = $state("");
+  let failedAction = $state<"read" | "grant" | "withdraw" | undefined>();
+  let focusConsentHeading = $state(false);
+  let restored = $state<PendingAssistantProposal | null>(null);
+  let restoredState = $state<ProposalState | undefined>();
+  let composing = false;
+  let pageElement: HTMLElement;
+  let messageList: HTMLDivElement;
+  let textarea = $state<HTMLTextAreaElement>();
+  let followBottom = true;
   let generation: AbortController | undefined;
   let sessionVersion = 0;
 
@@ -56,6 +77,21 @@
       consentBusy = false;
       sending = false;
       formError = "";
+      consentError = "";
+      failedAction = undefined;
+      focusConsentHeading = false;
+      restoredState = undefined;
+      restored =
+        session.kind === "authenticated"
+          ? loadPendingAssistantProposal(getProfile()?.sub ?? "")
+          : null;
+      if (restored)
+        restoredState = {
+          type: "proposal_state",
+          proposal_id: restored.proposal_id,
+          status: "pending",
+          created_card_ids: [],
+        };
       if (session.kind === "authenticated") void updateConsent("read");
     });
     return () => {
@@ -68,7 +104,9 @@
     if (consentBusy || sending) return;
     const version = sessionVersion;
     consentBusy = true;
-    formError = "";
+    consentError = "";
+    failedAction = undefined;
+    focusConsentHeading = false;
     try {
       const result = await (action === "read"
         ? getGenAIConsent()
@@ -77,11 +115,17 @@
           : withdrawGenAIConsent());
       if (version === sessionVersion) {
         consent = result.genai_consent_at ? "granted" : "required";
-        if (action === "withdraw") turns = [];
+        if (action === "withdraw") {
+          turns = [];
+          restored = null;
+          restoredState = undefined;
+          focusConsentHeading = true;
+        }
       }
     } catch (cause) {
       if (version === sessionVersion) {
-        formError =
+        failedAction = action;
+        consentError =
           cause instanceof ApiClientError
             ? cause.message
             : "Could not check AI consent.";
@@ -91,11 +135,77 @@
     }
   }
 
-  async function send(event: SubmitEvent) {
-    event.preventDefault();
+  function recordState(turn: Turn, state: Omit<ProposalState, "type">) {
+    turn.proposalStates = [
+      ...(turn.proposalStates ?? []).filter(
+        (item) => item.proposal_id !== state.proposal_id,
+      ),
+      { type: "proposal_state", ...state },
+    ];
+  }
+
+  function resizeInput() {
+    if (!textarea) return;
+    textarea.style.height = "auto";
+    textarea.style.height = `${textarea.scrollHeight}px`;
+  }
+  $effect(() => {
+    void draft;
+    void tick().then(resizeInput);
+  });
+  $effect(() => {
+    // Read text and proposal state so streaming follows only an already-following reader.
+    turns.map((turn) => [turn.reply, turn.proposals.length]);
+    void restored;
+    if (followBottom)
+      void tick().then(() => {
+        if (messageList) messageList.scrollTop = messageList.scrollHeight;
+      });
+  });
+  onMount(() => {
+    const viewport = window.visualViewport;
+    function fitColumn() {
+      if (!pageElement) return;
+      const top = pageElement.getBoundingClientRect().top;
+      pageElement.style.setProperty("--page-top", `${top}px`);
+      if (viewport)
+        pageElement.style.setProperty(
+          "--available-height",
+          `${Math.max(0, viewport.height + viewport.offsetTop - top)}px`,
+        );
+    }
+    const observer = new ResizeObserver(fitColumn);
+    // The measured page top includes the real header, with no fixed header estimate.
+    if (pageElement.parentElement) observer.observe(pageElement.parentElement);
+    window.addEventListener("resize", fitColumn);
+    viewport?.addEventListener("resize", fitColumn);
+    viewport?.addEventListener("scroll", fitColumn);
+    fitColumn();
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", fitColumn);
+      viewport?.removeEventListener("resize", fitColumn);
+      viewport?.removeEventListener("scroll", fitColumn);
+    };
+  });
+
+  async function send(event?: SubmitEvent) {
+    event?.preventDefault();
     const question = draft.trim();
     if (!question || sending || consentBusy || consent !== "granted") return;
-    const messages = requestMessages(turns, question);
+    const restoreHistory: HistoryTurn[] =
+      restored && restoredState
+        ? [
+            {
+              question: "Recovered unfinished card proposal",
+              reply: "Your unfinished card proposal.",
+              complete: true,
+              cardIds: [],
+              proposalStates: [restoredState],
+            },
+          ]
+        : [];
+    const messages = requestMessages([...restoreHistory, ...turns], question);
     const version = sessionVersion;
     const controller = new AbortController();
     generation = controller;
@@ -109,6 +219,8 @@
       cardIds: [],
       complete: false,
       issue: "",
+      proposals: [],
+      proposalStates: [],
     });
     turns.push(turn);
     try {
@@ -128,6 +240,21 @@
                   ...part.payload.items.map((item) => item.id),
                 ]),
               ];
+            if (
+              version === sessionVersion &&
+              part.type === "card_proposal" &&
+              !turn.proposals.some(
+                (proposal) => proposal.proposal_id === part.payload.proposal_id,
+              )
+            ) {
+              turn.proposals.push(part.payload);
+              turn.proposalStates?.push({
+                type: "proposal_state",
+                proposal_id: part.payload.proposal_id,
+                status: "pending",
+                created_card_ids: [],
+              });
+            }
           },
         },
       );
@@ -172,79 +299,159 @@
   />
 </svelte:head>
 
-<section class="assistant-page">
-  <h1>Learning assistant</h1>
-  <p class="intro">Ask about your cards or what’s due for review.</p>
-  <GenAIConsentPanel
-    {consent}
-    busy={consentBusy || sending}
-    {updateConsent}
-    onConfirmWithdraw={() => (consent = "confirm-withdraw")}
-    onKeepConsent={() => (consent = "granted")}
-    heading="Allow the learning assistant?"
-    description="Your messages and relevant card information are sent to Google Vertex AI. You can withdraw consent here at any time."
-    allowedMessage="AI consent is active."
-    withdrawalMessage="Withdrawing consent deletes your existing embeddings and stops AI features. It cannot recall information already sent to Google Vertex AI."
-  />
-
-  {#if turns.length > 0}
-    <ol class="conversation" aria-label="Conversation">
-      {#each turns as turn (turn)}
-        <li class="turn">
-          <p class="question">
-            <span class="speaker">You</span>{turn.question}
-          </p>
-          <div class="reply">
-            <span class="speaker">Assistant</span>
-            {#if turn.reply}<p>{turn.reply}</p>{/if}
-            {#if sending && turn === turns.at(-1) && !turn.reply}
-              <p>Waiting for a reply…</p>
-            {/if}
-            {#if turn.issue}<p class="error" role="alert">{turn.issue}</p>{/if}
-            {#if turn.tools.length > 0}
-              <details>
-                <summary>Tool call attempts · {turn.tools.length}</summary>
-                <ul>
-                  {#each turn.tools as tool (tool)}
-                    <li>
-                      {Object.hasOwn(toolLabels, tool.name)
-                        ? toolLabels[tool.name]
-                        : "Unknown tool"}{toolStatusSuffix[tool.status]}
-                    </li>
-                  {/each}
-                </ul>
-              </details>
-            {/if}
-          </div>
-        </li>
-      {/each}
-    </ol>
-  {/if}
-
-  <form onsubmit={send} aria-busy={sending}>
-    <label for="assistant-question">Ask the assistant</label>
-    <div class="composer">
-      <textarea
-        id="assistant-question"
-        bind:value={draft}
-        maxlength={historyCharacterLimit}
-        rows="2"
-        placeholder="What should I review today?"
-        readonly={sending}
-      ></textarea>
-      <button
-        type="submit"
-        disabled={!draft.trim() ||
-          sending ||
-          consentBusy ||
-          consent !== "granted"}
-      >
-        Send <SendIcon size={18} aria-hidden="true" />
-      </button>
+<section class="assistant-page" bind:this={pageElement}>
+  <div class="heading-row">
+    <div>
+      <h1>Learning assistant</h1>
+      <p class="intro">Ask about your cards or what’s due for review.</p>
     </div>
-    {#if formError}<p class="error" role="alert">{formError}</p>{/if}
+    <GenAIConsentPanel
+      presentation="chip"
+      {consent}
+      busy={consentBusy || sending}
+      {updateConsent}
+      onConfirmWithdraw={() => (consent = "confirm-withdraw")}
+      onKeepConsent={() => (consent = "granted")}
+      allowedMessage="AI consent is active."
+      inputIdPrefix="assistant-consent"
+    />
+  </div>
+  <div
+    class="message-list"
+    bind:this={messageList}
+    onscroll={() => {
+      followBottom =
+        messageList.scrollHeight -
+          messageList.scrollTop -
+          messageList.clientHeight <
+        64;
+    }}
+  >
+    {#if restored}
+      <AssistantCardProposal
+        proposal={{
+          proposal_id: restored.proposal_id,
+          deck: restored.deck,
+          drafts: restored.drafts,
+          warnings: [],
+        }}
+        {restored}
+        onstate={(state) =>
+          (restoredState = { type: "proposal_state", ...state })}
+      />
+    {/if}
+    {#if turns.length > 0}
+      <ol class="conversation" aria-label="Conversation">
+        {#each turns as turn (turn)}
+          <li class="turn">
+            <p class="question">
+              <span class="speaker">You</span>{turn.question}
+            </p>
+            <div class="reply">
+              <span class="speaker">Assistant</span>
+              {#if turn.reply}<p>{turn.reply}</p>{/if}
+              {#if sending && turn === turns.at(-1) && !turn.reply}
+                <p>Waiting for a reply…</p>
+              {/if}
+              {#if turn.issue}<p class="error" role="alert">
+                  {turn.issue}
+                </p>{/if}
+              {#each turn.proposals as proposal (proposal.proposal_id)}
+                <AssistantCardProposal
+                  {proposal}
+                  onstate={(state) => recordState(turn, state)}
+                />
+              {/each}
+              {#if turn.tools.length > 0}
+                <details>
+                  <summary>Tool call attempts · {turn.tools.length}</summary>
+                  <ul>
+                    {#each turn.tools as tool (tool)}
+                      <li>
+                        {Object.hasOwn(toolLabels, tool.name)
+                          ? toolLabels[tool.name]
+                          : "Unknown tool"}{toolStatusSuffix[tool.status]}
+                      </li>
+                    {/each}
+                  </ul>
+                </details>
+              {/if}
+            </div>
+          </li>
+        {/each}
+      </ol>
+    {/if}
+  </div>
+  <div class="bottom-row">
+    <GenAIConsentPanel
+      presentation="panel"
+      {consent}
+      busy={consentBusy || sending}
+      {updateConsent}
+      error={consentError}
+      {failedAction}
+      focusHeading={focusConsentHeading}
+      inputIdPrefix="assistant-consent"
+      onConfirmWithdraw={() => (consent = "confirm-withdraw")}
+      onKeepConsent={() => (consent = "granted")}
+      heading="Allow the learning assistant?"
+      description="Your messages and relevant card information are sent to Google Vertex AI. You can withdraw consent here at any time."
+      allowedMessage="AI consent is active."
+      withdrawalMessage="Withdrawing consent deletes your existing embeddings and stops AI features. It cannot recall information already sent to Google Vertex AI."
+    />
+    {#if consent === "granted" || consent === "confirm-withdraw"}
+      <form onsubmit={send} aria-busy={sending}>
+        <label for="assistant-question">Ask the assistant</label>
+        <div class="composer">
+          <textarea
+            id="assistant-question"
+            bind:this={textarea}
+            bind:value={draft}
+            maxlength={historyCharacterLimit}
+            rows="1"
+            placeholder="What should I review today?"
+            readonly={sending || consentBusy || consent !== "granted"}
+            aria-describedby="assistant-keyboard assistant-input-reason"
+            oncompositionstart={() => (composing = true)}
+            oncompositionend={() => (composing = false)}
+            onkeydown={(event) => {
+              if (shouldSendOnEnter(event, composing)) {
+                event.preventDefault();
+                void send();
+              }
+            }}
+          ></textarea>
+          <button
+            type="submit"
+            aria-label={sending ? "Replying…" : "Send message"}
+            disabled={!draft.trim() ||
+              sending ||
+              consentBusy ||
+              consent !== "granted"}
+          >
+            <SendIcon size={22} aria-hidden="true" />
+          </button>
+        </div>
+        {#if formError}<p class="error" role="alert">{formError}</p>{/if}
+        <p class="hint" id="assistant-keyboard">
+          Enter to send · Shift+Enter for newline · IME Enter confirms text
+        </p>
+        <p class="hint" id="assistant-input-reason">
+          {sending
+            ? "Replying…"
+            : consentBusy || consent !== "granted"
+              ? "Sending is unavailable until consent is active and no consent action is pending."
+              : !draft.trim()
+                ? "Type a message to enable Send."
+                : "Ready to send."}
+        </p>
+      </form>
+    {/if}
     <p class="hint">Refreshing the page clears this conversation.</p>
-  </form>
+    {#if restored}<p class="hint">
+        Your unfinished commit is restored. Retry when you are ready.
+      </p>{/if}
+  </div>
   <p class="sr-only" role="status">
     {sending
       ? "The assistant is replying."
@@ -257,8 +464,33 @@
 <style>
   .assistant-page {
     width: min(46rem, calc(100% - 2rem));
-    margin: clamp(2.5rem, 8vh, 5rem) auto 4rem;
+    margin: 1.5rem auto 0;
+    height: var(--available-height, calc(100dvh - var(--page-top, 0px)));
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    box-sizing: border-box;
+    padding-bottom: max(0.5rem, env(safe-area-inset-bottom));
     color: #20394e;
+  }
+  .heading-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-shrink: 0;
+    padding-bottom: 1rem;
+  }
+  .message-list {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding-bottom: 1rem;
+  }
+  .bottom-row {
+    flex-shrink: 0;
+    padding: 0 0.5rem;
   }
   h1 {
     margin: 0;
@@ -329,7 +561,7 @@
     list-style: disc;
   }
   form {
-    margin-top: 1.5rem;
+    margin-top: 0.5rem;
   }
   label {
     display: block;
@@ -337,29 +569,42 @@
     margin-bottom: 0.4rem;
   }
   .composer {
-    display: flex;
-    gap: 0.65rem;
-    align-items: end;
+    position: relative;
+    border: 1px solid #4075a666;
+    border-radius: 0.9rem;
+    background: rgba(255, 255, 255, 0.75);
+    box-shadow: 0 6px 20px rgba(47, 78, 105, 0.08);
+    padding: 0.5rem;
   }
   textarea {
-    flex: 1;
-    min-width: 0;
-    padding: 0.72rem 0.8rem;
-    border: 1px solid #4075a666;
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+    min-height: 2.75rem;
+    max-height: min(9rem, 30dvh);
+    overflow-y: auto;
+    padding: 0.65rem 3.6rem 0.65rem 0.35rem;
+    border: 0;
     border-radius: 0.55rem;
-    background: rgba(255, 255, 255, 0.86);
-    resize: vertical;
+    background: transparent;
+    resize: none;
     font: inherit;
+    line-height: 1.5;
   }
-  button {
+  .composer button {
+    position: absolute;
+    right: 0.5rem;
+    bottom: 0.5rem;
+    width: 2.75rem;
+    height: 2.75rem;
     display: inline-flex;
     gap: 0.35rem;
     align-items: center;
     justify-content: center;
     min-height: 2.75rem;
-    padding: 0.7rem 1rem;
+    padding: 0.5rem;
     border: 1px solid #315f89;
-    border-radius: 0.65rem;
+    border-radius: 50%;
     background: #315f89;
     color: white;
     font: inherit;
@@ -384,13 +629,107 @@
   .error {
     color: #a34646;
   }
+  .assistant-page :global(.assistant-proposal) {
+    margin-top: 1rem;
+  }
+  .assistant-page :global(.proposal-rows) {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+  .assistant-page :global(.proposal-meaning) {
+    display: block;
+    color: #60788c;
+  }
+  .assistant-page :global(.proposal-row-actions) {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+  }
+  .assistant-page :global(.proposal-row) {
+    border-bottom: 1px solid #4075a633;
+    padding: 0.8rem 0;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.6rem;
+  }
+  .assistant-page :global(.proposal-row label) {
+    flex: 1;
+    min-width: 10rem;
+    display: flex;
+    gap: 0.6rem;
+    align-items: start;
+  }
+  .assistant-page :global(.proposal-row input) {
+    margin-top: 0.3rem;
+    accent-color: #4075a6;
+  }
+  .assistant-page :global(.proposal-row small) {
+    display: block;
+    color: #60788c;
+  }
+  .assistant-page :global(.proposal-actions) {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-top: 0.8rem;
+  }
+  .assistant-page :global(.assistant-proposal button),
+  .assistant-page :global(.assistant-proposal a) {
+    font: inherit;
+  }
+  .assistant-page :global(.assistant-proposal button) {
+    min-height: 2.75rem;
+    border: 1px solid #4075a655;
+    border-radius: 0.65rem;
+    padding: 0.5rem 0.8rem;
+    background: #ffffffb8;
+    color: #315f89;
+    font-weight: 700;
+  }
+  .assistant-page :global(.assistant-proposal button:disabled) {
+    opacity: 0.55;
+    cursor: not-allowed;
+  }
+  .assistant-page :global(.assistant-proposal .proposal-confirm) {
+    background: #ff3e00;
+    border-color: #ff3e00;
+    color: white;
+  }
+  .assistant-page :global(.assistant-proposal .proposal-danger),
+  .assistant-page :global(.proposal-error) {
+    color: #a34646;
+  }
+  .assistant-page :global(.proposal-warning) {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.35rem;
+    color: #89502b;
+    border: 1px solid #b46b3980;
+    border-radius: 999px;
+    padding: 0.1rem 0.4rem;
+    font-size: 0.8rem;
+  }
+  .assistant-page :global(.assistant-proposal a) {
+    color: #315f89;
+    text-decoration: underline;
+  }
+  .assistant-page :global(.assistant-proposal h2),
+  .assistant-page :global(.assistant-proposal h3) {
+    font-family: Arial, sans-serif;
+    font-size: 1.08rem;
+    font-weight: 700;
+  }
+  .assistant-page
+    :global(.assistant-proposal :is(button, a, input):focus-visible) {
+    outline: 3px solid #4075a680;
+    outline-offset: 2px;
+  }
   @media (max-width: 640px) {
-    .composer {
-      flex-direction: column;
-      align-items: stretch;
-    }
-    .composer button {
-      align-self: end;
+    .assistant-page :global(.proposal-confirm) {
+      width: 100%;
     }
   }
 </style>

@@ -857,6 +857,29 @@ export interface components {
              */
             type: "card_refs";
         };
+        /** HistoryProposalState */
+        HistoryProposalState: {
+            /**
+             * Created Card Ids
+             * @default []
+             */
+            created_card_ids: string[];
+            /**
+             * Proposal Id
+             * Format: uuid
+             */
+            proposal_id: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "pending" | "committed" | "dismissed";
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "proposal_state";
+        };
         /**
          * LivenessResponse
          * @description Response returned when the API process can handle requests.
@@ -1102,7 +1125,7 @@ export interface components {
              * Parts
              * @default []
              */
-            parts: components["schemas"]["HistoryCardRefs"][];
+            parts: (components["schemas"]["HistoryCardRefs"] | components["schemas"]["HistoryProposalState"])[];
             /**
              * Role
              * @enum {string}

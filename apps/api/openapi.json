@@ -2025,6 +2025,47 @@
         "title": "HistoryCardRefs",
         "type": "object"
       },
+      "HistoryProposalState": {
+        "additionalProperties": false,
+        "properties": {
+          "created_card_ids": {
+            "default": [],
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 20,
+            "title": "Created Card Ids",
+            "type": "array"
+          },
+          "proposal_id": {
+            "format": "uuid",
+            "title": "Proposal Id",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "pending",
+              "committed",
+              "dismissed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "type": {
+            "const": "proposal_state",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "proposal_id",
+          "status"
+        ],
+        "title": "HistoryProposalState",
+        "type": "object"
+      },
       "LivenessResponse": {
         "description": "Response returned when the API process can handle requests.",
         "properties": {
@@ -2693,13 +2734,17 @@
             "items": {
               "discriminator": {
                 "mapping": {
-                  "card_refs": "#/components/schemas/HistoryCardRefs"
+                  "card_refs": "#/components/schemas/HistoryCardRefs",
+                  "proposal_state": "#/components/schemas/HistoryProposalState"
                 },
                 "propertyName": "type"
               },
               "oneOf": [
                 {
                   "$ref": "#/components/schemas/HistoryCardRefs"
+                },
+                {
+                  "$ref": "#/components/schemas/HistoryProposalState"
                 }
               ]
             },
