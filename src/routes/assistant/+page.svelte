@@ -9,15 +9,17 @@
     grantGenAIConsent,
     streamAssistantReply,
     withdrawGenAIConsent,
-    type AssistantMessage,
     type AssistantTool,
   } from "$lib/api/client";
 
-  type Turn = {
-    question: string;
-    reply: string;
+  import {
+    historyCharacterLimit,
+    requestMessages,
+    type HistoryTurn,
+  } from "$lib/assistant/history";
+
+  type Turn = HistoryTurn & {
     tools: AssistantTool[];
-    complete: boolean;
     issue: string;
   };
 
@@ -34,9 +36,6 @@
     tools_disabled: " · Rejected",
     timeout: " · Timed out",
   };
-  // Match the API defaults while keeping the full transcript visible locally.
-  const historyCharacterLimit = 12000;
-  const historyMessageLimit = 20;
   let turns = $state<Turn[]>([]);
   let draft = $state("");
   let consent = $state<"unknown" | "required" | "granted" | "confirm-withdraw">(
@@ -92,30 +91,11 @@
     }
   }
 
-  function requestMessages(question: string): AssistantMessage[] {
-    const messages: AssistantMessage[] = [{ role: "user", content: question }];
-    let characters = question.length;
-    for (const turn of turns.toReversed()) {
-      if (!turn.complete || !turn.reply.trim()) continue;
-      characters += turn.question.length + turn.reply.length;
-      if (
-        characters > historyCharacterLimit ||
-        messages.length + 2 > historyMessageLimit
-      )
-        break;
-      messages.unshift(
-        { role: "user", content: turn.question },
-        { role: "assistant", content: turn.reply },
-      );
-    }
-    return messages;
-  }
-
   async function send(event: SubmitEvent) {
     event.preventDefault();
     const question = draft.trim();
     if (!question || sending || consentBusy || consent !== "granted") return;
-    const messages = requestMessages(question);
+    const messages = requestMessages(turns, question);
     const version = sessionVersion;
     const controller = new AbortController();
     generation = controller;
@@ -126,6 +106,7 @@
       question,
       reply: "",
       tools: [],
+      cardIds: [],
       complete: false,
       issue: "",
     });
@@ -137,6 +118,18 @@
           if (version === sessionVersion) turn.reply += text;
         },
         controller.signal,
+        {
+          capabilities: ["parts.v1"],
+          onPart: (part) => {
+            if (version === sessionVersion)
+              turn.cardIds = [
+                ...new Set([
+                  ...turn.cardIds,
+                  ...part.payload.items.map((item) => item.id),
+                ]),
+              ];
+          },
+        },
       );
       if (version !== sessionVersion) return;
       turn.tools = result.tools;

@@ -1,13 +1,23 @@
-"""Authenticated text-only assistant endpoint; no conversation persistence."""
+"""Authenticated stateless assistant endpoints; no conversation persistence."""
 
+import json
 import time
 from threading import Lock
 from typing import Annotated, Literal
+from uuid import UUID
 
 from fastapi import APIRouter, Body, Request
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    field_validator,
+    model_validator,
+)
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
+from app.assistant.history import resolve_card_refs
 from app.assistant.loop import (
     FALLBACK,
     AssistantResponse,
@@ -44,19 +54,72 @@ class AssistantRequest(BaseModel):
     messages: Annotated[list[Message], Field(min_length=1, max_length=100)]
 
 
+class HistoryCardRefs(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    type: Literal["card_refs"]
+    card_ids: Annotated[list[UUID], Field(min_length=1, max_length=200)]
+
+    @field_validator("card_ids", mode="before")
+    @classmethod
+    def parse_json_ids(cls, value):
+        # FastAPI validates decoded JSON in Python mode; keep UUID strings valid.
+        if isinstance(value, list):
+            return [UUID(item) if isinstance(item, str) else item for item in value]
+        return value
+
+    @field_validator("card_ids")
+    @classmethod
+    def unique_ids(cls, value):
+        if len(value) != len(set(value)):
+            raise ValueError("duplicate card ids")
+        return value
+
+
+# Extend this discriminated union when proposal_state, clarification_answer or
+# media_ref have producers and their own contracts.
+HistoryPart = Annotated[HistoryCardRefs, Field(discriminator="type")]
+
+
+class StreamMessage(Message):
+    parts: list[HistoryPart] = []
+
+    @model_validator(mode="after")
+    def assistant_parts_only(self):
+        if self.parts and self.role != "assistant":
+            raise ValueError("history parts require an assistant message")
+        return self
+
+
 CapabilityToken = Annotated[str, StringConstraints(pattern=r"^[a-z][a-z0-9_.-]{0,31}$")]
 
 
 class AssistantStreamRequest(AssistantRequest):
+    messages: Annotated[list[StreamMessage], Field(min_length=1, max_length=100)]
     capabilities: Annotated[list[CapabilityToken], Field(max_length=8)] = []
 
 
 def _validate_request(request, payload):
     _reject_unknown_filters(request, set())
     settings = request.app.state.settings
+    history_parts = [
+        m.parts for m in payload.messages if isinstance(m, StreamMessage) and m.parts
+    ]
+    ref_count = sum(len(part.card_ids) for parts in history_parts for part in parts)
+    part_chars = sum(
+        len(
+            json.dumps(
+                [p.model_dump(mode="json") for p in parts],
+                separators=(",", ":"),
+                ensure_ascii=False,
+            )
+        )
+        for parts in history_parts
+    )
     if (
-        len(payload.messages) > settings.assistant_max_messages
-        or sum(len(m.content) for m in payload.messages) > settings.assistant_max_chars
+        ref_count > settings.assistant_max_history_card_refs
+        or len(payload.messages) > settings.assistant_max_messages
+        or sum(len(m.content) for m in payload.messages) + part_chars
+        > settings.assistant_max_chars
     ):
         raise ApiError(
             status_code=422,
@@ -208,7 +271,13 @@ def assistant_stream(
 ):
     settings = _validate_request(request, payload)
     owner_id = user.id
-    messages = [message.model_dump() for message in payload.messages]
+    messages = [message.model_dump(mode="json") for message in payload.messages]
+    ref_ids = {
+        id
+        for message in payload.messages
+        for part in message.parts
+        for id in part.card_ids
+    }
     state = request.app.state
     factory = state.database_session_factory
     provider = state.generation_provider
@@ -231,6 +300,12 @@ def assistant_stream(
     def prepare(cancelled):
         with factory() as owned_session:
             bind_owner(owned_session, owner_id)
+            resolved_cards = (
+                resolve_card_refs(owned_session, owner_id, ref_ids, deadline, cancelled)
+                if ref_ids
+                else {}
+            )
+            check_budget(deadline, cancelled)
 
             def consent_then_release():
                 _consent_then_release(
@@ -251,6 +326,7 @@ def assistant_stream(
                 request_id=request_id,
                 before_generate=consent_then_release,
                 deadline=deadline,
+                resolved_cards=resolved_cards,
                 prepare_final=True,
                 cancelled=cancelled,
             )

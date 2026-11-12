@@ -141,7 +141,10 @@ async function authenticatedRequest(
   return parseJson(await authenticatedResponse(path, init));
 }
 
-export type AssistantMessage = components["schemas"]["Message"];
+type StreamMessage = components["schemas"]["StreamMessage"];
+// Generated defaults are non-nullable; parts is optional on the request wire.
+export type AssistantMessage = Omit<StreamMessage, "parts"> &
+  Partial<Pick<StreamMessage, "parts">>;
 type AssistantStop = components["schemas"]["AssistantResponse"]["stop_reason"];
 export type AssistantTool = Pick<
   components["schemas"]["ToolCallSummary"],
@@ -225,9 +228,8 @@ export async function streamAssistantReply(
           : {}),
       } satisfies Omit<
         components["schemas"]["AssistantStreamRequest"],
-        "capabilities"
-      > &
-        Partial<
+        "capabilities" | "messages"
+      > & { messages: AssistantMessage[] } & Partial<
           Pick<components["schemas"]["AssistantStreamRequest"], "capabilities">
         >),
       signal,

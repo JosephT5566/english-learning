@@ -1,5 +1,7 @@
 import { expect, test } from "@playwright/test";
 
+const historyCardId = "20000000-0000-0000-0000-000000000096";
+
 function event(name: string, data: object): string {
   return `event: ${name}\ndata: ${JSON.stringify(data)}\n\n`;
 }
@@ -28,7 +30,7 @@ test.beforeEach(async ({ page }) => {
   );
 });
 
-test("opens from navigation, shows tools and sends only text history", async ({
+test("opens from navigation, shows tools and round trips memory-only card refs", async ({
   page,
 }, testInfo) => {
   const requests: unknown[] = [];
@@ -38,6 +40,21 @@ test("opens from navigation, shows tools and sends only text history", async ({
       contentType: "text/event-stream",
       body:
         ": ping\n\n" +
+        event("part", {
+          id: "p1",
+          type: "card_list",
+          payload: {
+            purpose: "due",
+            items: [
+              {
+                id: historyCardId,
+                deck_id: "10000000-0000-0000-0000-000000000001",
+                term: "Unrendered card term",
+                meaning: "Unrendered card meaning",
+              },
+            ],
+          },
+        }) +
         event("delta", { text: "Start with " }) +
         ": ping\n\n" +
         event("delta", { text: "間に合う." }) +
@@ -84,14 +101,74 @@ test("opens from navigation, shows tools and sends only text history", async ({
   expect(requests[1]).toEqual({
     messages: [
       { role: "user", content: "What should I review?" },
-      { role: "assistant", content: "Start with 間に合う." },
+      {
+        role: "assistant",
+        content: "Start with 間に合う.",
+        parts: [{ type: "card_refs", card_ids: [historyCardId] }],
+      },
       { role: "user", content: "What does it mean?" },
     ],
+    capabilities: ["parts.v1"],
   });
+  await expect(page.locator(".conversation .turn")).toHaveCount(2);
+  await expect(
+    page.locator(".conversation ol, .conversation table, .conversation a"),
+  ).toHaveCount(0);
+  await expect(
+    page.getByText("Unrendered card term", { exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByText("Unrendered card meaning", { exact: true }),
+  ).toHaveCount(0);
+  const storage = await page.evaluate(() =>
+    JSON.stringify({
+      local: { ...localStorage },
+      session: { ...sessionStorage },
+    }),
+  );
+  for (const privateText of [
+    historyCardId,
+    "What should I review?",
+    "What does it mean?",
+    "Start with 間に合う.",
+  ])
+    expect(storage).not.toContain(privateText);
   await page.reload();
   await expect(
     page.getByText("What should I review?", { exact: true }),
   ).toHaveCount(0);
+  await input.fill("Before switching account");
+  await page.getByRole("button", { name: "Send", exact: true }).click();
+  await expect(
+    page.getByText("Start with 間に合う.", { exact: true }),
+  ).toBeVisible();
+  await page.evaluate(() => {
+    const old = localStorage.getItem("gid_id_token")!;
+    const payload = JSON.parse(
+      atob(old.split(".")[1].replaceAll("-", "+").replaceAll("_", "/")),
+    );
+    payload.sub = "browser-test-assistant-second-account";
+    payload.email = "second-account@example.com";
+    const encoded = btoa(JSON.stringify(payload))
+      .replaceAll("+", "-")
+      .replaceAll("/", "_")
+      .replaceAll("=", "");
+    localStorage.setItem(
+      "gid_id_token",
+      `${old.split(".")[0]}.${encoded}.test-signature`,
+    );
+    window.dispatchEvent(new StorageEvent("storage", { key: "gid_id_token" }));
+  });
+  await expect(
+    page.getByText("Before switching account", { exact: true }),
+  ).toHaveCount(0);
+  await input.fill("New account question");
+  await page.getByRole("button", { name: "Send", exact: true }).click();
+  await expect.poll(() => requests.length).toBe(4);
+  expect(requests[3]).toEqual({
+    messages: [{ role: "user", content: "New account question" }],
+    capabilities: ["parts.v1"],
+  });
 });
 
 test("handles consent 403, then keeps a partial reply on timeout and stream failure", async ({
