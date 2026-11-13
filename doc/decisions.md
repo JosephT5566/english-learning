@@ -952,3 +952,34 @@ Case review and real Vertex remain pending. Browser specs use mocked APIs and
 unit tests use scripted providers. Real keyboard and real-backend SSE ordering,
 parser and page evidence remain open as e2e-todo items 21 and 22; item 19 also
 remains open. No Vertex run was performed.
+
+## 2026-11-13: Clarification UI phase 2, option A (#101)
+
+Owner 俊霖 chose option A and all eight recommended sub-decisions on
+2026-11-13 at 10:45 Asia/Taipei. The deferred visual work now lands inside
+assistant replies in the scrollable message list, using Study Blue and paper.
+Chrome and labels are English; server questions and option labels render as-is.
+The #98 write-confirm card and phase-1 route scroll containment are unchanged.
+
+1. Use option A: compact term chips and a scrollable deck radio list with confirmation.
+2. Term chips send immediately; later draft edits remain on the #98 confirm card.
+3. Repeat the chosen label or free text in a You bubble and lock the original question.
+4. Composer text answers the latest pending non-deck question when free text is allowed.
+5. During deck choice the composer stays usable for ordinary messages, with no answer part
+   or title lookup. An unanswered picker remains in history.
+6. No Dismiss or skip control is offered for clarification.
+7. At the three-question non-deck limit, render the model/scripted reply and existing draft
+   card without a new banner. Deck questions can still appear after that limit.
+8. Keep both the in-card description field and composer answer path for allowed term text.
+
+Answers use the existing helper and SSE request path. Locks derive from user-message
+answer parts in memory and survive subsequent replies and component remounts with those
+turns. Full page refresh still clears the transcript; no transcript storage is added.
+Clarification actions use Deep Study Blue, never write-confirm orange.
+Operator Playwright (channel: chrome) covers the visual path and keyboard interaction
+and passed after a selector fix: the first full-suite run failed two chip-count
+assertions because Playwright treats the in-card "Send description" button as
+pressed:false. The assertion now counts only the "Answer options" list. Real
+keyboards and real-backend SSE remain open in e2e items 19, 21 and 22. Deploy API
+before Pages as before; API contracts are unchanged here. No Vertex run, deployment,
+production action, migration or workflow change is included.

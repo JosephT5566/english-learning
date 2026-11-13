@@ -50,8 +50,10 @@ https://svelte.dev/docs/kit/adapter-static#GitHub-Pages
 
 Issue #101 phase 1 adds the propose-only `ask_clarification` tool and extends
 `parts.v1` with clarification questions and user answers. Deck questions are
-server-built from owned active decks; proposals never write cards. Visual
-clarification controls await a stacked PR after ui-design-gate.
+server-built from owned active decks; proposals never write cards. Phase 2 adds
+the approved option A UI: term chips and free-text answers, plus a scrollable deck
+picker with explicit confirmation. Answered questions lock in session history;
+refreshing still clears the conversation.
 Deploy the API before Pages: older APIs return 422 for `clarification_answer`,
 and the frontend does not retry 422. No migration is required.
 See [project memory](doc/project-memory.md), the [provisional scripted evaluation](doc/training/issues/99/README.md)

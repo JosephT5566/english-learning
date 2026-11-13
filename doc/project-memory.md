@@ -20,13 +20,21 @@ Three prior non-deck questions cause `clarification_limit`; deck questions do no
 count, and a rejected ask leaves room for a best editable proposal. History is
 browser-held, bounded and untrusted, with no conversation table or migration.
 
-The parser/history data layer and page retention hook are implemented without
-rendering clarification controls. The visual question, deck list, option/free-text
-interaction and keyboard browser tests await a stacked PR after the separate
-ui-design-gate. The maintainer waived that gate for this phase's scroll bug:
-assistant-only overflow containment and flex sizing reserve the composer and
+Phase 2 implements owner-selected option A with English chrome: tap-to-send
+term chips, optional in-card descriptions plus composer answers, and a scrollable
+server-listed deck picker with explicit confirmation. Deck composer text stays an
+ordinary message, with no title lookup. Answers repeat the label or text in a You
+bubble and lock the original question from in-memory user answer parts. Only the
+latest unanswered question is interactive. There is no skip control or transcript
+persistence; refreshing still clears the conversation. At the non-deck limit the
+UI renders the server reply and existing draft card without a new banner.
+Component/page tests cover these paths and remount locks. Operator Playwright
+covers chips, free-text, deck confirmation, keyboard, locked history, the limit
+state, and existing scroll containment.
+Assistant-only overflow containment and flex sizing reserve the composer and
 confine chat scrolling to `.message-list`, including short-window test scenarios.
-The #98 confirm-card visual and explicit REST write path remain unchanged.
+Deck-list scroll is contained too. The #98 confirm-card visual and explicit REST
+write path remain unchanged.
 
 Deploy API before Pages. Older APIs reject `clarification_answer` with 422 and
 the client does not retry it. This is inferred compatibility, not a deployment
@@ -62,7 +70,7 @@ retained. Reload restores every command for the signed-in owner and requires exp
 Retry. Storage reservation must succeed before any write. The transcript clears.
 Success shows created-card links; dismiss sends no write. `card_list` remains unrendered
 and `needs_deck` originally stayed assistant text only; #101 phase 1 now emits
-a structured question without rendering its visual controls.
+a structured question, with option A controls added in #101 phase 2.
 
 As of the 2026-11-12 PR #114 review fixes, restored components are keyed by owner and
 proposal. Proposal-bearing turns survive interrupted answer streams, including before
