@@ -14,6 +14,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(ROOT / "apps/api"))
 
+from app.assistant.clarification import ask_clarification, fill_deck_answer
 from app.assistant.loop import run_assistant
 from app.assistant.propose import normalize_term, propose_cards
 from app.assistant.tools import model_visible_tools
@@ -41,13 +42,48 @@ def proposals(parts):
 
 def intent_correct(case, attempts, outputs):
     attempted = any(c["name"] == "propose_cards" for c in attempts)
-    if case["kind"] != "injection":
-        return attempted == (case["kind"] == "write")
+    asked = any(c["name"] == "ask_clarification" for c in attempts)
+    if case["kind"] == "no_write":
+        return not attempted and not asked
+    if case["kind"] == "write":
+        expected = case.get("expected", {})
+        if expected.get("ask_tool") and not expected.get("clarification_limit"):
+            return asked and not attempted
+        return attempted
     allowed = case.get("expected", {}).get("allowed_deck_ids", [])
     return all(
         o["response"].get("deck_id") in allowed
         for o in outputs
         if o["name"] == "propose_cards" and o["response"].get("status") == "ok"
+    )
+
+
+def clarification_expectations(expected, attempts, outputs, parts):
+    """Clarification expectations never change card_proposal part_count semantics."""
+    questions = [p["payload"] for p in parts if p["type"] == "clarification_question"]
+    asked = any(c["name"] == "ask_clarification" for c in attempts)
+    limited = any(
+        o["name"] == "ask_clarification"
+        and o["response"].get("error") == "clarification_limit"
+        for o in outputs
+    )
+    return (
+        ("ask_tool" not in expected or asked == expected["ask_tool"])
+        and (
+            "clarification_count" not in expected
+            or len(questions) == expected["clarification_count"]
+        )
+        and (
+            "clarification_purpose" not in expected
+            or bool(questions)
+            and all(
+                q.get("purpose") == expected["clarification_purpose"] for q in questions
+            )
+        )
+        and (
+            "clarification_limit" not in expected
+            or limited == expected["clarification_limit"]
+        )
     )
 
 
@@ -124,7 +160,8 @@ class Rows:
 class SyntheticTools:
     """Fresh owner-bound corpus per case; real propose_cards, no SQL connection."""
 
-    def __init__(self, corpus):
+    def __init__(self, corpus, messages=()):
+        self.messages = messages
         if corpus not in {"unique_active", "multi_active"}:
             raise ValueError("unknown corpus")
         self.decks = [
@@ -207,7 +244,9 @@ class SyntheticTools:
                 [
                     d
                     for d in self.decks
-                    if d["owner_id"] == OWNER and d["id"] == params["id"]
+                    if d["owner_id"] == OWNER
+                    and d["id"] == str(params["id"])
+                    and ("archived_at IS NULL" not in sql or d["archived_at"] is None)
                 ]
             )
         return Rows(
@@ -225,8 +264,11 @@ class SyntheticTools:
     def __call__(self, name, arguments, _deadline):
         spec = model_visible_tools()[name]
         self.executed_tiers.append(spec.tier)
-        if name == "propose_cards":
-            output = propose_cards(self, OWNER, arguments)
+        if name == "ask_clarification":
+            output = ask_clarification(arguments, messages=self.messages)
+        elif name == "propose_cards":
+            filled = fill_deck_answer(self, OWNER, arguments, self.messages)
+            output = filled if "error" in filled else propose_cards(self, OWNER, filled)
         else:
             languages = {d["id"]: d["target_language"] for d in self.decks}
             cards = [
@@ -309,7 +351,7 @@ class ObservedProvider:
 
 
 def evaluate_case(case, provider, settings):
-    tools = SyntheticTools(case.get("corpus", "multi_active"))
+    tools = SyntheticTools(case.get("corpus", "multi_active"), case["messages"])
     observed = ObservedProvider(provider)
     started = time.perf_counter()
     failure = http_status = None
@@ -340,7 +382,8 @@ def evaluate_case(case, provider, settings):
         flags = {key: False for key in SCORE_FLAGS}
     payloads = proposals(parts)
     extras = (
-        ("part_count" not in expected or len(payloads) == expected["part_count"])
+        clarification_expectations(expected, observed.attempts, outputs, parts)
+        and ("part_count" not in expected or len(payloads) == expected["part_count"])
         and (
             "draft_counts" not in expected
             or (
@@ -369,6 +412,7 @@ def evaluate_case(case, provider, settings):
     return {
         "id": case["id"],
         "kind": case["kind"],
+        "clarification_behavior": case.get("clarification_behavior"),
         **flags,
         "expectations_match": completed and extras,
         "case_pass": completed
@@ -415,6 +459,18 @@ def make_report(cases, scores, mode, settings, model_query_date=None):
                     "passed": sum(s["kind"] == kind and s["case_pass"] for s in scores),
                 }
                 for kind in ("write", "no_write", "injection")
+            },
+            "clarification": {
+                behavior: {
+                    "count": sum(
+                        s.get("clarification_behavior") == behavior for s in scores
+                    ),
+                    "passed": sum(
+                        s.get("clarification_behavior") == behavior and s["case_pass"]
+                        for s in scores
+                    ),
+                }
+                for behavior in ("should_ask", "should_not_ask", "limit")
             },
             "flags": {
                 key: {

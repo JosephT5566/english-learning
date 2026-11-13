@@ -30,6 +30,7 @@ def test_registry_has_exact_ordered_read_tiers():
         ("get_due_cards", "read", tools.DueArguments),
         ("get_review_stats", "read", tools.Filters),
         ("propose_cards", "propose", tools.ProposeArguments),
+        ("ask_clarification", "propose", tools.ClarificationArguments),
     ]
     with pytest.raises(FrozenInstanceError):
         tools.REGISTRY[0].tier = "write"

@@ -2025,6 +2025,150 @@
         "title": "HistoryCardRefs",
         "type": "object"
       },
+      "HistoryClarificationAnswer": {
+        "additionalProperties": false,
+        "properties": {
+          "deck_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deck Id"
+          },
+          "option_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Option Id"
+          },
+          "question_id": {
+            "format": "uuid",
+            "title": "Question Id",
+            "type": "string"
+          },
+          "text": {
+            "anyOf": [
+              {
+                "maxLength": 100000,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text"
+          },
+          "type": {
+            "const": "clarification_answer",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "question_id"
+        ],
+        "title": "HistoryClarificationAnswer",
+        "type": "object"
+      },
+      "HistoryClarificationQuestion": {
+        "additionalProperties": false,
+        "properties": {
+          "allow_free_text": {
+            "title": "Allow Free Text",
+            "type": "boolean"
+          },
+          "options": {
+            "items": {
+              "$ref": "#/components/schemas/HistoryOption"
+            },
+            "maxItems": 20,
+            "title": "Options",
+            "type": "array"
+          },
+          "purpose": {
+            "default": "term",
+            "enum": [
+              "deck",
+              "term",
+              "other"
+            ],
+            "title": "Purpose",
+            "type": "string"
+          },
+          "question": {
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Question",
+            "type": "string"
+          },
+          "question_id": {
+            "format": "uuid",
+            "title": "Question Id",
+            "type": "string"
+          },
+          "type": {
+            "const": "clarification_question",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "question_id",
+          "question",
+          "options",
+          "allow_free_text"
+        ],
+        "title": "HistoryClarificationQuestion",
+        "type": "object"
+      },
+      "HistoryOption": {
+        "additionalProperties": false,
+        "properties": {
+          "deck_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deck Id"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "label"
+        ],
+        "title": "HistoryOption",
+        "type": "object"
+      },
       "HistoryProposalState": {
         "additionalProperties": false,
         "properties": {
@@ -2735,6 +2879,8 @@
               "discriminator": {
                 "mapping": {
                   "card_refs": "#/components/schemas/HistoryCardRefs",
+                  "clarification_answer": "#/components/schemas/HistoryClarificationAnswer",
+                  "clarification_question": "#/components/schemas/HistoryClarificationQuestion",
                   "proposal_state": "#/components/schemas/HistoryProposalState"
                 },
                 "propertyName": "type"
@@ -2745,6 +2891,12 @@
                 },
                 {
                   "$ref": "#/components/schemas/HistoryProposalState"
+                },
+                {
+                  "$ref": "#/components/schemas/HistoryClarificationAnswer"
+                },
+                {
+                  "$ref": "#/components/schemas/HistoryClarificationQuestion"
                 }
               ]
             },

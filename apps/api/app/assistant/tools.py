@@ -15,6 +15,12 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
+from app.assistant.clarification import (
+    ASK_SCHEMA,
+    ClarificationArguments,
+    ask_clarification,
+    fill_deck_answer,
+)
 from app.assistant.propose import PROPOSE_SCHEMA, ProposeArguments, propose_cards
 from app.config import Settings
 from app.genai_consent import require_genai_consent
@@ -126,6 +132,14 @@ REGISTRY: tuple[ToolSpec, ...] = build_registry(
             name="propose_cards",
             schema=PROPOSE_SCHEMA,
             args_model=ProposeArguments,
+            tier="propose",
+            terminal=True,
+            max_calls_per_turn=1,
+        ),
+        ToolSpec(
+            name="ask_clarification",
+            schema=ASK_SCHEMA,
+            args_model=ClarificationArguments,
             tier="propose",
             terminal=True,
             max_calls_per_turn=1,
@@ -247,6 +261,7 @@ class SessionTools:
         embedding_provider,
         *,
         cancelled=None,
+        messages=(),
         executors: Mapping[str, ToolExecutor] | None = None,
     ):
         self.session = session
@@ -254,12 +269,16 @@ class SessionTools:
         self.settings = settings
         self.embedding_provider = embedding_provider
         self.cancelled = cancelled
+        self.messages = messages
         self.as_of = datetime.now(UTC)
         self.executors = {
             "get_review_stats": self._get_review_stats,
             "get_due_cards": self._get_due_cards,
             "search_cards": self._search_cards,
             "propose_cards": self._propose_cards,
+            "ask_clarification": lambda arguments, deadline: ask_clarification(
+                arguments, self.messages
+            ),
         }
         if executors is not None:
             self.executors.update(executors)
@@ -272,6 +291,9 @@ class SessionTools:
     def __call__(self, name, arguments, deadline):
         if name not in model_visible_tools():
             raise ToolNotModelVisible("invalid_tool_call")
+        if name == "ask_clarification":
+            check_budget(deadline, self.cancelled)
+            return self.executors[name](arguments, deadline)
         session = self.session
         try:
             # Consent is the sole non-readonly pre-step: FOR SHARE requires a
@@ -291,7 +313,12 @@ class SessionTools:
             session.rollback()
 
     def _propose_cards(self, arguments, deadline):
-        return propose_cards(self.session, self.owner_id, arguments)
+        filled = fill_deck_answer(self.session, self.owner_id, arguments, self.messages)
+        return (
+            filled
+            if "error" in filled
+            else propose_cards(self.session, self.owner_id, filled)
+        )
 
     def _get_review_stats(self, arguments, deadline):
         return get_review_stats(

@@ -11,6 +11,7 @@ import anyio
 from fastapi.responses import StreamingResponse
 from sqlalchemy.exc import SQLAlchemyError
 
+from app.assistant.clarification import question_text
 from app.assistant.loop import (
     FALLBACK,
     AssistantResponse,
@@ -220,6 +221,12 @@ async def stream_events(
             if parts_enabled:
                 for part in result._parts:
                     yield _Frame("part", part)
+            else:
+                for part in result._parts:
+                    if part["type"] == "clarification_question":
+                        yield _Frame(
+                            "delta", {"text": question_text(part["payload"]) + "\n\n"}
+                        )
             yield _done(result, result._terminal_error_code)
             return
 
@@ -227,6 +234,12 @@ async def stream_events(
         if parts_enabled:
             for part in pending.parts:
                 yield _Frame("part", part)
+        else:
+            for part in getattr(pending, "parts", []):
+                if part["type"] == "clarification_question":
+                    yield _Frame(
+                        "delta", {"text": question_text(part["payload"]) + "\n\n"}
+                    )
         has_text = False
         model_id = settings.generation_model
         async with aclosing(

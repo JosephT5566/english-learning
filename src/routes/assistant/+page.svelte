@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount, tick, untrack } from "svelte";
+  import AssistantClarification from "$lib/components/AssistantClarification.svelte";
   import AssistantCardProposal from "$lib/components/AssistantCardProposal.svelte";
   import {
     loadPendingAssistantProposals,
@@ -17,10 +18,15 @@
     withdrawGenAIConsent,
     type AssistantTool,
     type AssistantPart,
+    type ClarificationQuestion,
   } from "$lib/api/client";
 
   import {
     historyCharacterLimit,
+    makeClarificationAnswer,
+    clarificationAnswerFor,
+    latestUnansweredClarification,
+    type ClarificationAnswer,
     requestMessages,
     type HistoryTurn,
     type ProposalState,
@@ -34,6 +40,7 @@
 
   const toolLabels: Record<string, string> = {
     propose_cards: "Propose cards",
+    ask_clarification: "Ask clarification",
     search_cards: "Search cards",
     get_due_cards: "Get due cards",
     get_review_stats: "Get review stats",
@@ -47,6 +54,7 @@
     timeout: " · Timed out",
   };
   let turns = $state<Turn[]>([]);
+  const pendingQuestion = $derived(latestUnansweredClarification(turns));
   let draft = $state("");
   let consent = $state<"unknown" | "required" | "granted" | "confirm-withdraw">(
     "unknown",
@@ -60,7 +68,6 @@
   let restored = $state<PendingAssistantProposal[]>([]);
   let restoredStates = $state<ProposalState[]>([]);
   let composing = false;
-  let pageElement: HTMLElement;
   let messageList: HTMLDivElement;
   let textarea = $state<HTMLTextAreaElement>();
   let followBottom = true;
@@ -153,7 +160,11 @@
   });
   $effect(() => {
     // Read text and proposal state so streaming follows only an already-following reader.
-    turns.map((turn) => [turn.reply, turn.proposals.length]);
+    turns.map((turn) => [
+      turn.reply,
+      turn.proposals.length,
+      turn.clarificationQuestions?.length,
+    ]);
     void restored;
     if (followBottom)
       void tick().then(() => {
@@ -162,34 +173,59 @@
   });
   onMount(() => {
     const viewport = window.visualViewport;
-    function fitColumn() {
-      if (!pageElement) return;
-      const top = pageElement.getBoundingClientRect().top;
-      pageElement.style.setProperty("--page-top", `${top}px`);
+    const root = document.documentElement;
+    document.body.classList.add("assistant-route");
+    root.classList.add("assistant-route");
+    function fitViewport() {
       if (viewport)
-        pageElement.style.setProperty(
-          "--available-height",
-          `${Math.max(0, viewport.height + viewport.offsetTop - top)}px`,
+        root.style.setProperty(
+          "--assistant-viewport-height",
+          `${viewport.height + viewport.offsetTop}px`,
         );
     }
-    const observer = new ResizeObserver(fitColumn);
-    // The measured page top includes the real header, with no fixed header estimate.
-    if (pageElement.parentElement) observer.observe(pageElement.parentElement);
-    window.addEventListener("resize", fitColumn);
-    viewport?.addEventListener("resize", fitColumn);
-    viewport?.addEventListener("scroll", fitColumn);
-    fitColumn();
+    window.addEventListener("resize", fitViewport);
+    viewport?.addEventListener("resize", fitViewport);
+    viewport?.addEventListener("scroll", fitViewport);
+    fitViewport();
     return () => {
-      observer.disconnect();
-      window.removeEventListener("resize", fitColumn);
-      viewport?.removeEventListener("resize", fitColumn);
-      viewport?.removeEventListener("scroll", fitColumn);
+      window.removeEventListener("resize", fitViewport);
+      viewport?.removeEventListener("resize", fitViewport);
+      viewport?.removeEventListener("scroll", fitViewport);
+      root.style.removeProperty("--assistant-viewport-height");
+      root.classList.remove("assistant-route");
+      document.body.classList.remove("assistant-route");
     };
   });
 
-  async function send(event?: SubmitEvent) {
+  function answerQuestion(
+    question: ClarificationQuestion,
+    choice: Parameters<typeof makeClarificationAnswer>[1],
+  ) {
+    if (question !== pendingQuestion) return;
+    const answer = makeClarificationAnswer(question, choice);
+    const content =
+      answer.text ??
+      question.options.find((option) => option.id === answer.option_id)
+        ?.label ??
+      "";
+    void sendMessage(content, answer);
+  }
+
+  function send(event?: SubmitEvent) {
     event?.preventDefault();
     const question = draft.trim();
+    if (
+      pendingQuestion?.purpose !== "deck" &&
+      pendingQuestion?.allow_free_text &&
+      question
+    ) {
+      answerQuestion(pendingQuestion, { text: question });
+    } else {
+      void sendMessage(question);
+    }
+  }
+
+  async function sendMessage(question: string, answer?: ClarificationAnswer) {
     if (!question || sending || consentBusy || consent !== "granted") return;
     const restoreHistory: HistoryTurn[] = restoredStates.length
       ? [
@@ -202,7 +238,20 @@
           },
         ]
       : [];
-    const messages = requestMessages([...restoreHistory, ...turns], question);
+    let messages;
+    try {
+      messages = requestMessages(
+        [...restoreHistory, ...turns],
+        question,
+        answer,
+      );
+    } catch (cause) {
+      formError =
+        cause instanceof Error
+          ? cause.message
+          : "Could not prepare the message.";
+      return;
+    }
     const version = sessionVersion;
     const controller = new AbortController();
     generation = controller;
@@ -218,6 +267,8 @@
       issue: "",
       proposals: [],
       proposalStates: [],
+      clarificationQuestions: [],
+      clarificationAnswer: answer,
     });
     turns.push(turn);
     try {
@@ -230,6 +281,11 @@
         {
           capabilities: ["parts.v1"],
           onPart: (part) => {
+            if (
+              version === sessionVersion &&
+              part.type === "clarification_question"
+            )
+              turn.clarificationQuestions?.push(part.payload);
             if (version === sessionVersion && part.type === "card_list")
               turn.cardIds = [
                 ...new Set([
@@ -272,7 +328,12 @@
         cause instanceof ApiClientError
           ? cause.message
           : "Could not get a reply.";
-      if (turn.reply || turn.proposals.length || turn.proposalStates?.length) {
+      if (
+        turn.reply ||
+        turn.proposals.length ||
+        turn.proposalStates?.length ||
+        turn.clarificationQuestions?.length
+      ) {
         turn.issue = message;
       } else {
         turns.pop();
@@ -296,7 +357,7 @@
   />
 </svelte:head>
 
-<section class="assistant-page" bind:this={pageElement}>
+<section class="assistant-page">
   <div class="heading-row">
     <div>
       <h1>Learning assistant</h1>
@@ -358,6 +419,17 @@
               {#if turn.issue}<p class="error" role="alert">
                   {turn.issue}
                 </p>{/if}
+              {#each turn.clarificationQuestions ?? [] as question (question.question_id)}
+                <AssistantClarification
+                  {question}
+                  answer={clarificationAnswerFor(turns, question)}
+                  disabled={question !== pendingQuestion ||
+                    sending ||
+                    consentBusy ||
+                    consent !== "granted"}
+                  onanswer={(choice) => answerQuestion(question, choice)}
+                />
+              {/each}
               {#each turn.proposals as proposal (proposal.proposal_id)}
                 <AssistantCardProposal
                   {proposal}
@@ -443,9 +515,13 @@
             ? "Replying…"
             : consentBusy || consent !== "granted"
               ? "Sending is unavailable until consent is active and no consent action is pending."
-              : !draft.trim()
-                ? "Type a message to enable Send."
-                : "Ready to send."}
+              : pendingQuestion?.purpose === "deck"
+                ? "Typing here sends a new message; it does not look up a deck."
+                : pendingQuestion?.allow_free_text
+                  ? "Choose an option above, or type a description here to answer this question."
+                  : !draft.trim()
+                    ? "Type a message to enable Send."
+                    : "Ready to send."}
         </p>
       </form>
     {/if}
@@ -464,10 +540,28 @@
 </section>
 
 <style>
+  :global(html.assistant-route),
+  :global(body.assistant-route) {
+    overflow: hidden;
+    height: 100%;
+    min-height: 0;
+  }
+  :global(body.assistant-route .app) {
+    height: var(--assistant-viewport-height, 100dvh);
+    max-height: var(--assistant-viewport-height, 100dvh);
+    min-height: 0;
+    overflow: hidden;
+  }
+  :global(body.assistant-route main) {
+    min-height: 0;
+    overflow: hidden;
+  }
   .assistant-page {
     width: min(46rem, calc(100% - 2rem));
     margin: 1.5rem auto 0;
-    height: var(--available-height, calc(100dvh - var(--page-top, 0px)));
+    height: auto;
+    flex: 1;
+    overflow: hidden;
     display: flex;
     flex-direction: column;
     min-height: 0;
@@ -488,7 +582,7 @@
     flex: 1;
     min-height: 0;
     overflow-y: auto;
-    padding-bottom: 1rem;
+    overscroll-behavior: contain;
   }
   .bottom-row {
     flex-shrink: 0;
@@ -508,7 +602,7 @@
   .conversation {
     display: grid;
     gap: 1.5rem;
-    padding: 0;
+    padding: 0 0 1rem;
     margin: 1.5rem 0 0;
     list-style: none;
   }
@@ -728,6 +822,26 @@
     :global(.assistant-proposal :is(button, a, input):focus-visible) {
     outline: 3px solid #4075a680;
     outline-offset: 2px;
+  }
+  @media (max-height: 600px) {
+    .assistant-page {
+      margin-top: 0.5rem;
+    }
+    .heading-row {
+      gap: 0.35rem;
+      padding-bottom: 0.5rem;
+    }
+    h1 {
+      font-size: 1.75rem;
+    }
+    .intro {
+      margin-top: 0.25rem;
+      font-size: 0.875rem;
+    }
+    .hint {
+      margin-top: 0.25rem;
+      font-size: 0.75rem;
+    }
   }
   @media (max-width: 640px) {
     .assistant-page :global(.proposal-confirm) {

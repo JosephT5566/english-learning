@@ -313,3 +313,200 @@ it("serializes stream history parts and does not retry a 422", async () => {
     capabilities: ["parts.v1"],
   });
 });
+
+const clarificationPart = {
+  id: "p3",
+  type: "clarification_question",
+  payload: {
+    question_id: "30000000-0000-0000-0000-000000000101",
+    question: "Which meaning of bank?",
+    options: [
+      { id: "40000000-0000-0000-0000-000000000101", label: "River bank" },
+      {
+        id: "40000000-0000-0000-0000-000000000102",
+        label: "Financial institution",
+      },
+    ],
+    allow_free_text: true,
+    purpose: "term",
+  },
+};
+
+it("accepts clarification_question before text and preserves tool summaries", async () => {
+  const onPart = vi.fn();
+  const result = await read(
+    [partFrame(clarificationPart), delta("Choose a meaning."), done],
+    { onPart },
+  );
+  expect(onPart.mock.calls).toEqual([[clarificationPart]]);
+  expect(result.text).toBe("Choose a meaning.");
+  expect(result.tools).toEqual([{ name: "get_due_cards", status: "ok" }]);
+});
+
+it("accepts zero through twenty server-built deck choices and optional purpose", async () => {
+  for (const count of [0, 2, 20]) {
+    const part = {
+      ...clarificationPart,
+      payload: {
+        ...clarificationPart.payload,
+        purpose: "deck",
+        allow_free_text: false,
+        options: Array.from({ length: count }, (_, i) => ({
+          id: `40000000-0000-0000-0000-${String(i + 1).padStart(12, "0")}`,
+          label: "Deck title ".repeat(12),
+          deck_id: `10000000-0000-0000-0000-${String(i + 1).padStart(12, "0")}`,
+        })),
+      },
+    };
+    const onPart = vi.fn();
+    await readPart(part, { onPart });
+    expect(onPart).toHaveBeenCalledWith(part);
+  }
+  const payload = {
+    question_id: clarificationPart.payload.question_id,
+    question: clarificationPart.payload.question,
+    options: clarificationPart.payload.options,
+    allow_free_text: clarificationPart.payload.allow_free_text,
+  };
+  const onPart = vi.fn();
+  await readPart({ ...clarificationPart, payload }, { onPart });
+  expect(onPart).toHaveBeenCalledOnce();
+});
+
+it("accepts a free-text-only question and four distinct term options", async () => {
+  for (const count of [0, 4]) {
+    const part = {
+      ...clarificationPart,
+      payload: {
+        ...clarificationPart.payload,
+        options: Array.from({ length: count }, (_, i) => ({
+          id: `40000000-0000-0000-0000-${String(i + 1).padStart(12, "0")}`,
+          label: "A meaning",
+        })),
+      },
+    };
+    const onPart = vi.fn();
+    await readPart(part, { onPart });
+    expect(onPart).toHaveBeenCalledWith(part);
+  }
+});
+
+it.each<unknown>([
+  {
+    ...clarificationPart,
+    payload: {
+      ...clarificationPart.payload,
+      purpose: "deck",
+      allow_free_text: false,
+      options: Array.from({ length: 21 }, (_, i) => ({
+        id: `40000000-0000-0000-0000-${String(i + 1).padStart(12, "0")}`,
+        label: "Deck",
+        deck_id: `10000000-0000-0000-0000-${String(i + 1).padStart(12, "0")}`,
+      })),
+    },
+  },
+  { ...clarificationPart, extra: true },
+  {
+    ...clarificationPart,
+    payload: { ...clarificationPart.payload, extra: true },
+  },
+  {
+    ...clarificationPart,
+    payload: { ...clarificationPart.payload, question_id: "bad" },
+  },
+  {
+    ...clarificationPart,
+    payload: { ...clarificationPart.payload, question: " " },
+  },
+  {
+    ...clarificationPart,
+    payload: { ...clarificationPart.payload, question: "x".repeat(301) },
+  },
+  {
+    ...clarificationPart,
+    payload: { ...clarificationPart.payload, purpose: "write" },
+  },
+  {
+    ...clarificationPart,
+    payload: { ...clarificationPart.payload, allow_free_text: "true" },
+  },
+  {
+    ...clarificationPart,
+    payload: {
+      ...clarificationPart.payload,
+      options: [],
+      allow_free_text: false,
+    },
+  },
+  {
+    ...clarificationPart,
+    payload: {
+      ...clarificationPart.payload,
+      options: Array.from({ length: 5 }, (_, i) => ({
+        id: `40000000-0000-0000-0000-${String(i + 1).padStart(12, "0")}`,
+        label: "A meaning",
+      })),
+    },
+  },
+  {
+    ...clarificationPart,
+    payload: {
+      ...clarificationPart.payload,
+      options: [{ id: "bad", label: "River" }],
+    },
+  },
+  {
+    ...clarificationPart,
+    payload: {
+      ...clarificationPart.payload,
+      options: [
+        { ...clarificationPart.payload.options[0], label: "x".repeat(81) },
+      ],
+    },
+  },
+  {
+    ...clarificationPart,
+    payload: {
+      ...clarificationPart.payload,
+      options: [
+        { ...clarificationPart.payload.options[0], owner_id: "private" },
+      ],
+    },
+  },
+  {
+    ...clarificationPart,
+    payload: {
+      ...clarificationPart.payload,
+      options: [
+        {
+          ...clarificationPart.payload.options[0],
+          deck_id: "10000000-0000-0000-0000-000000000101",
+        },
+      ],
+    },
+  },
+  {
+    ...clarificationPart,
+    payload: {
+      ...clarificationPart.payload,
+      purpose: "deck",
+      allow_free_text: false,
+    },
+  },
+  {
+    ...clarificationPart,
+    payload: {
+      ...clarificationPart.payload,
+      purpose: "deck",
+      options: [],
+      allow_free_text: true,
+    },
+  },
+])("rejects malformed clarification_question: %j", async (part) => {
+  const onPart = vi.fn();
+  await readPart(clarificationPart, { onPart });
+  expect(onPart).toHaveBeenCalledWith(clarificationPart);
+  await expect(readPart(part)).rejects.toMatchObject({
+    kind: "invalid_response",
+  });
+});

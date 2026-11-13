@@ -45,3 +45,16 @@ You can preview the production build with `npm run preview`.
 
 We can refer to the guide for the setting.
 https://svelte.dev/docs/kit/adapter-static#GitHub-Pages
+
+## Assistant clarification deployment
+
+Issue #101 phase 1 adds the propose-only `ask_clarification` tool and extends
+`parts.v1` with clarification questions and user answers. Deck questions are
+server-built from owned active decks; proposals never write cards. Phase 2 adds
+the approved option A UI: term chips and free-text answers, plus a scrollable deck
+picker with explicit confirmation. Answered questions lock in session history;
+refreshing still clears the conversation.
+Deploy the API before Pages: older APIs return 422 for `clarification_answer`,
+and the frontend does not retry 422. No migration is required.
+See [project memory](doc/project-memory.md), the [provisional scripted evaluation](doc/training/issues/99/README.md)
+and [remaining e2e checks](doc/e2e-todo.md). Vertex was not run for this phase.

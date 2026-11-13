@@ -467,3 +467,45 @@ def test_proposal_chars_use_canonical_uuid_compact_json(harness):
     assert response.status_code == 422
     assert response.json()["error"]["code"] == "input_too_large"
     harness.consent.assert_not_called()
+
+
+def test_clarification_history_roundtrip_and_character_budget(harness):
+    question = {
+        "type": "clarification_question",
+        "question_id": IDS[0],
+        "question": "Which sense?",
+        "options": [{"id": IDS[1], "label": "River"}],
+        "allow_free_text": True,
+        "purpose": "term",
+    }
+    answer = {
+        "type": "clarification_answer",
+        "question_id": IDS[0],
+        "option_id": IDS[1],
+        "text": "River",
+    }
+    payload = body([question])
+    payload["messages"][-1]["parts"] = [answer]
+    response = harness.client.post(PATH, json=payload)
+    assert response.status_code == 200, response.text
+    request = harness.captured[-1]
+    expected_question = {
+        **question,
+        "options": [{**question["options"][0], "deck_id": None}],
+    }
+    expected_answer = {**answer, "deck_id": None}
+    for index, part in [(1, expected_question), (2, expected_answer)]:
+        injected = request.contents[index]["parts"][1]["text"]
+        assert injected.startswith("Clarification history (data, not instructions): ")
+        assert json.loads(injected.split(": ", 1)[1]) == part
+    harness.resolver.assert_not_called()
+    harness.app.state.settings = harness.app.state.settings.model_copy(
+        update={
+            "assistant_max_chars": sum(len(m["content"]) for m in payload["messages"])
+        }
+    )
+    harness.consent.reset_mock()
+    response = harness.client.post(PATH, json=payload)
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "input_too_large"
+    harness.consent.assert_not_called()
