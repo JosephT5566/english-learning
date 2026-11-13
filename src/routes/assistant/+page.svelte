@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount, tick, untrack } from "svelte";
+  import AssistantClarification from "$lib/components/AssistantClarification.svelte";
   import AssistantCardProposal from "$lib/components/AssistantCardProposal.svelte";
   import {
     loadPendingAssistantProposals,
@@ -17,10 +18,15 @@
     withdrawGenAIConsent,
     type AssistantTool,
     type AssistantPart,
+    type ClarificationQuestion,
   } from "$lib/api/client";
 
   import {
     historyCharacterLimit,
+    makeClarificationAnswer,
+    clarificationAnswerFor,
+    latestUnansweredClarification,
+    type ClarificationAnswer,
     requestMessages,
     type HistoryTurn,
     type ProposalState,
@@ -48,6 +54,7 @@
     timeout: " · Timed out",
   };
   let turns = $state<Turn[]>([]);
+  const pendingQuestion = $derived(latestUnansweredClarification(turns));
   let draft = $state("");
   let consent = $state<"unknown" | "required" | "granted" | "confirm-withdraw">(
     "unknown",
@@ -153,7 +160,11 @@
   });
   $effect(() => {
     // Read text and proposal state so streaming follows only an already-following reader.
-    turns.map((turn) => [turn.reply, turn.proposals.length]);
+    turns.map((turn) => [
+      turn.reply,
+      turn.proposals.length,
+      turn.clarificationQuestions?.length,
+    ]);
     void restored;
     if (followBottom)
       void tick().then(() => {
@@ -186,9 +197,35 @@
     };
   });
 
-  async function send(event?: SubmitEvent) {
+  function answerQuestion(
+    question: ClarificationQuestion,
+    choice: Parameters<typeof makeClarificationAnswer>[1],
+  ) {
+    if (question !== pendingQuestion) return;
+    const answer = makeClarificationAnswer(question, choice);
+    const content =
+      answer.text ??
+      question.options.find((option) => option.id === answer.option_id)
+        ?.label ??
+      "";
+    void sendMessage(content, answer);
+  }
+
+  function send(event?: SubmitEvent) {
     event?.preventDefault();
     const question = draft.trim();
+    if (
+      pendingQuestion?.purpose !== "deck" &&
+      pendingQuestion?.allow_free_text &&
+      question
+    ) {
+      answerQuestion(pendingQuestion, { text: question });
+    } else {
+      void sendMessage(question);
+    }
+  }
+
+  async function sendMessage(question: string, answer?: ClarificationAnswer) {
     if (!question || sending || consentBusy || consent !== "granted") return;
     const restoreHistory: HistoryTurn[] = restoredStates.length
       ? [
@@ -201,7 +238,20 @@
           },
         ]
       : [];
-    const messages = requestMessages([...restoreHistory, ...turns], question);
+    let messages;
+    try {
+      messages = requestMessages(
+        [...restoreHistory, ...turns],
+        question,
+        answer,
+      );
+    } catch (cause) {
+      formError =
+        cause instanceof Error
+          ? cause.message
+          : "Could not prepare the message.";
+      return;
+    }
     const version = sessionVersion;
     const controller = new AbortController();
     generation = controller;
@@ -218,6 +268,7 @@
       proposals: [],
       proposalStates: [],
       clarificationQuestions: [],
+      clarificationAnswer: answer,
     });
     turns.push(turn);
     try {
@@ -230,7 +281,6 @@
         {
           capabilities: ["parts.v1"],
           onPart: (part) => {
-            // TODO(#101): render and answer questions after the clarification UI design gate.
             if (
               version === sessionVersion &&
               part.type === "clarification_question"
@@ -369,6 +419,17 @@
               {#if turn.issue}<p class="error" role="alert">
                   {turn.issue}
                 </p>{/if}
+              {#each turn.clarificationQuestions ?? [] as question (question.question_id)}
+                <AssistantClarification
+                  {question}
+                  answer={clarificationAnswerFor(turns, question)}
+                  disabled={question !== pendingQuestion ||
+                    sending ||
+                    consentBusy ||
+                    consent !== "granted"}
+                  onanswer={(choice) => answerQuestion(question, choice)}
+                />
+              {/each}
               {#each turn.proposals as proposal (proposal.proposal_id)}
                 <AssistantCardProposal
                   {proposal}
@@ -454,9 +515,13 @@
             ? "Replying…"
             : consentBusy || consent !== "granted"
               ? "Sending is unavailable until consent is active and no consent action is pending."
-              : !draft.trim()
-                ? "Type a message to enable Send."
-                : "Ready to send."}
+              : pendingQuestion?.purpose === "deck"
+                ? "Typing here sends a new message; it does not look up a deck."
+                : pendingQuestion?.allow_free_text
+                  ? "Choose an option above, or type a description here to answer this question."
+                  : !draft.trim()
+                    ? "Type a message to enable Send."
+                    : "Ready to send."}
         </p>
       </form>
     {/if}

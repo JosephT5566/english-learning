@@ -131,3 +131,20 @@ export function requestMessages(
   }
   return messages;
 }
+
+export function clarificationAnswerFor(
+  turns: HistoryTurn[],
+  question: ClarificationQuestion,
+): ClarificationAnswer | undefined {
+  return turns.find(
+    (turn) => turn.clarificationAnswer?.question_id === question.question_id,
+  )?.clarificationAnswer;
+}
+
+export function latestUnansweredClarification(
+  turns: HistoryTurn[],
+): ClarificationQuestion | undefined {
+  return turns
+    .flatMap((turn) => turn.clarificationQuestions ?? [])
+    .findLast((question) => !clarificationAnswerFor(turns, question));
+}
