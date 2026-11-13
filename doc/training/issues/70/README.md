@@ -23,12 +23,38 @@ latency measures local replay only. Reports always set `provisional: true`. Scri
 not recordings of model calls. CI imports only deterministic scoring/replay unit tests;
 the cases and evaluator live outside pytest collection. There is no true-model CI job.
 
+Both `evaluate.py` and `evaluate_sse.py` default to replay and accept
+`--max-steps N`, validated against Settings range 1-5 with default 3. SSE replay
+uses scripted `generate()` and `stream()` through the real `run_assistant` /
+`stream_events` path; it never constructs a Vertex provider. For a text-only
+planning result, the final stream repeats that handwritten text, since the real
+SSE preparation discards the planning text before requesting a final answer.
+That extra final call counts as a step and adds synthetic usage.
+
+```bash
+uv run --project apps/api python doc/training/issues/70/evaluate_sse.py --max-steps 4 --output /tmp/assistant-sse-replay-cap4.json
+```
+
+JSON and SSE summaries retain tool-selection accuracy, argument accuracy and
+average steps, and add correct-tool/correct-argument counts, completed/max-steps/
+timeout counts, summed non-null usage tokens, and p50/p95 latency. Percentiles use
+linear interpolation at `(n-1)*p` on sorted case latency milliseconds, rounded to
+three decimals; `latency_percentile_method` states the method. Empty sets produce
+null percentiles and zero counts/token sums. SSE latency is terminal elapsed time;
+its per-case stop reason and usage are also copied from `terminal.data`.
+Reports record configured cap, model, location, execution date and model-query date.
+The [#100 comparison](../100/README.md) holds the replay reports at caps 3/4/5;
+it does not replace the historical results below. Vertex was not run for #100.
+
 ## Manual Vertex mode
 
 Requires both `--vertex` and `ENABLE_ISSUE70_VERTEX_EVAL=1`, an explicitly selected
 `GENERATION_MODEL` and `VERTEX_PROJECT_ID`, ADC set up by the operator, and
 `--model-query-date YYYY-MM-DD` recording the operator's model-documentation review.
-Optional `GENERATION_LOCATION` retains #72 routing. No environment file is loaded.
+Optional `GENERATION_LOCATION` retains #72 routing. No environment file is loaded. SSE also requires explicit `--vertex`;
+`--model-query-date` is required only in live mode. `--max-steps N` applies to
+both transports. Refusal gates run before provider construction. Agents must not
+run Vertex; each live run needs separate explicit maintainer approval.
 
 ```bash
 ENABLE_ISSUE70_VERTEX_EVAL=1 uv run --project apps/api python doc/training/issues/70/evaluate.py --vertex --model-query-date YYYY-MM-DD --output /tmp/assistant-vertex-report.json
@@ -86,7 +112,7 @@ when it ended, and which synthetic tools ran. Use the same Vertex opt-in, model,
 project, and location as the JSON evaluation.
 
 ```bash
-ENABLE_ISSUE70_VERTEX_EVAL=1 uv run --project apps/api python doc/training/issues/70/evaluate_sse.py --model-query-date YYYY-MM-DD --output /tmp/assistant-sse-report.json
+ENABLE_ISSUE70_VERTEX_EVAL=1 uv run --project apps/api python doc/training/issues/70/evaluate_sse.py --vertex --model-query-date YYYY-MM-DD --output /tmp/assistant-sse-report.json
 ```
 
 All eight cases completed on Gemini 3.5 Flash-Lite in `global`. Each received

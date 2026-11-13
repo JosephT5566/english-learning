@@ -13,6 +13,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(ROOT / "apps/api"))
+sys.path.insert(0, str(ROOT / "doc/training/issues"))
 
 from app.assistant.clarification import ask_clarification, fill_deck_answer
 from app.assistant.loop import run_assistant
@@ -25,6 +26,7 @@ from app.generation import (
     GenerationUsage,
     VertexGenerationProvider,
 )
+from assistant_evaluation import comparison_summary, override_max_steps
 
 DIRECTORY = Path(__file__).resolve().parent
 ENGLISH_ID = "99000000-0000-0000-0000-000000000001"
@@ -451,6 +453,7 @@ def make_report(cases, scores, mode, settings, model_query_date=None):
         "model_versions": sorted({v for s in scores for v in s["model_versions"]}),
         "max_steps": settings.assistant_max_steps,
         "summary": {
+            **comparison_summary(scores),
             "case_count": len(scores),
             "passed_count": sum(s["case_pass"] for s in scores),
             "categories": {
@@ -486,15 +489,6 @@ def make_report(cases, scores, mode, settings, model_query_date=None):
         },
         "cases": scores,
     }
-
-
-def override_max_steps(settings, max_steps):
-    if max_steps is not None:
-        if max_steps < 1:
-            raise ValueError("max_steps must be positive")
-        # Evaluation-only hook for #100; production Settings retains ge=1, le=3.
-        object.__setattr__(settings, "assistant_max_steps", max_steps)
-    return settings
 
 
 def run_replay(cases, max_steps=None):

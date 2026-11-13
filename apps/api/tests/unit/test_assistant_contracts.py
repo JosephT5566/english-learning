@@ -239,7 +239,7 @@ def test_assistant_registry_is_fixed_with_exact_minimal_schemas():
 @pytest.mark.parametrize(
     "field,default,minimum,maximum",
     [
-        ("assistant_max_steps", 3, 1, 3),
+        ("assistant_max_steps", 3, 1, 5),
         ("assistant_timeout_seconds", 25, 1, 120),
         ("assistant_max_output_tokens", 2048, 1, 8192),
         ("assistant_max_messages", 20, 1, 100),
@@ -651,3 +651,101 @@ def test_assistant_sse_heartbeat_settings_have_bounds_and_env(monkeypatch):
     for value in ("0", "1", "60"):
         monkeypatch.setenv("ASSISTANT_SSE_HEARTBEAT_SECONDS", value)
         assert settings().assistant_sse_heartbeat_seconds == int(value)
+
+
+@pytest.mark.parametrize("cap", [3, 4])
+def test_four_step_retry_clarification_requires_cap_four(cap):
+    from app.assistant.clarification import ask_clarification
+
+    provider = Mock()
+    provider.generate.side_effect = [
+        result([call(target_language="invalid")]),
+        result([call(target_language="en")]),
+        result(
+            [call("ask_clarification", question="Which sense?", allow_free_text=True)]
+        ),
+        result([{"text": "Please describe the intended sense."}]),
+    ]
+    outcomes = []
+
+    def execute(name, arguments, deadline):
+        assert time.monotonic() < deadline
+        output = (
+            ask_clarification(arguments)
+            if name == "ask_clarification"
+            else {"total_count": 1}
+        )
+        outcomes.append((name, output))
+        return output
+
+    started = time.monotonic()
+    response = run(provider, execute, assistant_max_steps=cap)
+    assert time.monotonic() - started < 25
+    assert response.tool_calls[0].status == "invalid_call"
+    assert response.tool_calls[1].status == "ok"
+    assert provider.generate.call_count == cap
+    assert [c.args[0].tools_disabled for c in provider.generate.call_args_list] == (
+        [False] * (cap - 1) + [True]
+    )
+    if cap == 3:
+        assert response.stop_reason == "max_steps"
+        assert response.tool_calls[2].status == "tools_disabled"
+        assert [name for name, _ in outcomes] == ["get_review_stats"]
+        assert not response._parts
+    else:
+        assert response.stop_reason == "completed"
+        assert response.tool_calls[2].status == "ok"
+        assert outcomes[-1][0] == "ask_clarification"
+        assert outcomes[-1][1]["status"] == "ok"
+        assert response.reply == "Which sense?\n\nPlease describe the intended sense."
+        assert [p["type"] for p in response._parts] == ["clarification_question"]
+
+
+@pytest.mark.parametrize("cap", [4, 5])
+def test_five_step_retry_clarification_requires_cap_five(cap):
+    from app.assistant.clarification import ask_clarification
+
+    provider = Mock()
+    provider.generate.side_effect = [
+        result([call(target_language="invalid")]),
+        result([call(target_language="en")]),
+        result([call(target_language="en")]),
+        result(
+            [call("ask_clarification", question="Which sense?", allow_free_text=True)]
+        ),
+        result([{"text": "Please describe the intended sense."}]),
+    ]
+    outcomes = []
+
+    def execute(name, arguments, deadline):
+        assert time.monotonic() < deadline
+        output = (
+            ask_clarification(arguments)
+            if name == "ask_clarification"
+            else {"total_count": 1}
+        )
+        outcomes.append((name, output))
+        return output
+
+    started = time.monotonic()
+    response = run(provider, execute, assistant_max_steps=cap)
+    assert time.monotonic() - started < 25
+    assert [c.status for c in response.tool_calls[:3]] == ["invalid_call", "ok", "ok"]
+    assert provider.generate.call_count == cap
+    assert [c.args[0].tools_disabled for c in provider.generate.call_args_list] == (
+        [False] * (cap - 1) + [True]
+    )
+    if cap == 4:
+        assert response.stop_reason == "max_steps"
+        assert response.tool_calls[3].status == "tools_disabled"
+        assert [name for name, _ in outcomes] == ["get_review_stats"] * 2
+        assert not response._parts
+    else:
+        assert response.stop_reason == "completed"
+        assert response.tool_calls[3].status == "ok"
+        assert [name for name, _ in outcomes] == ["get_review_stats"] * 2 + [
+            "ask_clarification"
+        ]
+        assert outcomes[-1][1]["status"] == "ok"
+        assert response.reply == "Which sense?\n\nPlease describe the intended sense."
+        assert [p["type"] for p in response._parts] == ["clarification_question"]

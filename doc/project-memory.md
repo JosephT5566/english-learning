@@ -97,7 +97,9 @@ no-render/no-inbound-proposal-state limitations.
 ## Stateless assistant with proposals and no writes (2026-11-12)
 
 Issue #70 adds a non-streaming `POST /v1/assistant/messages` with consent,
-text-only JSON history limits and a maximum of three generated turns. As of #97,
+text-only JSON history limits and a configurable model-call cap, default 3 and
+allowed range 1-5 as of #100. [Replay comparisons](training/issues/100/README.md)
+cover caps 3/4/5; Vertex was not run for #100 and the default stays 3. As of #97,
 three owner-bound read tools are followed by the first propose tool, `propose_cards`.
 All tool SQL stays readonly and rolls back. Tool summaries omit card results;
 no conversation persists. Search/due

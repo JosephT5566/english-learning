@@ -983,3 +983,36 @@ pressed:false. The assertion now counts only the "Answer options" list. Real
 keyboards and real-backend SSE remain open in e2e items 19, 21 and 22. Deploy API
 before Pages as before; API contracts are unchanged here. No Vertex run, deployment,
 production action, migration or workflow change is included.
+
+## 2026-11-13: Widen the assistant step range while retaining default 3 (#100)
+
+JosephT5566 approved Q1-Q8 on 2026-11-13. The 2026-11-05 #70 decision chose
+an engineering bound of default 3, range 1-3. Issue #100 widens only the allowed
+Settings range to 1-5; the default did not change and stays 3. The earlier #70
+section and 2026-11-07 result files remain historical records without edits.
+
+The [#100 comparison](training/issues/100/README.md) links nine provisional
+[replay reports](training/issues/100/results/) covering #70 JSON (8), #70 SSE (8)
+and all #99 cases (35) at caps 3/4/5. All complete at every cap under handwritten
+scripts. Replay proves orchestration and report hooks, not model quality,
+production latency or cost. A fake four-call unit path fails to complete at cap 3
+and completes at cap 4 within 25 seconds. #70 JSON/SSE and #99 share validated
+cap overrides and descriptive summary methods. SSE now defaults to scripted replay.
+
+Vertex was not run. This issue, `ai-ready` and implementation start did not
+authorize it; each live run requires separate explicit maintainer approval plus
+all existing opt-in, model/project and documentation-query-date gates. A future
+cap-3 Vertex baseline must be rerun on current `main`, not taken from the
+2026-11-07 files. Adopt the smallest cap whose `stop_reason=="completed"` count
+is at least cap-3 baseline + 1, with p95 latency at most 20 seconds and no new
+streaming timeout. Publish #70 correct-tool/correct-argument and #99 `case_pass`
+counts as secondary columns; those alone cannot raise the default. Without
+approved qualifying Vertex evidence, the default stays 3.
+
+Higher caps can increase latency, tokens and timeout risk. The assistant deadline
+stays 25 seconds and Cloud Run `--timeout` stays 30 seconds. #71's independent
+protocol remains 3 steps / 60 seconds; #71/#72 standalone evaluations were not
+rerun. Q1-Q8 require no ui-design-gate because this is server-only configuration.
+No migration, workflow, production, frontend or #77 rate-limit/cache/usage-ledger
+change is included. See [verification evidence](training/issues/100/verification.md)
+for local checks and their limits.

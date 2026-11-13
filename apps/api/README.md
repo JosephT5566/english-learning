@@ -537,7 +537,7 @@ embedding provider and does not treat an embedding failure as a successful empty
 
 | Server-only variable              | Default | Allowed range | Reason                                  |
 | --------------------------------- | ------- | ------------- | --------------------------------------- |
-| `ASSISTANT_MAX_STEPS`             | 3       | 1-3           | One model call per step, bounded loop   |
+| `ASSISTANT_MAX_STEPS`             | 3       | 1-5           | One model call per step, bounded loop   |
 | `ASSISTANT_TIMEOUT_SECONDS`       | 25      | 1-120         | Finish before the Cloud Run 30s cap     |
 | `ASSISTANT_SSE_HEARTBEAT_SECONDS` | 15      | 0-60          | Planning comment interval; 0 disables   |
 | `ASSISTANT_MAX_OUTPUT_TOKENS`     | 2048    | 1-8192        | Short answers with bounded output       |

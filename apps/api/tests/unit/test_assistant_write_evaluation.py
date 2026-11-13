@@ -354,3 +354,21 @@ def test_clarification_expectations_are_separate_from_proposal_count():
     assert m.clarification_expectations(
         {"clarification_limit": True}, attempts, limit, []
     )
+
+
+def test_write_cap_comparison_summary():
+    m = evaluator()
+    cases = json.loads((DIRECTORY / "cases.json").read_text())
+    report = m.run_replay(cases, max_steps=5)
+    summary = report["summary"]
+    assert report["max_steps"] == 5
+    assert summary["completed_count"] == summary["passed_count"] == 35
+    assert summary["max_steps_count"] == summary["timeout_count"] == 0
+    assert summary["latency_p95_ms"] >= summary["latency_p50_ms"] >= 0
+    assert summary["latency_percentile_method"] == (
+        "linear interpolation at (n-1)*p on sorted latency_ms, p in [0,1]"
+    )
+    assert summary["usage"] == {
+        key: sum((c["usage"] or {}).get(key) or 0 for c in report["cases"])
+        for key in ("input_tokens", "output_tokens", "total_tokens")
+    }
