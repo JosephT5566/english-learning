@@ -7,6 +7,7 @@ import {
   PENDING_ASSISTANT_STORAGE_KEY,
 } from "$lib/assistant/pending";
 import { authSession } from "$lib/stores/auth";
+import type { ClarificationQuestion } from "$lib/api/client";
 import AssistantPage from "../../src/routes/assistant/+page.svelte";
 
 const api = vi.hoisted(() => ({
@@ -49,6 +50,227 @@ describe("assistant page composer and consent", () => {
       tools: [],
     });
   });
+  async function askClarification(
+    overrides: Partial<ClarificationQuestion> = {},
+  ) {
+    const question: ClarificationQuestion = {
+      question_id: "q1",
+      question: "Which bank?",
+      purpose: "term",
+      allow_free_text: true,
+      options: [
+        "Financial institution",
+        "River bank",
+        "A row",
+        "Deposit money",
+      ].map((label, index) => ({ id: `o${index}`, label })),
+      ...overrides,
+    };
+    api.streamAssistantReply.mockImplementationOnce(
+      async (_messages, ontext, _signal, options) => {
+        ontext("Please choose a meaning.");
+        options.onPart({
+          id: "part1",
+          type: "clarification_question",
+          payload: question,
+        });
+        return { stop: "completed", tools: [] };
+      },
+    );
+    render(AssistantPage);
+    const input = await screen.findByLabelText("Ask the assistant");
+    await fireEvent.input(input, { target: { value: "Make a bank card" } });
+    await fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+    await waitFor(() => expect(input).not.toHaveAttribute("readonly"));
+    return { input, question };
+  }
+
+  it("sends a term chip label and locks it through following replies and history", async () => {
+    await askClarification();
+    const chip = await screen.findByRole("button", { name: "River bank" });
+    await fireEvent.click(chip);
+    expect(api.streamAssistantReply.mock.calls[1][0].at(-1)).toEqual({
+      role: "user",
+      content: "River bank",
+      parts: [
+        { type: "clarification_answer", question_id: "q1", option_id: "o1" },
+      ],
+    });
+    expect(await screen.findByText("Answered: River bank")).toBeVisible();
+    expect(chip).toBeDisabled();
+    expect(chip).toHaveAttribute("aria-pressed", "true");
+    expect(document.querySelectorAll(".question")[1]).toHaveTextContent(
+      "River bank",
+    );
+    const input = screen.getByLabelText("Ask the assistant");
+    await waitFor(() => expect(input).not.toHaveAttribute("readonly"));
+    await fireEvent.input(input, { target: { value: "Continue" } });
+    await fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+    expect(api.streamAssistantReply.mock.calls[2][0][2].parts).toEqual([
+      { type: "clarification_answer", question_id: "q1", option_id: "o1" },
+    ]);
+    expect(chip).toBeDisabled();
+  });
+
+  it.each(["card", "composer"])(
+    "sends %s free text as the pending term answer",
+    async (path) => {
+      const { input } = await askClarification();
+      await screen.findByRole("button", { name: "River bank" });
+      await fireEvent.input(
+        path === "card"
+          ? screen.getByLabelText("Or describe it yourself")
+          : input,
+        { target: { value: "  The edge of a river  " } },
+      );
+      await fireEvent.click(
+        screen.getByRole("button", {
+          name: path === "card" ? "Send description" : "Send message",
+        }),
+      );
+      expect(api.streamAssistantReply.mock.calls[1][0].at(-1)).toEqual({
+        role: "user",
+        content: "The edge of a river",
+        parts: [
+          {
+            type: "clarification_answer",
+            question_id: "q1",
+            text: "The edge of a river",
+          },
+        ],
+      });
+      expect(
+        await screen.findByText("Answered: The edge of a river"),
+      ).toBeVisible();
+      expect(input).toHaveValue("");
+    },
+  );
+
+  it("keeps deck composer messages ordinary and requires explicit deck confirmation", async () => {
+    const { input } = await askClarification({
+      purpose: "deck",
+      allow_free_text: false,
+      question: "Which deck?",
+      options: Array.from({ length: 20 }, (_, index) => ({
+        id: `d${index}`,
+        label: `Deck ${index}`,
+        deck_id: `deck-id-${index}`,
+      })),
+    });
+    const row = await screen.findByRole("radio", { name: "Deck 12" });
+    expect(
+      screen.getByRole("radiogroup", { name: "Which deck?" }),
+    ).toBeVisible();
+    expect(screen.getAllByRole("radio")).toHaveLength(20);
+    expect(
+      screen.queryByLabelText("Or describe it yourself"),
+    ).not.toBeInTheDocument();
+    await fireEvent.input(input, { target: { value: "Deck 12" } });
+    await fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+    expect(api.streamAssistantReply.mock.calls[1][0].at(-1)).toEqual({
+      role: "user",
+      content: "Deck 12",
+    });
+    await waitFor(() => expect(row).toBeEnabled());
+    await fireEvent.click(row);
+    expect(api.streamAssistantReply).toHaveBeenCalledTimes(2);
+    await fireEvent.click(
+      screen.getByRole("button", { name: "Use this deck" }),
+    );
+    expect(api.streamAssistantReply.mock.calls[2][0].at(-1)).toEqual({
+      role: "user",
+      content: "Deck 12",
+      parts: [
+        {
+          type: "clarification_answer",
+          question_id: "q1",
+          option_id: "d12",
+          deck_id: "deck-id-12",
+        },
+      ],
+    });
+    expect(await screen.findByText("Answered: Deck 12")).toBeVisible();
+    expect(row).toBeDisabled();
+  });
+
+  it("keeps composer text ordinary when term free text is forbidden", async () => {
+    const { input } = await askClarification({ allow_free_text: false });
+    await screen.findByRole("button", { name: "River bank" });
+    expect(
+      screen.queryByLabelText("Or describe it yourself"),
+    ).not.toBeInTheDocument();
+    await fireEvent.input(input, { target: { value: "New request" } });
+    await fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+    expect(api.streamAssistantReply.mock.calls[1][0].at(-1)).toEqual({
+      role: "user",
+      content: "New request",
+    });
+  });
+
+  it("restores pending choices after a failed answer send and guards duplicate in-flight sends", async () => {
+    await askClarification();
+    let reject: (cause: Error) => void = () => {};
+    api.streamAssistantReply.mockImplementationOnce(
+      () =>
+        new Promise((_resolve, rejectPromise) => {
+          reject = rejectPromise;
+        }),
+    );
+    const chip = screen.getByRole("button", { name: "River bank" });
+    await fireEvent.click(chip);
+    await fireEvent.click(chip);
+    expect(api.streamAssistantReply).toHaveBeenCalledTimes(2);
+    reject(new Error("offline"));
+    await screen.findByRole("alert");
+    await waitFor(() => expect(chip).toBeEnabled());
+    expect(screen.queryByText("Answered: River bank")).not.toBeInTheDocument();
+    await fireEvent.click(chip);
+    expect(api.streamAssistantReply.mock.calls[2][0].at(-1).parts).toEqual([
+      { type: "clarification_answer", question_id: "q1", option_id: "o1" },
+    ]);
+  });
+
+  it("disables clarification controls while consent withdrawal is pending", async () => {
+    await askClarification();
+    await fireEvent.click(
+      screen.getByRole("button", {
+        name: "AI consent is active. Manage AI consent",
+      }),
+    );
+    expect(screen.getByRole("button", { name: "River bank" })).toBeDisabled();
+    await fireEvent.click(screen.getByRole("button", { name: "River bank" }));
+    expect(api.streamAssistantReply).toHaveBeenCalledTimes(1);
+  });
+
+  it("makes only the latest unanswered question interactive", async () => {
+    const { input, question } = await askClarification({
+      allow_free_text: false,
+    });
+    api.streamAssistantReply.mockImplementationOnce(
+      async (_messages, _ontext, _signal, options) => {
+        options.onPart({
+          id: "part2",
+          type: "clarification_question",
+          payload: {
+            ...question,
+            question_id: "q2",
+            question: "Which scope?",
+            options: [{ id: "scope", label: "Only bank" }],
+          },
+        });
+        return { stop: "completed", tools: [] };
+      },
+    );
+    await fireEvent.input(input, { target: { value: "Narrow the scope" } });
+    await fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+    expect(
+      await screen.findByRole("button", { name: "Only bank" }),
+    ).toBeEnabled();
+    expect(screen.getByRole("button", { name: "River bank" })).toBeDisabled();
+    await fireEvent.click(screen.getByRole("button", { name: "River bank" }));
+    expect(api.streamAssistantReply).toHaveBeenCalledTimes(2);
+  });
+
   it("replaces the composer until explicit grant without auto-send", async () => {
     api.getGenAIConsent.mockResolvedValue({ genai_consent_at: null });
     render(AssistantPage);
@@ -223,7 +445,7 @@ describe("assistant page composer and consent", () => {
     },
   );
 
-  it("retains an unrendered clarification after interruption and echoes it on the next turn", async () => {
+  it("retains a rendered clarification after interruption and echoes it on the next turn", async () => {
     const question = {
       question_id: "30000000-0000-0000-0000-000000000101",
       question: "Which meaning?",
@@ -250,8 +472,10 @@ describe("assistant page composer and consent", () => {
     await fireEvent.input(input, { target: { value: "Add bank" } });
     await fireEvent.click(screen.getByRole("button", { name: "Send message" }));
     await screen.findByRole("alert");
-    expect(screen.queryByText(question.question)).not.toBeInTheDocument();
-    expect(screen.queryByText("River bank")).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: question.question }),
+    ).toBeVisible();
+    expect(screen.getByRole("button", { name: "River bank" })).toBeEnabled();
     expect(screen.getByText("Add bank")).toBeVisible();
     await fireEvent.input(input, { target: { value: "River" } });
     await fireEvent.click(screen.getByRole("button", { name: "Send message" }));

@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   requestMessages,
   makeClarificationAnswer,
+  clarificationAnswerFor,
+  latestUnansweredClarification,
   type HistoryTurn,
 } from "$lib/assistant/history";
 
@@ -320,5 +322,23 @@ describe("clarification history", () => {
       type: "clarification_question",
       ...clarification,
     });
+  });
+});
+
+describe("pending clarification selection", () => {
+  it("keeps ordinary deck messages pending and chooses only the latest unanswered question", () => {
+    const newer = { ...clarification, question_id: ids[3] };
+    const turns = [
+      turn({ clarificationQuestions: [clarification] }),
+      turn({ question: "English" }),
+    ];
+    expect(latestUnansweredClarification(turns)).toEqual(clarification);
+    turns.push(turn({ clarificationQuestions: [newer] }));
+    expect(latestUnansweredClarification(turns)).toEqual(newer);
+    const answer = makeClarificationAnswer(newer, { optionId: ids[1] });
+    turns.push(turn({ clarificationAnswer: answer }));
+    expect(clarificationAnswerFor(turns, newer)).toEqual(answer);
+    expect(clarificationAnswerFor(turns, clarification)).toBeUndefined();
+    expect(latestUnansweredClarification(turns)).toEqual(clarification);
   });
 });
