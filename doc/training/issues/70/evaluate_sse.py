@@ -1,18 +1,22 @@
-"""Opt-in assistant SSE evaluation using Vertex and the synthetic issue #70 corpus."""
+"""Offline replay or explicitly opted-in Vertex SSE on the synthetic #70 corpus."""
 
 import argparse
 import asyncio
 import json
 import time
 from contextlib import aclosing
-from datetime import UTC, datetime
 from pathlib import Path
 
 from evaluate import (
     DIRECTORY,
     ObservedProvider,
+    ReplayProvider,
     SyntheticTools,
+    make_report,
+    override_max_steps,
+    replay_settings,
     require_vertex_opt_in,
+    score_calls,
 )
 
 # isort: split
@@ -53,19 +57,35 @@ async def evaluate_case(case, provider, settings):
     deltas = []
     terminal = None
     async for frame in stream_events(prepare, observed, settings, deadline, case["id"]):
-        event, data = frame.splitlines()[:2]
+        if not hasattr(frame, "name"):
+            continue  # Planning heartbeat, not a data event.
         elapsed = round((time.monotonic() - started) * 1000, 3)
-        if event == "event: delta":
+        if frame.name == "delta":
             deltas.append(elapsed)
-        else:
+        elif frame.name in {"done", "error"}:
             terminal = {
-                "event": event.removeprefix("event: "),
+                "event": frame.name,
                 "elapsed_ms": elapsed,
-                "data": json.loads(data.removeprefix("data: ")),
+                "data": frame.data,
             }
 
+    body = terminal["data"] if terminal else {}
+    permitted = [
+        c
+        for c in body.get("tool_calls", [])
+        if c["status"] in {"ok", "tool_unavailable"}
+    ]
+    score = score_calls(permitted, case["expected_calls"])
+    if body.get("stop_reason") != "completed":
+        score = {"tool_selection_correct": False, "arguments_correct": False}
     return {
         "id": case["id"],
+        **score,
+        "stop_reason": body.get("stop_reason"),
+        "usage": body.get("usage"),
+        "latency_ms": terminal["elapsed_ms"]
+        if terminal
+        else round((time.monotonic() - started) * 1000, 3),
         "model_versions": sorted(observed.versions),
         "steps": observed.steps,
         "delta_count": len(deltas),
@@ -76,29 +96,38 @@ async def evaluate_case(case, provider, settings):
     }
 
 
-async def evaluate(settings):
-    cases = json.loads((DIRECTORY / "cases.json").read_text())
+async def run_replay(cases, max_steps=None):
+    settings = replay_settings(max_steps)
+    scores = [
+        await evaluate_case(case, ReplayProvider(case["script"]), settings)
+        for case in cases
+    ]
+    return make_report(cases, scores, "replay", settings)
+
+
+async def run_vertex(cases, model_query_date, max_steps=None):
+    settings = override_max_steps(require_vertex_opt_in(model_query_date), max_steps)
     provider = VertexGenerationProvider()
     try:
-        return [await evaluate_case(case, provider, settings) for case in cases]
+        scores = [await evaluate_case(case, provider, settings) for case in cases]
     finally:
         provider.close()
+    return make_report(cases, scores, "vertex", settings, model_query_date)
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--model-query-date", required=True)
+    parser.add_argument("--vertex", action="store_true")
+    parser.add_argument("--max-steps", type=int)
+    parser.add_argument("--model-query-date")
     parser.add_argument("--output", required=True, type=Path)
     args = parser.parse_args()
-    settings = require_vertex_opt_in(args.model_query_date)
-    report = {
-        "provisional": True,
-        "executed_on": datetime.now(UTC).isoformat(),
-        "model_query_date": args.model_query_date,
-        "configured_model": settings.generation_model,
-        "location": settings.effective_generation_location,
-        "cases": asyncio.run(evaluate(settings)),
-    }
+    cases = json.loads((DIRECTORY / "cases.json").read_text())
+    report = asyncio.run(
+        run_vertex(cases, args.model_query_date, args.max_steps)
+        if args.vertex
+        else run_replay(cases, args.max_steps)
+    )
     args.output.write_text(
         json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
     )

@@ -104,8 +104,13 @@ The model-query date is null for replay. Incomplete cases fail. Replay is always
 provisional; a future Vertex report stays provisional until all cases are reviewed.
 
 `--max-steps` and `run_replay(..., max_steps=...)` retain the #100 evaluation hook.
-They override a constructed Settings object without changing production's `ge=1, le=3`
-constraint. No cap comparison was run.
+They construct a validated Settings copy using production's `ge=1, le=5`
+constraint; the default stays 3 and caps below 1 are rejected. The
+[#100 replay comparison](../100/README.md) covers all 35 cases at caps 3/4/5.
+Reports now summarize completed/max-steps/timeout counts, summed non-null tokens,
+and p50/p95 latency using linear interpolation at `(n-1)*p` on sorted latency
+values, rounded to three decimal places in milliseconds. Each report states the
+method. These local timings and synthetic tokens are not production or cost evidence.
 
 ## Scoring and limits
 

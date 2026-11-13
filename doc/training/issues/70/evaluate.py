@@ -14,15 +14,18 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(ROOT / "apps/api"))
+sys.path.insert(0, str(ROOT / "doc/training/issues"))
 
 from app.assistant.loop import run_assistant
 from app.config import Settings
 from app.generation import (
     GenerationFailure,
     GenerationResult,
+    GenerationStreamChunk,
     GenerationUsage,
     VertexGenerationProvider,
 )
+from assistant_evaluation import comparison_summary, override_max_steps
 
 DIRECTORY = Path(__file__).resolve().parent
 
@@ -73,11 +76,13 @@ class ReplayProvider:
         self.script = iter(script)
         self.steps = 0
         self.versions = set()
+        self.last_entry = None
 
     def generate(self, request, **options):
         self.steps += 1
         self.versions.add("scripted-v1")
         entry = next(self.script)
+        self.last_entry = entry
         calls = entry.get("calls", [])
         return GenerationResult(
             text=entry.get("text", ""),
@@ -87,6 +92,22 @@ class ReplayProvider:
                 for c in calls
             ],
             function_calls=calls,
+            usage=GenerationUsage(input_tokens=10, output_tokens=5, total_tokens=15),
+        )
+
+    async def stream(self, request, **options):
+        # prepare_final discards a text-only planning result and requests it again.
+        # Repeat that script text; otherwise consume the scripted final entry.
+        entry = self.last_entry
+        if entry is None or entry.get("calls"):
+            entry = next(self.script)
+        self.steps += 1
+        self.versions.add("scripted-v1")
+        if entry.get("calls"):
+            raise GenerationFailure("invalid_response")
+        yield GenerationStreamChunk(
+            text=entry.get("text", ""),
+            model="scripted-v1",
             usage=GenerationUsage(input_tokens=10, output_tokens=5, total_tokens=15),
         )
 
@@ -190,8 +211,14 @@ def make_report(cases, scores, mode, settings, model_query_date=None):
         "configured_model": settings.generation_model,
         "location": settings.effective_generation_location,
         "model_versions": sorted({v for s in scores for v in s["model_versions"]}),
+        "max_steps": settings.assistant_max_steps,
         "summary": {
+            **comparison_summary(scores),
             "case_count": n,
+            "tool_selection_correct_count": sum(
+                s["tool_selection_correct"] for s in scores
+            ),
+            "arguments_correct_count": sum(s["arguments_correct"] for s in scores),
             "tool_selection_accuracy": sum(s["tool_selection_correct"] for s in scores)
             / n
             if n
@@ -205,12 +232,19 @@ def make_report(cases, scores, mode, settings, model_query_date=None):
     }
 
 
-def run_replay(cases):
-    settings = Settings(
-        _env_file=None,
-        generation_model="scripted-v1",
-        vertex_project_id="synthetic-project",
+def replay_settings(max_steps=None):
+    return override_max_steps(
+        Settings(
+            _env_file=None,
+            generation_model="scripted-v1",
+            vertex_project_id="synthetic-project",
+        ),
+        max_steps,
     )
+
+
+def run_replay(cases, max_steps=None):
+    settings = replay_settings(max_steps)
     scores = [evaluate_case(c, ReplayProvider(c["script"]), settings) for c in cases]
     return make_report(cases, scores, "replay", settings)
 
@@ -229,8 +263,8 @@ def require_vertex_opt_in(model_query_date):
     return settings
 
 
-def run_vertex(cases, model_query_date):
-    settings = require_vertex_opt_in(model_query_date)
+def run_vertex(cases, model_query_date, max_steps=None):
+    settings = override_max_steps(require_vertex_opt_in(model_query_date), max_steps)
     provider = VertexGenerationProvider()
     try:
         scores = [evaluate_case(c, ObservedProvider(provider), settings) for c in cases]
@@ -243,11 +277,14 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--vertex", action="store_true")
     parser.add_argument("--model-query-date")
+    parser.add_argument("--max-steps", type=int)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     cases = json.loads((DIRECTORY / "cases.json").read_text())
     report = (
-        run_vertex(cases, args.model_query_date) if args.vertex else run_replay(cases)
+        run_vertex(cases, args.model_query_date, args.max_steps)
+        if args.vertex
+        else run_replay(cases, args.max_steps)
     )
     args.output.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n")
 
