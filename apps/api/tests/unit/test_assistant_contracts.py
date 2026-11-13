@@ -190,6 +190,29 @@ def test_assistant_registry_is_fixed_with_exact_minimal_schemas():
             },
         }
     )
+    expected.append(
+        {
+            "name": "ask_clarification",
+            "description": "Ask about an ambiguous term or scope before proposing drafts. Never ask for optional fields or deck ids.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "question": {"type": "string"},
+                    "options": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {"label": {"type": "string"}},
+                            "required": ["label"],
+                        },
+                    },
+                    "allow_free_text": {"type": "boolean"},
+                    "purpose": {"type": "string", "enum": ["term", "other"]},
+                },
+                "required": ["question", "allow_free_text"],
+            },
+        }
+    )
     assert TOOL_SCHEMAS == expected
     for schema in TOOL_SCHEMAS:
         name = schema["name"]

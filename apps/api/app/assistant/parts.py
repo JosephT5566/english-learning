@@ -2,6 +2,7 @@
 
 from typing import Literal, TypedDict
 
+from app.assistant.clarification import deck_question
 from app.assistant.propose import ProposalResult, proposal_payload
 
 
@@ -29,12 +30,43 @@ class CardProposalPart(TypedDict):
     payload: dict
 
 
-AssistantPart = CardListPart | CardProposalPart
+class ClarificationQuestionPart(TypedDict):
+    id: str
+    type: Literal["clarification_question"]
+    payload: dict
+
+
+AssistantPart = CardListPart | CardProposalPart | ClarificationQuestionPart
 
 
 def build_part(
     name: str, output: dict, status: str, ordinal: int
 ) -> AssistantPart | None:
+    if status == "ok" and name == "ask_clarification" and output.get("status") == "ok":
+        return {
+            "id": f"p{ordinal}",
+            "type": "clarification_question",
+            "payload": {
+                "question_id": output["question_id"],
+                "question": output["question"],
+                "options": [
+                    {"id": option["id"], "label": option["label"]}
+                    for option in output["options"]
+                ],
+                "allow_free_text": output["allow_free_text"],
+                "purpose": output.get("purpose", "term"),
+            },
+        }
+    if (
+        status == "ok"
+        and name == "propose_cards"
+        and output.get("status") == "needs_deck"
+    ):
+        return {
+            "id": f"p{ordinal}",
+            "type": "clarification_question",
+            "payload": deck_question(output["decks"]),
+        }
     if (
         status == "ok"
         and name == "propose_cards"

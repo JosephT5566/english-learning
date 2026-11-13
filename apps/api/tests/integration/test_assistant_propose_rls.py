@@ -316,7 +316,14 @@ def test_omitted_deck_resolves_only_one_owned_active_deck(
         assert responses[0]["status"] == "ok"
     else:
         assert responses == [{"status": "needs_deck", "decks": expected}]
-        assert all(name != "part" for name, _ in events)
+        assert events[0][0] == "part"
+        question = events[0][1]
+        assert question["type"] == "clarification_question"
+        assert question["payload"]["purpose"] == "deck"
+        assert question["payload"]["allow_free_text"] is False
+        assert [option["deck_id"] for option in question["payload"]["options"]] == [
+            deck["id"] for deck in expected
+        ]
         assert not shared.log_events(
             capsys.readouterr().out, "assistant_proposal_created"
         )

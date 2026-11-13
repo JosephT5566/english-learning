@@ -857,6 +857,62 @@ export interface components {
              */
             type: "card_refs";
         };
+        /** HistoryClarificationAnswer */
+        HistoryClarificationAnswer: {
+            /** Deck Id */
+            deck_id?: string | null;
+            /** Option Id */
+            option_id?: string | null;
+            /**
+             * Question Id
+             * Format: uuid
+             */
+            question_id: string;
+            /** Text */
+            text?: string | null;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "clarification_answer";
+        };
+        /** HistoryClarificationQuestion */
+        HistoryClarificationQuestion: {
+            /** Allow Free Text */
+            allow_free_text: boolean;
+            /** Options */
+            options: components["schemas"]["HistoryOption"][];
+            /**
+             * Purpose
+             * @default term
+             * @enum {string}
+             */
+            purpose: "deck" | "term" | "other";
+            /** Question */
+            question: string;
+            /**
+             * Question Id
+             * Format: uuid
+             */
+            question_id: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "clarification_question";
+        };
+        /** HistoryOption */
+        HistoryOption: {
+            /** Deck Id */
+            deck_id?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Label */
+            label: string;
+        };
         /** HistoryProposalState */
         HistoryProposalState: {
             /**
@@ -1125,7 +1181,7 @@ export interface components {
              * Parts
              * @default []
              */
-            parts: (components["schemas"]["HistoryCardRefs"] | components["schemas"]["HistoryProposalState"])[];
+            parts: (components["schemas"]["HistoryCardRefs"] | components["schemas"]["HistoryProposalState"] | components["schemas"]["HistoryClarificationAnswer"] | components["schemas"]["HistoryClarificationQuestion"])[];
             /**
              * Role
              * @enum {string}

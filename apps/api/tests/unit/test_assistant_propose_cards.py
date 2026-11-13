@@ -226,7 +226,14 @@ def test_optional_deck_resolution_terminal_and_bounded(size, capsys):
         assert pending.parts[0]["payload"]["deck"] == decks[0]
     else:
         assert output == {"status": "needs_deck", "decks": decks[:20]}
-        assert pending.parts == []
+        assert len(pending.parts) == 1
+        question = pending.parts[0]
+        assert question["type"] == "clarification_question"
+        assert question["payload"]["purpose"] == "deck"
+        assert question["payload"]["allow_free_text"] is False
+        assert [o["deck_id"] for o in question["payload"]["options"]] == [
+            d["id"] for d in decks[:20]
+        ]
         assert "assistant_proposal_created" not in capsys.readouterr().out
 
 
@@ -357,6 +364,15 @@ def test_prompt_and_injected_card_content_cannot_enable_writes():
     assert "Never claim that cards were written, saved or added" in SYSTEM
     assert "Do not invent source attribution or dates" in SYSTEM
     assert "needs_deck" in SYSTEM
+    for policy in (
+        "ask_clarification",
+        "clarification_limit",
+        "optional fields",
+        "exactly one active owned deck",
+        "deck title",
+        "more than 20 cards",
+    ):
+        assert policy in SYSTEM
     session, execute = session_tools()
     hostile = {
         **CARD,

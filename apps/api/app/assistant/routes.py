@@ -17,6 +17,10 @@ from pydantic import (
 )
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
+from app.assistant.clarification import (
+    HistoryClarificationAnswer,
+    HistoryClarificationQuestion,
+)
 from app.assistant.history import resolve_card_refs
 from app.assistant.loop import (
     FALLBACK,
@@ -104,7 +108,11 @@ class HistoryProposalState(BaseModel):
 
 
 HistoryPart = Annotated[
-    HistoryCardRefs | HistoryProposalState, Field(discriminator="type")
+    HistoryCardRefs
+    | HistoryProposalState
+    | HistoryClarificationAnswer
+    | HistoryClarificationQuestion,
+    Field(discriminator="type"),
 ]
 
 
@@ -113,8 +121,9 @@ class StreamMessage(Message):
 
     @model_validator(mode="after")
     def assistant_parts_only(self):
-        if self.parts and self.role != "assistant":
-            raise ValueError("history parts require an assistant message")
+        for part in self.parts:
+            if (self.role == "user") != isinstance(part, HistoryClarificationAnswer):
+                raise ValueError("history part is not allowed on this message role")
         return self
 
 
@@ -137,6 +146,8 @@ def _validate_request(request, payload):
             part.card_ids
             if isinstance(part, HistoryCardRefs)
             else part.created_card_ids
+            if isinstance(part, HistoryProposalState)
+            else []
         )
         for parts in history_parts
         for part in parts
@@ -234,7 +245,11 @@ def assistant_messages(
                 settings=settings,
                 provider=provider,
                 execute=SessionTools(
-                    owned_session, owner_id, settings, embedding_provider
+                    owned_session,
+                    owner_id,
+                    settings,
+                    embedding_provider,
+                    messages=messages,
                 ),
                 request_id=request_id,
                 before_generate=consent_then_release,
@@ -316,6 +331,8 @@ def assistant_stream(
             part.card_ids
             if isinstance(part, HistoryCardRefs)
             else part.created_card_ids
+            if isinstance(part, HistoryProposalState)
+            else []
         )
     }
     state = request.app.state
@@ -362,6 +379,7 @@ def assistant_stream(
                     settings,
                     embedding_provider,
                     cancelled=cancelled,
+                    messages=messages,
                 ),
                 request_id=request_id,
                 before_generate=consent_then_release,
