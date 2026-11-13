@@ -8,10 +8,40 @@ verification records belong in the linked issue artifacts. Implementation and te
 precedence over stale documentation. Deployment statements below summarize recorded evidence, not
 a fresh inspection of the live services.
 
+## Structured clarification, phase 1 (2026-11-13)
+
+Issue #101 extends `parts.v1` with structured questions and stream-history answers.
+`ask_clarification` asks about ambiguous terms or scope with up to four options;
+server ids correlate questions and options without authorizing writes. A terminal
+`needs_deck` now produces a server-built deck question with up to twenty owned
+active decks. A later omitted proposal deck id can use the latest answer only
+after rechecking ownership and active status. Titles remain labels, never ids.
+Three prior non-deck questions cause `clarification_limit`; deck questions do not
+count, and a rejected ask leaves room for a best editable proposal. History is
+browser-held, bounded and untrusted, with no conversation table or migration.
+
+The parser/history data layer and page retention hook are implemented without
+rendering clarification controls. The visual question, deck list, option/free-text
+interaction and keyboard browser tests await a stacked PR after the separate
+ui-design-gate. The maintainer waived that gate for this phase's scroll bug:
+assistant-only overflow containment and flex sizing reserve the composer and
+confine chat scrolling to `.message-list`, including short-window test scenarios.
+The #98 confirm-card visual and explicit REST write path remain unchanged.
+
+Deploy API before Pages. Older APIs reject `clarification_answer` with 422 and
+the client does not retry it. This is inferred compatibility, not a deployment
+test. The [#99 evaluation set](training/issues/99/README.md) now includes ask,
+no-ask and limit scripts, including the flipped ambiguous-bank expectation.
+Replay proves scripted orchestration only; no Vertex run was performed. Written
+browser and PostgreSQL/RLS tests require operator execution; real keyboards and
+real-backend SSE parser/page receipt remain open in [e2e items 21 and 22](e2e-todo.md).
+Item 19 remains open too. No production action, workflow or migration is included.
+
 ## Write-proposal evaluation (2026-11-13)
 
-Issue #99 adds [21 provisional synthetic cases](training/issues/99/README.md): 12 write,
-3 no-write and 6 injection cases. Replay uses the real orchestrator, validation,
+Issue #99 originally added 21 provisional synthetic cases: 12 write,
+3 no-write and 6 injection cases. [The evaluation README](training/issues/99/README.md)
+records the current counts after #101. Replay uses the real orchestrator, validation,
 proposal helper and part builder over fresh in-memory corpora. Scripts match expectations
 by construction; this is not model-quality or safety evidence. Cases await maintainer
 review, and nonempty meanings do not establish correctness. New PostgreSQL evidence tests
@@ -31,7 +61,8 @@ Unfinished commands are stored independently for 24 hours under
 retained. Reload restores every command for the signed-in owner and requires explicit
 Retry. Storage reservation must succeed before any write. The transcript clears.
 Success shows created-card links; dismiss sends no write. `card_list` remains unrendered
-and `needs_deck` stays assistant text only.
+and `needs_deck` originally stayed assistant text only; #101 phase 1 now emits
+a structured question without rendering its visual controls.
 
 As of the 2026-11-12 PR #114 review fixes, restored components are keyed by owner and
 proposal. Proposal-bearing turns survive interrupted answer streams, including before

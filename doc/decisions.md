@@ -903,3 +903,52 @@ separate explicit approval and all opt-in gates, remains provisional until case 
 and must not be combined with replay. The harness exposes max-steps and clarification
 metadata for #100/#101 without doing either issue. #70-#72 and e2e-todo item 14 stay
 unchanged. No product, API, auth, history, registry, prompt or write contract changes.
+
+## 2026-11-13: Structured clarification and scroll containment (#101, phase 1)
+
+JosephT5566 confirmed Q1-Q10 on 2026-11-13. `ask_clarification` is the fifth
+model-visible tool, propose-tier, terminal on success and limited to one call per
+turn. Strict arguments allow a trimmed question and zero to four term/scope
+options, with server-assigned question and option UUIDs. The tool never writes.
+The existing `parts.v1` gains outbound `clarification_question`; stream history
+gains assistant questions and user-only `clarification_answer`. Without the
+capability, the server supplies deterministic numbered plain text.
+
+Q1-Q4 and Q10 keep deck choice server-owned: `needs_deck` remains terminal and
+becomes a deck question with zero to twenty owner-checked active decks, server
+option ids and `allow_free_text=false`. There is no `list_decks` tool or title
+lookup. An omitted proposal deck id may use the latest deck answer after another
+owner-and-active check. Forged, foreign or archived selections grant no access.
+Unsigned question/proposal UUIDs are correlation data, never authorization.
+Answers and generated content remain untrusted, including embedded instructions.
+
+Q5-Q7 count non-deck questions in this request's history, with a limit of three.
+There is no `clarify_count` on `proposal_state`. `clarification_limit` emits no
+question and is not terminal success, allowing a best editable proposal in the
+remaining budget. Deck pickers do not count and can still appear after the limit.
+Browser-held history can be omitted by a hostile client; this limit is UX, not a
+security boundary. SYSTEM asks for ambiguous terms or scope over twenty cards,
+but not optional fields or a resolved deck. This prompt change affects a later
+approved real-Vertex rerun of #99 and #70; scripted replay does not establish
+model behavior. The #70-#72 case trees remain unchanged.
+
+Q8 requires **API before Pages**. An old API rejects `clarification_answer` with
+422 and the client does not retry 422. Old pages ignore unknown outbound types.
+This is contract reasoning, not a deployed compatibility test. No migration,
+workflow, production deployment or write REST contract change is included.
+
+Q9 uses assistant-route-only CSS height and overflow containment, flex sizing,
+and message-list overscroll containment. Short-window chrome shrinks so the
+composer stays reachable. Other routes retain their scrolling behavior.
+The maintainer's 2026-11-13 phase decision explicitly waives ui-design-gate for
+this scroll bug. Clarification visuals, option interaction, deck-list rendering
+and their browser accessibility tests are deferred to a stacked PR, also Refs
+#101, after the separate ui-design-gate. This phase retains parsed questions for
+history without rendering a question component or changing the #98 confirm card.
+
+The #99 evaluator reports should-ask and should-not-ask separately and includes
+limit cases. Replay is provisional; scripts match expectations by construction.
+Case review and real Vertex remain pending. Browser specs use mocked APIs and
+unit tests use scripted providers. Real keyboard and real-backend SSE ordering,
+parser and page evidence remain open as e2e-todo items 21 and 22; item 19 also
+remains open. No Vertex run was performed.

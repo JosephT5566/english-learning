@@ -1,6 +1,6 @@
 # Architecture Memory
 
-Last updated: 2026-11-12
+Last updated: 2026-11-13
 
 ## Stack
 
@@ -803,3 +803,39 @@ is unaffected. Only successful withdrawal clears displayed conversation or seman
 API must precede Pages for #98: new proposal_state history is 422 on a pre-#98 API and
 is never automatically retried. Old pages remain valid. Deployment, real Vertex text-part
 acceptance, real device IME and virtual keyboards remain unverified; see e2e-todo.md.
+
+## Structured clarification (#101, phase 1, 2026-11-13)
+
+`app/assistant/clarification.py` validates the no-SQL `ask_clarification` tool,
+assigns unsigned question/option UUIDs and counts non-deck history questions.
+`tools.py` exposes it after `propose_cards`, with terminal success and one call
+per turn. `clarification_limit` after three history questions is nonterminal.
+The existing tool budget and final-step disabling remain.
+
+`parts.py` builds `clarification_question` from successful asks or the server's
+`needs_deck` result. Deck options contain only owner-checked active deck ids from
+that result, at most twenty; term/scope options have at most four and no deck ids.
+Question parts precede deltas under `parts.v1`. Without negotiation the server
+supplies deterministic numbered question text. `needs_deck` stays terminal;
+there is no title lookup or `list_decks` tool.
+
+`routes.py` extends strict stream history with assistant-only questions and
+user-only answers. Serialized parts share the existing character budget and
+consume no card refs. Answer deck ids are untrusted and checked again under the
+same owner-and-active rules before an omitted proposal deck id can be filled.
+Invalid selections never authorize access or writes. Clarification context is
+labelled data in model input. The JSON route retains its text-only request.
+There is no conversation storage or migration.
+
+`src/lib/api/client.ts` validates the allow-listed question part and still ignores
+unknown types. `src/lib/assistant/history.ts` retains questions and answers within
+whole-turn message/character/ref caps and exports a pure answer builder. The page
+retains questions for history; rendering and option interaction await a stacked
+PR after ui-design-gate. The #98 confirmation card remains the explicit write path.
+Assistant-route document/body/app/main overflow containment lasts only while the
+page is mounted; the message list is the chat scroll container.
+
+Deploy API before Pages: an old API rejects user `clarification_answer` with 422,
+which the client does not retry. This compatibility statement is inferred from
+strict models. Real-backend browser SSE, device keyboard and Vertex behavior
+remain unverified; see e2e-todo items 19, 21 and 22.
