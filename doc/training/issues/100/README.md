@@ -102,4 +102,5 @@ longer path while preserving the committed default-cap replay contract and 35-ca
 counts. `doc/e2e-todo.md` is unchanged because there is no UI or new browser gap.
 No frontend, OpenAPI/client generation, migration, workflow, production, auth,
 scheduling, deployment-path or timeout change is included. Results and changes
-remain uncommitted for maintainer review.
+are committed on the issue branch, with comparisons recorded in the committed
+result files for maintainer review.

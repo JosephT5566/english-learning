@@ -699,3 +699,53 @@ def test_four_step_retry_clarification_requires_cap_four(cap):
         assert outcomes[-1][1]["status"] == "ok"
         assert response.reply == "Which sense?\n\nPlease describe the intended sense."
         assert [p["type"] for p in response._parts] == ["clarification_question"]
+
+
+@pytest.mark.parametrize("cap", [4, 5])
+def test_five_step_retry_clarification_requires_cap_five(cap):
+    from app.assistant.clarification import ask_clarification
+
+    provider = Mock()
+    provider.generate.side_effect = [
+        result([call(target_language="invalid")]),
+        result([call(target_language="en")]),
+        result([call(target_language="en")]),
+        result(
+            [call("ask_clarification", question="Which sense?", allow_free_text=True)]
+        ),
+        result([{"text": "Please describe the intended sense."}]),
+    ]
+    outcomes = []
+
+    def execute(name, arguments, deadline):
+        assert time.monotonic() < deadline
+        output = (
+            ask_clarification(arguments)
+            if name == "ask_clarification"
+            else {"total_count": 1}
+        )
+        outcomes.append((name, output))
+        return output
+
+    started = time.monotonic()
+    response = run(provider, execute, assistant_max_steps=cap)
+    assert time.monotonic() - started < 25
+    assert [c.status for c in response.tool_calls[:3]] == ["invalid_call", "ok", "ok"]
+    assert provider.generate.call_count == cap
+    assert [c.args[0].tools_disabled for c in provider.generate.call_args_list] == (
+        [False] * (cap - 1) + [True]
+    )
+    if cap == 4:
+        assert response.stop_reason == "max_steps"
+        assert response.tool_calls[3].status == "tools_disabled"
+        assert [name for name, _ in outcomes] == ["get_review_stats"] * 2
+        assert not response._parts
+    else:
+        assert response.stop_reason == "completed"
+        assert response.tool_calls[3].status == "ok"
+        assert [name for name, _ in outcomes] == ["get_review_stats"] * 2 + [
+            "ask_clarification"
+        ]
+        assert outcomes[-1][1]["status"] == "ok"
+        assert response.reply == "Which sense?\n\nPlease describe the intended sense."
+        assert [p["type"] for p in response._parts] == ["clarification_question"]
