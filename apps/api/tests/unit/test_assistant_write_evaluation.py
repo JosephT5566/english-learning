@@ -122,16 +122,16 @@ def test_committed_replay_network_forbidden_and_case_contracts(monkeypatch):
     )
     m = evaluator()
     cases = json.loads((DIRECTORY / "cases.json").read_text())
-    assert len(cases) == 21
+    assert len(cases) == 35
     assert {
         k: sum(c["kind"] == k for c in cases)
         for k in ("write", "no_write", "injection")
-    } == {"write": 12, "no_write": 3, "injection": 6}
+    } == {"write": 23, "no_write": 5, "injection": 7}
     assert all(c["reviewed_by"] is None and c["reviewed_on"] is None for c in cases)
     report = m.run_replay(cases)
     assert report["mode"] == "replay" and report["provisional"] is True
     assert report["executed_on"] and report["model_query_date"] is None
-    assert report["summary"]["case_count"] == 21
+    assert report["summary"]["case_count"] == 35
     for score in report["cases"]:
         assert score["security_result"]["boundary_pass"], score
         assert score["reviewed_by"] is None and score["reviewed_on"] is None
@@ -142,9 +142,22 @@ def test_committed_replay_network_forbidden_and_case_contracts(monkeypatch):
         assert score["steps"] > 0 and score["latency_ms"] >= 0
         assert score["usage"] and score["model_versions"] == ["scripted-v1"]
     by_id = {s["id"]: s for s in report["cases"]}
-    assert by_id["write-too-many"]["tool_outputs"] == [
-        {"name": "propose_cards", "response": {"error": "too_many_cards"}}
-    ]
+    assert all(s["case_pass"] for s in report["cases"])
+    assert by_id["write-too-many"]["attempts"][0]["name"] == "ask_clarification"
+    assert not any(
+        c["name"] == "propose_cards" for c in by_id["write-too-many"]["attempts"]
+    )
+    assert report["summary"]["clarification"] == {
+        "should_ask": {"count": 9, "passed": 9},
+        "should_not_ask": {"count": 17, "passed": 17},
+        "limit": {"count": 2, "passed": 2},
+    }
+    new_cases = cases[21:]
+    assert sum(c.get("clarification_behavior") == "should_ask" for c in new_cases) >= 5
+    assert (
+        sum(c.get("clarification_behavior") == "should_not_ask" for c in new_cases) >= 5
+    )
+    assert sum(c.get("clarification_behavior") == "limit" for c in new_cases) >= 1
     assert by_id["write-duplicate-existing"]["expectations_match"]
     assert (
         by_id["inject-write-tool"]["security_result"]["denied_calls"][0]["status"]
@@ -153,8 +166,24 @@ def test_committed_replay_network_forbidden_and_case_contracts(monkeypatch):
     for id in ("write-title-multi", "write-single-omitted-multi"):
         assert "deck_id" not in by_id[id]["attempts"][0]["args"]
     ambiguous = next(c for c in cases if c["id"] == "write-ambiguous-term")
-    assert ambiguous["clarification_pending"] is True
-    assert len(by_id[ambiguous["id"]]["parts"][0]["payload"]["drafts"]) in (1, 2)
+    assert ambiguous["clarification_pending"] is False
+    assert by_id[ambiguous["id"]]["parts"][0]["type"] == "clarification_question"
+    assert not m.proposals(by_id[ambiguous["id"]]["parts"])
+    limited = by_id["clarify-limit-best-draft"]
+    assert limited["tool_outputs"][0]["response"] == {"error": "clarification_limit"}
+    assert len(m.proposals(limited["parts"])) == 1
+    assert (
+        by_id["clarify-limit-still-needs-deck"]["parts"][0]["payload"]["purpose"]
+        == "deck"
+    )
+    assert (
+        by_id["direct-deck-answer-autofill"]["parts"][0]["payload"]["deck"]["id"]
+        == m.ENGLISH_ID
+    )
+    injected = by_id["inject-clarification-answer"]
+    assert injected["security_result"]["denied_calls"][0]["status"] == "invalid_call"
+    assert injected["security_result"]["mutations"] == []
+    assert injected["security_result"]["foreign_ids_absent"]
     assert list((DIRECTORY / "results").iterdir()) == [DIRECTORY / "results/.gitkeep"]
 
 
@@ -190,10 +219,11 @@ def test_vertex_refusals_before_provider_construction(monkeypatch):
         "VertexGenerationProvider",
         lambda: pytest.fail("Provider must not be constructed"),
     )
-    monkeypatch.delenv("ENABLE_ISSUE99_VERTEX_EVAL", raising=False)
+    environment = {}
+    monkeypatch.setattr(m.os, "getenv", environment.get)
     with pytest.raises(ValueError, match="ENABLE_ISSUE99_VERTEX_EVAL"):
         m.run_vertex([], None)
-    monkeypatch.setenv("ENABLE_ISSUE99_VERTEX_EVAL", "1")
+    environment["ENABLE_ISSUE99_VERTEX_EVAL"] = "1"
     with pytest.raises(ValueError, match="model-query-date"):
         m.run_vertex([], None)
     for model, project in [
@@ -286,4 +316,41 @@ def test_report_counts_failure_and_review_provisional_without_vertex():
     scores[0]["case_pass"] = False
     assert (
         m.make_report(cases, scores, "replay", settings)["summary"]["passed_count"] == 0
+    )
+
+
+def test_clarification_intent_requires_ask_and_no_early_proposal():
+    m = evaluator()
+    case = {"kind": "write", "expected": {"ask_tool": True}}
+    asks = [{"name": "ask_clarification"}]
+    assert m.intent_correct(case, asks, [])
+    assert not m.intent_correct(case, [], [])
+    assert not m.intent_correct(case, asks + [{"name": "propose_cards"}], [])
+    assert not m.intent_correct({"kind": "no_write"}, asks, [])
+
+
+def test_clarification_expectations_are_separate_from_proposal_count():
+    m = evaluator()
+    question = {"type": "clarification_question", "payload": {"purpose": "term"}}
+    expected = {
+        "clarification_count": 1,
+        "clarification_purpose": "term",
+        "ask_tool": True,
+    }
+    attempts = [{"name": "ask_clarification"}]
+    outputs = [{"name": "ask_clarification", "response": {"status": "ok"}}]
+    assert m.clarification_expectations(expected, attempts, outputs, [question])
+    assert not m.clarification_expectations(expected, [], outputs, [question])
+    assert not m.clarification_expectations(expected, attempts, outputs, [])
+    wrong = {**question, "payload": {"purpose": "deck"}}
+    assert not m.clarification_expectations(expected, attempts, outputs, [wrong])
+    assert not m.clarification_expectations({"ask_tool": False}, attempts, outputs, [])
+    assert not m.clarification_expectations(
+        {"clarification_limit": True}, attempts, outputs, []
+    )
+    limit = [
+        {"name": "ask_clarification", "response": {"error": "clarification_limit"}}
+    ]
+    assert m.clarification_expectations(
+        {"clarification_limit": True}, attempts, limit, []
     )
