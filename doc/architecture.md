@@ -664,7 +664,8 @@ configured message/character limits before checking consent. No conversation sto
 write tools or migrations are added. The browser UI is deferred pending design selection;
 only generated API types change under `src/`.
 
-`app/assistant/loop.py` runs at most three model calls through #72's generation Protocol.
+`app/assistant/loop.py` runs up to the configured model-call cap through #72's generation
+Protocol. `assistant_max_steps` defaults to 3 and allows 1-5 calls (#100).
 `GenerationRequest` now optionally carries multi-turn contents, fixed function declarations
 and explicit tool disabling. `GenerationResult` preserves complete validated model parts,
 including opaque thoughtSignature, plus parsed function calls. Extraction still rejects
