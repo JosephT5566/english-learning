@@ -62,6 +62,8 @@ const part = (question: ClarificationQuestion): AssistantPart => ({
   type: "clarification_question",
   payload: question,
 });
+// The UI locks answers optimistically, before this route captures their requests.
+// Payload assertions must wait for capture independently of the visible lock.
 async function mockConversation(page: Page, replies: string[]) {
   const requests: { messages: AssistantMessage[] }[] = [];
   await page.route("**/v1/assistant/messages/stream", (route) => {
@@ -77,7 +79,13 @@ async function mockConversation(page: Page, replies: string[]) {
 }
 async function compose(page: Page, text: string) {
   await page.getByRole("textbox", { name: "Ask the assistant" }).fill(text);
+  const response = page.waitForResponse(
+    (response) =>
+      response.url().endsWith("/v1/assistant/messages/stream") &&
+      response.request().method() === "POST",
+  );
   await page.getByRole("button", { name: "Send message", exact: true }).click();
+  await response;
   await expect(
     page.getByRole("textbox", { name: "Ask the assistant" }),
   ).not.toHaveAttribute("readonly");
@@ -131,17 +139,19 @@ for (const width of [400, 1280]) {
     await expect(card).toBeVisible();
     await card.getByRole("button", { name: "River bank" }).click();
     await expect(card.getByText("Answered: River bank")).toBeVisible();
-    expect(requests[1].messages.at(-1)).toEqual({
-      role: "user",
-      content: "River bank",
-      parts: [
-        {
-          type: "clarification_answer",
-          question_id: term.question_id,
-          option_id: term.options[1].id,
-        },
-      ],
-    });
+    await expect
+      .poll(() => requests[1]?.messages.at(-1))
+      .toEqual({
+        role: "user",
+        content: "River bank",
+        parts: [
+          {
+            type: "clarification_answer",
+            question_id: term.question_id,
+            option_id: term.options[1].id,
+          },
+        ],
+      });
     await expect(page.locator(".question").last()).toHaveText("YouRiver bank");
     await expect(
       card.getByRole("button", { name: "River bank" }),
@@ -156,9 +166,9 @@ for (const width of [400, 1280]) {
     ).toBe("rgb(49, 95, 137)");
     await compose(page, "Continue");
     await expect(card.getByText("Answered: River bank")).toBeVisible();
-    expect(requests[2].messages[2].parts).toEqual(
-      requests[1].messages.at(-1)!.parts,
-    );
+    await expect
+      .poll(() => requests[2]?.messages[2]?.parts)
+      .toEqual(requests[1].messages.at(-1)!.parts);
     expect(
       await page.evaluate(
         () =>
@@ -193,17 +203,19 @@ for (const path of ["card", "composer"]) {
       })
       .click();
     await expect(page.getByText("Answered: River edge")).toBeVisible();
-    expect(requests[1].messages.at(-1)).toEqual({
-      role: "user",
-      content: "River edge",
-      parts: [
-        {
-          type: "clarification_answer",
-          question_id: term.question_id,
-          text: "River edge",
-        },
-      ],
-    });
+    await expect
+      .poll(() => requests[1]?.messages.at(-1))
+      .toEqual({
+        role: "user",
+        content: "River edge",
+        parts: [
+          {
+            type: "clarification_answer",
+            question_id: term.question_id,
+            text: "River edge",
+          },
+        ],
+      });
     await expect(page.locator(".question").last()).toHaveText("YouRiver edge");
   });
 }
@@ -226,10 +238,12 @@ test("deck picker scrolls locally, keeps composer ordinary, and sends only after
     page.getByRole("button", { name: "Use this deck" }),
   ).toBeDisabled();
   await compose(page, "Study deck 12");
-  expect(requests[1].messages.at(-1)).toEqual({
-    role: "user",
-    content: "Study deck 12",
-  });
+  await expect
+    .poll(() => requests[1]?.messages.at(-1))
+    .toEqual({
+      role: "user",
+      content: "Study deck 12",
+    });
   await expect(group.getByRole("radio").first()).toBeEnabled();
   await group
     .getByRole("radio", { name: "Study deck 20", exact: true })
@@ -237,18 +251,20 @@ test("deck picker scrolls locally, keeps composer ordinary, and sends only after
   expect(requests).toHaveLength(2);
   await page.getByRole("button", { name: "Use this deck" }).click();
   await expect(page.getByText("Answered: Study deck 20")).toBeVisible();
-  expect(requests[2].messages.at(-1)).toEqual({
-    role: "user",
-    content: "Study deck 20",
-    parts: [
-      {
-        type: "clarification_answer",
-        question_id: deck.question_id,
-        option_id: deck.options[19].id,
-        deck_id: deck.options[19].deck_id,
-      },
-    ],
-  });
+  await expect
+    .poll(() => requests[2]?.messages.at(-1))
+    .toEqual({
+      role: "user",
+      content: "Study deck 20",
+      parts: [
+        {
+          type: "clarification_answer",
+          question_id: deck.question_id,
+          option_id: deck.options[19].id,
+          deck_id: deck.options[19].deck_id,
+        },
+      ],
+    });
   await expect(
     group.getByRole("radio", { name: "Study deck 20", exact: true }),
   ).toBeDisabled();
@@ -274,13 +290,15 @@ test("Tab reaches a native term chip and Enter sends", async ({ page }) => {
   await tabTo(page, chip);
   await page.keyboard.press("Enter");
   await expect(page.getByText("Answered: River bank")).toBeVisible();
-  expect(requests[1].messages.at(-1)!.parts).toEqual([
-    {
-      type: "clarification_answer",
-      question_id: term.question_id,
-      option_id: term.options[1].id,
-    },
-  ]);
+  await expect
+    .poll(() => requests[1]?.messages.at(-1)?.parts)
+    .toEqual([
+      {
+        type: "clarification_answer",
+        question_id: term.question_id,
+        option_id: term.options[1].id,
+      },
+    ]);
 });
 
 test("Tab reaches deck radios and confirm, Enter confirms the selected deck", async ({
@@ -298,14 +316,16 @@ test("Tab reaches deck radios and confirm, Enter confirms the selected deck", as
   ).toBeFocused();
   await page.keyboard.press("Enter");
   await expect(page.getByText("Answered: Study deck 1")).toBeVisible();
-  expect(requests[1].messages.at(-1)!.parts).toEqual([
-    {
-      type: "clarification_answer",
-      question_id: deck.question_id,
-      option_id: deck.options[0].id,
-      deck_id: deck.options[0].deck_id,
-    },
-  ]);
+  await expect
+    .poll(() => requests[1]?.messages.at(-1)?.parts)
+    .toEqual([
+      {
+        type: "clarification_answer",
+        question_id: deck.question_id,
+        option_id: deck.options[0].id,
+        deck_id: deck.options[0].deck_id,
+      },
+    ]);
 });
 
 test("three locked questions are followed by reply text and the existing draft card, with no fourth question", async ({
