@@ -1,12 +1,24 @@
 # Project Memory
 
-Last updated: 2026-11-12
+Last updated: 2026-11-13
 
 This file is the current product-state index. Training milestones, evidence limits, and the next
 training action belong in [`training/project-memory.md`](training/project-memory.md); detailed
 verification records belong in the linked issue artifacts. Implementation and test results take
 precedence over stale documentation. Deployment statements below summarize recorded evidence, not
 a fresh inspection of the live services.
+
+## Write-proposal evaluation (2026-11-13)
+
+Issue #99 adds [21 provisional synthetic cases](training/issues/99/README.md): 12 write,
+3 no-write and 6 injection cases. Replay uses the real orchestrator, validation,
+proposal helper and part builder over fresh in-memory corpora. Scripts match expectations
+by construction; this is not model-quality or safety evidence. Cases await maintainer
+review, and nonempty meanings do not establish correctness. New PostgreSQL evidence tests
+fill injection and tampered-proposal-id SQL gaps; their execution remains for the operator.
+No Vertex run was performed and no Vertex result exists. Product/API contracts are unchanged;
+[e2e gaps](e2e-todo.md), including item 14, remain open. See the evaluation README for
+scoring limits, opt-in gates, shipped authorization citations and verification evidence.
 
 ## Browser-confirmed assistant proposals (2026-11-12)
 

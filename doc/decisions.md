@@ -880,3 +880,26 @@ Deploy the #98 API before Pages: new proposal-state history receives 422 from a 
 API. The client does not retry 422; old card_refs-only pages remain valid against the new
 API. This is a contract inference, not a deployment test. All provider tests are scripted;
 real Vertex acceptance and real-backend browser flows remain listed in e2e-todo.md.
+
+## 2026-11-13: Add provisional write-proposal evaluation without changing tools
+
+Issue #99 adds [21 synthetic cases and an evaluator](training/issues/99/README.md)
+for the shipped #94-#98 proposal path: 12 write, 3 no-write and 6 injection cases.
+JosephT5566 confirmed Q1-Q6 on 2026-11-13. Case review stays pending with null reviewer
+and date; intent/deck/normalized-term/meaning flags replace exact ordered traces;
+bank stays one or two drafts until #101; security does not require observing a denial;
+Vertex is deferred; existing authorization tests are cited and only gaps are filled.
+
+Replay uses real orchestration, validation, proposal helpers and part construction over
+fresh owner-bound synthetic corpora. Its scripts match the expected answers by construction,
+so replay is not model evidence. Counts describe this small set, not a quality benchmark
+or proof of model safety. Nonempty meanings can still be wrong. PostgreSQL/RLS evidence
+is separate from the corpus, including the new SQL-capture test for an unsigned tampered
+proposal id. New integration tests assert already-shipped invariants and should pass on
+unchanged main; the missing evaluator is the unit tests' red-first failure.
+
+No real-Vertex run was performed; results contains only `.gitkeep`. A future run requires
+separate explicit approval and all opt-in gates, remains provisional until case review,
+and must not be combined with replay. The harness exposes max-steps and clarification
+metadata for #100/#101 without doing either issue. #70-#72 and e2e-todo item 14 stay
+unchanged. No product, API, auth, history, registry, prompt or write contract changes.
