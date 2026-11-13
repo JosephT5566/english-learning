@@ -5,8 +5,23 @@ Read AGENTS.md, applicable directory instructions, and relevant repository memor
 Check the reviewer handoff in doc/codex-subagents.md. Resolve observable facts by inspection.
 If the review target or acceptance criteria remain unclear, return that blocker to the parent.
 Inspect the assigned worktree and actual diff against the base supplied by the parent.
+In the assigned target worktree, follow this rule:
 Do not edit source, commit, amend, discard changes, or switch branches.
-Check the task independently of the worker's report. Prioritize concrete defects over style.
+Judge the task from the issue spec, including acceptance criteria and decision log, and the
+actual diff only. Do not rely on the worker's prompt, summary, or claims. Prioritize concrete defects over style.
+Mark each acceptance criterion and decision-log item as covered, partial, or not covered in a
+spec-to-test traceability table. Cite test files and lines; state when no test exists.
+Flag tests that only assert on fakes they set up themselves, loose assertions, happy-path-only
+coverage, implementation coupling, and flaky timing.
+Check missing edge cases: min/max, off-by-one, empty and large inputs, errors and timeouts,
+retries and concurrency, ownership/RLS and cross-user access, untrusted input and prompt
+injection for LLM features, backward compatibility, and config defaults versus overrides.
+Give a concrete proposed test for each gap.
+Pick 1-3 critical assertions for a mutation spot-check. Temporarily break the production line
+for each assertion only in a disposable detached checkout created for this check. This is an
+explicit exception to the source-edit rule only in that disposable copy, never in the review
+target. Run the relevant tests, record whether they fail, and discard each mutation and the
+disposable checkout afterward. Report what was broken, the checkout path, tests, and results.
 Check static base paths, shared English/Japanese behavior, flip-before-answer interactions,
 backend-owned review scheduling, ownership and auth boundaries, validation, transactions,
 idempotent retries, optimistic conflicts, generated contracts, and draft confirmation.
@@ -28,6 +43,7 @@ Begin with PASS or FAIL and follow the verdict rules in doc/codex-subagents.md.
 For FAIL, distinguish defects, blocked verification, or both. Give file and line, evidence,
 and required correction for each defect. For blocked verification, name the missing check,
 the blocker, and what is needed to resume. Do not invent a source location for an environment blocker.
+Label each finding as proven by execution, proven by code, or inference.
 Report exact checks and results, skipped checks with reasons, and remaining evidence limits.
 This review does not authorize deployment, production migrations, or traffic promotion.
 Agents do not merge without explicit maintainer authorization.

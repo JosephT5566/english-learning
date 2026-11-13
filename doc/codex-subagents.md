@@ -88,10 +88,13 @@ Give reviewer the following information before review:
 
 - The absolute checkout path and a resolved comparison commit, plus the branch or commit under review.
 - Whether the target includes committed, staged, unstaged, or untracked changes. Name the assigned scope and unrelated changes to exclude.
-- The requested outcome and acceptance criteria, with relevant design decisions.
-- The worker's changed-file summary, checks, results, and known limitations as context to verify independently.
+- The issue spec, including acceptance criteria and decision log, and the actual diff for the checkout and comparison base above.
 - For affected browser flows, the local URL, server startup instructions, test-data setup, and required desktop and mobile scenarios.
 - Available browser tools and ownership of the review tab. Use disposable fixtures for write flows.
+
+Withhold the worker's report until after review. Do not prime reviewer with the worker's prompt,
+summary, or claims. Reviewer judges from the issue spec and actual diff only. After review, the
+parent may compare findings with the worker's report.
 
 Record the reviewed commit and any uncommitted target changes in the review report. Pause edits to
 the target during review. If the target changes, identify what needs another review before relying
@@ -104,16 +107,32 @@ Start the report with `PASS` or `FAIL`.
 
 - Use `PASS` when the assigned acceptance criteria and required checks are satisfied and no actionable defects remain.
 - Use `FAIL` with reason `defect` when evidence shows incorrect behavior or an unmet requirement.
+- An uncovered acceptance criterion is `FAIL` with reason `defect`. State whether it is an unmet requirement or a test-gap defect because the behavior is present but untested.
+- A surviving mutation on a critical path is `FAIL` with reason `defect` as a test gap, because tests still pass with broken production code.
 - Use `FAIL` with reason `blocked verification` when a required check cannot run or required evidence is missing.
+- A required mutation spot-check that cannot run is `FAIL` with reason `blocked verification`, not a code defect.
 - Report both reasons when defects and blocked verification coexist. A blocked check does not establish a code defect or a passing result.
 
 For each defect, provide priority, file and line, evidence, and the required correction.
+Label each finding as proven by execution, proven by code, or inference.
 For each blocked check, name the check, blocker, and prerequisite for resuming it. An unavailable
 database or browser tool does not need an invented source-code location. Report exact commands,
 observed results, skipped checks with reasons, and remaining evidence limits for either verdict.
 
+Include the following test-adequacy evidence in the report:
+
+- A spec-to-test traceability table. Mark each acceptance criterion and each decision-log item as covered, partial, or not covered. Cite test files and lines; state when no test exists.
+- Test-quality findings. Flag tests that only assert on fakes they set up themselves, loose assertions, happy-path-only coverage, implementation coupling, and flaky timing.
+- Missing edge-case gaps, each with a concrete proposed test. Check min/max, off-by-one, empty and large inputs, errors and timeouts, retries and concurrency, ownership/RLS and cross-user access, untrusted input and prompt injection for LLM features, backward compatibility, and config defaults versus overrides.
+- Mutation spot-check results for 1-3 critical assertions. State what production line was broken, the disposable detached checkout path, the tests run, whether they failed, and that the mutation and checkout were discarded.
+
+Perform mutations only in a disposable detached checkout created for the check. This is an explicit
+exception to the source-edit rule only in that disposable copy. Never mutate the review target.
+Discard each mutation and the disposable checkout afterward.
+
 The parent assesses findings against the requirements, assigns corrections, and returns the changed
-target for review when required. For environment blockers, restore the prerequisite and run the
+target for review when required. Commit review fixes on the same issue/PR branch. Do not open a
+separate branch or pull request for review fixes. For environment blockers, restore the prerequisite and run the
 missing check. Resolve routine local blockers within the authorized scope; ask the user only when
 an unresolved product decision, missing access, or authorization requires their input.
 
