@@ -34,6 +34,7 @@
 
   const toolLabels: Record<string, string> = {
     propose_cards: "Propose cards",
+    ask_clarification: "Ask clarification",
     search_cards: "Search cards",
     get_due_cards: "Get due cards",
     get_review_stats: "Get review stats",
@@ -60,7 +61,6 @@
   let restored = $state<PendingAssistantProposal[]>([]);
   let restoredStates = $state<ProposalState[]>([]);
   let composing = false;
-  let pageElement: HTMLElement;
   let messageList: HTMLDivElement;
   let textarea = $state<HTMLTextAreaElement>();
   let followBottom = true;
@@ -162,28 +162,27 @@
   });
   onMount(() => {
     const viewport = window.visualViewport;
-    function fitColumn() {
-      if (!pageElement) return;
-      const top = pageElement.getBoundingClientRect().top;
-      pageElement.style.setProperty("--page-top", `${top}px`);
+    const root = document.documentElement;
+    document.body.classList.add("assistant-route");
+    root.classList.add("assistant-route");
+    function fitViewport() {
       if (viewport)
-        pageElement.style.setProperty(
-          "--available-height",
-          `${Math.max(0, viewport.height + viewport.offsetTop - top)}px`,
+        root.style.setProperty(
+          "--assistant-viewport-height",
+          `${viewport.height + viewport.offsetTop}px`,
         );
     }
-    const observer = new ResizeObserver(fitColumn);
-    // The measured page top includes the real header, with no fixed header estimate.
-    if (pageElement.parentElement) observer.observe(pageElement.parentElement);
-    window.addEventListener("resize", fitColumn);
-    viewport?.addEventListener("resize", fitColumn);
-    viewport?.addEventListener("scroll", fitColumn);
-    fitColumn();
+    window.addEventListener("resize", fitViewport);
+    viewport?.addEventListener("resize", fitViewport);
+    viewport?.addEventListener("scroll", fitViewport);
+    fitViewport();
     return () => {
-      observer.disconnect();
-      window.removeEventListener("resize", fitColumn);
-      viewport?.removeEventListener("resize", fitColumn);
-      viewport?.removeEventListener("scroll", fitColumn);
+      window.removeEventListener("resize", fitViewport);
+      viewport?.removeEventListener("resize", fitViewport);
+      viewport?.removeEventListener("scroll", fitViewport);
+      root.style.removeProperty("--assistant-viewport-height");
+      root.classList.remove("assistant-route");
+      document.body.classList.remove("assistant-route");
     };
   });
 
@@ -218,6 +217,7 @@
       issue: "",
       proposals: [],
       proposalStates: [],
+      clarificationQuestions: [],
     });
     turns.push(turn);
     try {
@@ -230,6 +230,12 @@
         {
           capabilities: ["parts.v1"],
           onPart: (part) => {
+            // TODO(#101): render and answer questions after the clarification UI design gate.
+            if (
+              version === sessionVersion &&
+              part.type === "clarification_question"
+            )
+              turn.clarificationQuestions?.push(part.payload);
             if (version === sessionVersion && part.type === "card_list")
               turn.cardIds = [
                 ...new Set([
@@ -272,7 +278,12 @@
         cause instanceof ApiClientError
           ? cause.message
           : "Could not get a reply.";
-      if (turn.reply || turn.proposals.length || turn.proposalStates?.length) {
+      if (
+        turn.reply ||
+        turn.proposals.length ||
+        turn.proposalStates?.length ||
+        turn.clarificationQuestions?.length
+      ) {
         turn.issue = message;
       } else {
         turns.pop();
@@ -296,7 +307,7 @@
   />
 </svelte:head>
 
-<section class="assistant-page" bind:this={pageElement}>
+<section class="assistant-page">
   <div class="heading-row">
     <div>
       <h1>Learning assistant</h1>
@@ -464,10 +475,28 @@
 </section>
 
 <style>
+  :global(html.assistant-route),
+  :global(body.assistant-route) {
+    overflow: hidden;
+    height: 100%;
+    min-height: 0;
+  }
+  :global(body.assistant-route .app) {
+    height: var(--assistant-viewport-height, 100dvh);
+    max-height: var(--assistant-viewport-height, 100dvh);
+    min-height: 0;
+    overflow: hidden;
+  }
+  :global(body.assistant-route main) {
+    min-height: 0;
+    overflow: hidden;
+  }
   .assistant-page {
     width: min(46rem, calc(100% - 2rem));
     margin: 1.5rem auto 0;
-    height: var(--available-height, calc(100dvh - var(--page-top, 0px)));
+    height: auto;
+    flex: 1;
+    overflow: hidden;
     display: flex;
     flex-direction: column;
     min-height: 0;
@@ -488,7 +517,7 @@
     flex: 1;
     min-height: 0;
     overflow-y: auto;
-    padding-bottom: 1rem;
+    overscroll-behavior: contain;
   }
   .bottom-row {
     flex-shrink: 0;
@@ -508,7 +537,7 @@
   .conversation {
     display: grid;
     gap: 1.5rem;
-    padding: 0;
+    padding: 0 0 1rem;
     margin: 1.5rem 0 0;
     list-style: none;
   }
@@ -728,6 +757,26 @@
     :global(.assistant-proposal :is(button, a, input):focus-visible) {
     outline: 3px solid #4075a680;
     outline-offset: 2px;
+  }
+  @media (max-height: 600px) {
+    .assistant-page {
+      margin-top: 0.5rem;
+    }
+    .heading-row {
+      gap: 0.35rem;
+      padding-bottom: 0.5rem;
+    }
+    h1 {
+      font-size: 1.75rem;
+    }
+    .intro {
+      margin-top: 0.25rem;
+      font-size: 0.875rem;
+    }
+    .hint {
+      margin-top: 0.25rem;
+      font-size: 0.75rem;
+    }
   }
   @media (max-width: 640px) {
     .assistant-page :global(.proposal-confirm) {

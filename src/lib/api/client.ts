@@ -151,7 +151,20 @@ export type AssistantTool = Pick<
   "name" | "status"
 >;
 
+export type ClarificationQuestion = {
+  question_id: string;
+  question: string;
+  options: { id: string; label: string; deck_id?: string }[];
+  allow_free_text: boolean;
+  purpose?: "deck" | "term" | "other";
+};
+
 export type AssistantPart =
+  | {
+      id: string;
+      type: "clarification_question";
+      payload: ClarificationQuestion;
+    }
   | {
       id: string;
       type: "card_list";
@@ -196,6 +209,53 @@ function isAssistantPart(value: unknown): value is AssistantPart {
   )
     return false;
   const payload = value.payload;
+  if (value.type === "clarification_question") {
+    if (
+      typeof payload !== "object" ||
+      payload === null ||
+      !hasExactKeys(payload, [
+        "question_id",
+        "question",
+        "options",
+        "allow_free_text",
+        ...(Object.hasOwn(payload, "purpose") ? ["purpose"] : []),
+      ]) ||
+      !isUuid(payload.question_id) ||
+      typeof payload.question !== "string" ||
+      !payload.question.trim() ||
+      payload.question.length > 300 ||
+      typeof payload.allow_free_text !== "boolean" ||
+      (Object.hasOwn(payload, "purpose") &&
+        payload.purpose !== "deck" &&
+        payload.purpose !== "term" &&
+        payload.purpose !== "other") ||
+      !Array.isArray(payload.options)
+    )
+      return false;
+    const deck = payload.purpose === "deck";
+    if (
+      payload.options.length > (deck ? 20 : 4) ||
+      (deck
+        ? payload.allow_free_text
+        : !payload.options.length && !payload.allow_free_text)
+    )
+      return false;
+    const optionIds = new Set<string>();
+    return payload.options.every((option: unknown) => {
+      if (
+        !hasExactKeys(option, ["id", "label", ...(deck ? ["deck_id"] : [])]) ||
+        !isUuid(option.id) ||
+        optionIds.has(option.id) ||
+        typeof option.label !== "string" ||
+        !option.label.trim() ||
+        option.label.length > (deck ? 200 : 80) ||
+        (deck && !isUuid(option.deck_id))
+      )
+        return false;
+      optionIds.add(option.id);
+      return true;
+    });
+  }
   if (value.type === "card_proposal") {
     if (
       !hasExactKeys(payload, ["proposal_id", "deck", "drafts", "warnings"]) ||
@@ -331,7 +391,9 @@ export async function streamAssistantReply(
         if (event === "part") {
           if (
             !("type" in payload) ||
-            (payload.type !== "card_list" && payload.type !== "card_proposal")
+            (payload.type !== "card_list" &&
+              payload.type !== "card_proposal" &&
+              payload.type !== "clarification_question")
           )
             continue;
           if (!isAssistantPart(payload)) throw invalidAssistantStream();

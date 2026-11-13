@@ -223,6 +223,62 @@ describe("assistant page composer and consent", () => {
     },
   );
 
+  it("retains an unrendered clarification after interruption and echoes it on the next turn", async () => {
+    const question = {
+      question_id: "30000000-0000-0000-0000-000000000101",
+      question: "Which meaning?",
+      options: [
+        { id: "40000000-0000-0000-0000-000000000101", label: "River bank" },
+      ],
+      allow_free_text: true,
+      purpose: "term" as const,
+    };
+    api.streamAssistantReply.mockImplementationOnce(
+      async (_messages, _ontext, _signal, options) => {
+        options.onPart({
+          id: "question-part",
+          type: "clarification_question",
+          payload: question,
+        });
+        throw new Error("stream broke");
+      },
+    );
+    const view = render(AssistantPage);
+    const input = await screen.findByLabelText("Ask the assistant");
+    expect(document.documentElement).toHaveClass("assistant-route");
+    expect(document.body).toHaveClass("assistant-route");
+    await fireEvent.input(input, { target: { value: "Add bank" } });
+    await fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+    await screen.findByRole("alert");
+    expect(screen.queryByText(question.question)).not.toBeInTheDocument();
+    expect(screen.queryByText("River bank")).not.toBeInTheDocument();
+    expect(screen.getByText("Add bank")).toBeVisible();
+    await fireEvent.input(input, { target: { value: "River" } });
+    await fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+    expect(api.streamAssistantReply.mock.calls[1][0][1]).toEqual({
+      role: "assistant",
+      content: "The reply was interrupted.",
+      parts: [{ type: "clarification_question", ...question }],
+    });
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Send message" }),
+      ).toBeInTheDocument(),
+    );
+    authSession.set({ kind: "authenticated", profile: { sub: "owner-b" } });
+    await waitFor(() =>
+      expect(screen.queryByText("Add bank")).not.toBeInTheDocument(),
+    );
+    await fireEvent.input(input, { target: { value: "Other owner" } });
+    await fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+    expect(api.streamAssistantReply.mock.calls[2][0]).toEqual([
+      { role: "user", content: "Other owner" },
+    ]);
+    view.unmount();
+    expect(document.documentElement).not.toHaveClass("assistant-route");
+    expect(document.body).not.toHaveClass("assistant-route");
+  });
+
   it("clears proposal state on an account change before the next request", async () => {
     const proposal = {
       id: "p1",
