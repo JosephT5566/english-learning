@@ -13,7 +13,7 @@ provider = shared.provider
 pytestmark = shared.pytestmark
 
 
-def post_answer(client, deck_id, headers=shared.HEADERS, *, prior=None):
+def post_answer(client, deck_id, headers=None, *, prior=None):
     answer = {
         "type": "clarification_answer",
         "question_id": str(uuid4()),
@@ -26,7 +26,7 @@ def post_answer(client, deck_id, headers=shared.HEADERS, *, prior=None):
     ]
     return client.post(
         proposal.STREAM_PATH,
-        headers=headers,
+        headers=headers or shared.bearer(client, "fixture-token"),
         json={"messages": messages, "capabilities": ["parts.v1"]},
     )
 
@@ -35,7 +35,11 @@ def post_answer(client, deck_id, headers=shared.HEADERS, *, prior=None):
 def test_invalid_answer_never_leaks_or_writes(
     api_client, provider, migrated_database_engine, kind
 ):
-    headers = shared.bearer("attacker-token") if kind == "foreign" else shared.HEADERS
+    headers = (
+        shared.bearer(api_client, "attacker-token")
+        if kind == "foreign"
+        else shared.bearer(api_client, "fixture-token")
+    )
     if kind == "foreign":
         assert (
             api_client.put("/v1/me/genai-consent", headers=headers).status_code == 200

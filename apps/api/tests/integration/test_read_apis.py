@@ -11,6 +11,7 @@ from sqlalchemy import Engine, text
 
 from app.auth import VerifiedGoogleIdentity
 from app.main import create_app
+from tests.integration.auth_helpers import access_headers
 from tests.integration.test_multilingual_domain_fixture import (
     load_multilingual_fixture,
 )
@@ -50,7 +51,7 @@ def api_client(
     )
     with TestClient(create_app(), raise_server_exceptions=False) as client:
         client.app.state.token_verifier = FixtureTokenVerifier()
-        client.headers["Authorization"] = "Bearer fixture-token"
+        client.headers.update(access_headers(client, "fixture-token"))
         yield client
 
 

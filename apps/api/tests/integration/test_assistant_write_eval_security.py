@@ -19,7 +19,7 @@ PATH = "/v1/assistant/messages/stream"
 
 
 def foreign_fixture(client):
-    headers = shared.bearer("attacker-token")
+    headers = shared.bearer(client, "attacker-token")
     deck = client.post(
         "/v1/decks",
         headers={**headers, "Idempotency-Key": str(uuid4())},
@@ -127,7 +127,7 @@ def test_missing_injection_cases_stream_rls_no_writes_or_foreign_parts(
     events = frames(
         api_client.post(
             PATH,
-            headers=shared.HEADERS,
+            headers=shared.bearer(api_client, "fixture-token"),
             json={
                 "messages": [{"role": "user", "content": contents[case_id]}],
                 "capabilities": ["parts.v1"],
@@ -184,7 +184,7 @@ def test_tampered_proposal_id_has_no_authorization_effect(
         events = frames(
             api_client.post(
                 PATH,
-                headers=shared.HEADERS,
+                headers=shared.bearer(api_client, "fixture-token"),
                 json={
                     "messages": [
                         {

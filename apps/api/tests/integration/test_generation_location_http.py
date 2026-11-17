@@ -54,7 +54,7 @@ def test_endpoint_uses_generation_location_independently(
     post = Mock(return_value=response)
     monkeypatch.setattr(requests, "post", post)
     result = api_client.post(
-        PATH, headers=bearer("fixture-token"), json={"material": "harbor"}
+        PATH, headers=bearer(api_client, "fixture-token"), json={"material": "harbor"}
     )
     assert result.status_code == 200
     effective = location or "asia-northeast1"
@@ -88,7 +88,9 @@ def test_http_status_is_logged_but_not_exposed_to_client(
     monkeypatch.setattr(requests, "post", post)
     capsys.readouterr()
     result = api_client.post(
-        PATH, headers=bearer("fixture-token"), json={"material": "PRIVATE_MATERIAL"}
+        PATH,
+        headers=bearer(api_client, "fixture-token"),
+        json={"material": "PRIVATE_MATERIAL"},
     )
     assert result.status_code == 502
     error = result.json()["error"]

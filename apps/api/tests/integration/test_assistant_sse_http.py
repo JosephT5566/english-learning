@@ -14,7 +14,6 @@ api_client = shared.api_client
 provider = shared.provider
 pytestmark = shared.pytestmark
 BODY = shared.BODY
-HEADERS = shared.HEADERS
 PATH = "/v1/assistant/messages/stream"
 
 
@@ -30,7 +29,10 @@ PATH = "/v1/assistant/messages/stream"
 def test_sse_http_preflight(api_client, provider, gate, status, code, capsys):
     if gate == "consent":
         assert (
-            api_client.delete("/v1/me/genai-consent", headers=HEADERS).status_code
+            api_client.delete(
+                "/v1/me/genai-consent",
+                headers=shared.bearer(api_client, "fixture-token"),
+            ).status_code
             == 200
         )
     if gate == "config":
@@ -39,7 +41,7 @@ def test_sse_http_preflight(api_client, provider, gate, status, code, capsys):
         )
     response = api_client.post(
         PATH,
-        headers={} if gate == "auth" else HEADERS,
+        headers={} if gate == "auth" else shared.bearer(api_client, "fixture-token"),
         json={"messages": []} if gate == "input" else BODY,
     )
     assert response.status_code == status
@@ -49,7 +51,8 @@ def test_sse_http_preflight(api_client, provider, gate, status, code, capsys):
     assert not shared.log_events(capsys.readouterr().out, "assistant_run_completed")
 
 
-async def start_request(app, *, body_gate=None, response_headers=None):
+async def start_request(client, *, body_gate=None, response_headers=None):
+    app = client.app
     incoming = asyncio.Queue()
     outgoing = asyncio.Queue()
     incoming.put_nowait(
@@ -68,7 +71,10 @@ async def start_request(app, *, body_gate=None, response_headers=None):
         "headers": [
             (b"host", b"testserver"),
             (b"content-type", b"application/json"),
-            *[(k.lower().encode(), v.encode()) for k, v in HEADERS.items()],
+            *[
+                (k.lower().encode(), v.encode())
+                for k, v in shared.bearer(client, "fixture-token").items()
+            ],
         ],
         "client": ("127.0.0.1", 1234),
         "server": ("testserver", 80),
@@ -120,7 +126,7 @@ def test_sse_delivers_text_before_upstream_finishes(
         provider.generate.return_value = GenerationResult(text="planning text")
         provider.stream = upstream
         task, incoming, outgoing = await start_request(
-            api_client.app, response_headers=response_headers
+            api_client, response_headers=response_headers
         )
         assert await read_event(outgoing) == ("delta", {"text": "first"})
         assert not closed.is_set()
@@ -174,7 +180,9 @@ def test_sse_step_log_preserves_split_usage(api_client, provider, capsys):
 
     provider.generate.return_value = GenerationResult(text="planning text")
     provider.stream = upstream
-    response = api_client.post(PATH, headers=HEADERS, json=BODY)
+    response = api_client.post(
+        PATH, headers=shared.bearer(api_client, "fixture-token"), json=BODY
+    )
 
     assert response.status_code == 200
     event, data = response.text.strip().split("\n\n")[-1].splitlines()
@@ -209,7 +217,9 @@ def test_sse_failure_after_delta(
         raise GenerationFailure(failure)
 
     provider.stream = upstream
-    response = api_client.post(PATH, headers=HEADERS, json=BODY)
+    response = api_client.post(
+        PATH, headers=shared.bearer(api_client, "fixture-token"), json=BODY
+    )
     frames = response.text.strip().split("\n\n")
     assert len(frames) == 2
     assert frames[0] == 'event: delta\ndata: {"text":"partial"}'
@@ -228,7 +238,7 @@ def test_sse_failure_after_delta(
 def test_sse_tool_rounds_use_rls_release_connections_and_cap_calls(
     api_client, provider
 ):
-    attacker = shared.bearer("attacker-token")
+    attacker = shared.bearer(api_client, "attacker-token")
     assert api_client.put("/v1/me/genai-consent", headers=attacker).status_code == 200
     foreign_filters = {"deck_id": shared.FIXTURE_DECK_ID, "target_language": "en"}
     calls = [
@@ -294,13 +304,18 @@ def test_sse_withdrawal_during_planning_prevents_next_provider_call(
 ):
     def generate(request, **options):
         assert (
-            api_client.delete("/v1/me/genai-consent", headers=HEADERS).status_code
+            api_client.delete(
+                "/v1/me/genai-consent",
+                headers=shared.bearer(api_client, "fixture-token"),
+            ).status_code
             == 200
         )
         return GenerationResult(text="Discarded")
 
     provider.generate.side_effect = generate
-    response = api_client.post(PATH, headers=HEADERS, json=BODY)
+    response = api_client.post(
+        PATH, headers=shared.bearer(api_client, "fixture-token"), json=BODY
+    )
     assert response.status_code == 200
     assert response.text.count("event: error") == 1
     assert "genai_consent_required" in response.text
@@ -325,7 +340,9 @@ def test_sse_deadline_before_first_delta_closes_upstream(api_client, provider):
         update={"assistant_max_steps": 1, "assistant_timeout_seconds": 1}
     )
     provider.stream = upstream
-    response = api_client.post(PATH, headers=HEADERS, json=BODY)
+    response = api_client.post(
+        PATH, headers=shared.bearer(api_client, "fixture-token"), json=BODY
+    )
     assert response.status_code == 200
     assert closed.is_set()
     assert response.text.count("event: done") == 1
@@ -350,7 +367,7 @@ def test_sse_disconnect_while_planning_starts_no_more_work(api_client, provider)
             finished.set()
 
     async def scenario():
-        task, incoming, outgoing = await start_request(api_client.app)
+        task, incoming, outgoing = await start_request(api_client)
         try:
             assert await asyncio.to_thread(started.wait, 5)
             incoming.put_nowait({"type": "http.disconnect"})
@@ -386,7 +403,7 @@ def test_sse_slow_client_cannot_hold_upstream_past_deadline(api_client, provider
             update={"assistant_max_steps": 1, "assistant_timeout_seconds": 1}
         )
         provider.stream = upstream
-        task, _, _ = await start_request(api_client.app, body_gate=body_gate)
+        task, _, _ = await start_request(api_client, body_gate=body_gate)
         try:
             await asyncio.wait_for(closed.wait(), 2)
         finally:
@@ -414,7 +431,9 @@ def test_assistant_logging_sink_failure_keeps_response(
         raise OSError("PRIVATE_LOG_SINK")
 
     monkeypatch.setattr(request_context, "print", fail_assistant_log, raising=False)
-    response = api_client.post(path, headers=HEADERS, json=BODY)
+    response = api_client.post(
+        path, headers=shared.bearer(api_client, "fixture-token"), json=BODY
+    )
     assert response.status_code == 200
     if path == PATH:
         assert response.text.count("event: done") == 1
@@ -439,7 +458,9 @@ def test_sse_early_provider_timeout_logs_stable_code(
         provider.generate.return_value = shared.tool_result([("get_review_stats", {})])
         monkeypatch.setattr(tools, "get_review_stats", timeout)
 
-    response = api_client.post(PATH, headers=HEADERS, json=BODY)
+    response = api_client.post(
+        PATH, headers=shared.bearer(api_client, "fixture-token"), json=BODY
+    )
     assert response.status_code == 200
     event, data = response.text.strip().splitlines()
     assert event == "event: done"
@@ -751,17 +772,23 @@ def test_sse_parts_legacy_bytes_and_negotiated_due(api_client, provider, monkeyp
         yield SimpleNamespace(text="Review harbor.", usage=None)
 
     provider.stream = upstream
-    baseline = api_client.post(PATH, headers=HEADERS, json=BODY)
+    baseline = api_client.post(
+        PATH, headers=shared.bearer(api_client, "fixture-token"), json=BODY
+    )
     assert baseline.status_code == 200
     assert b"event: part" not in baseline.content
     for capabilities in ([], ["future.x"]):
         response = api_client.post(
-            PATH, headers=HEADERS, json={**BODY, "capabilities": capabilities}
+            PATH,
+            headers=shared.bearer(api_client, "fixture-token"),
+            json={**BODY, "capabilities": capabilities},
         )
         assert response.status_code == 200
         assert response.content == baseline.content
     response = api_client.post(
-        PATH, headers=HEADERS, json={**BODY, "capabilities": ["parts.v1"]}
+        PATH,
+        headers=shared.bearer(api_client, "fixture-token"),
+        json={**BODY, "capabilities": ["parts.v1"]},
     )
     assert response.status_code == 200
     frames = response.content.split(b"\n\n")
@@ -796,7 +823,9 @@ def test_sse_legacy_due_wire_regression(api_client, provider, monkeypatch):
         yield SimpleNamespace(text="Review harbor.", usage=None)
 
     provider.stream = upstream
-    response = api_client.post(PATH, headers=HEADERS, json=BODY)
+    response = api_client.post(
+        PATH, headers=shared.bearer(api_client, "fixture-token"), json=BODY
+    )
     assert response.status_code == 200
     assert response.content == (
         b'event: delta\ndata: {"text":"Review harbor."}\n\n'
@@ -864,7 +893,10 @@ def test_sse_http_blocked_part_deadline_and_disconnect(
             "headers": [
                 (b"host", b"testserver"),
                 (b"content-type", b"application/json"),
-                *[(k.lower().encode(), v.encode()) for k, v in HEADERS.items()],
+                *[
+                    (k.lower().encode(), v.encode())
+                    for k, v in shared.bearer(api_client, "fixture-token").items()
+                ],
             ],
             "client": ("127.0.0.1", 1234),
             "server": ("testserver", 80),
@@ -887,3 +919,42 @@ def test_sse_http_blocked_part_deadline_and_disconnect(
         provider.stream.assert_not_called()
 
     asyncio.run(scenario())
+
+
+def test_sse_access_expiry_after_headers_does_not_interrupt(
+    api_client, provider, monkeypatch
+):
+    from datetime import UTC, datetime, timedelta
+
+    from app import auth
+
+    clock = [datetime.now(UTC)]
+    monkeypatch.setattr(auth, "auth_clock", lambda: clock[0])
+    # The shared fixture has already exchanged the credential, so auth checks the real access row.
+    provider.generate.return_value = GenerationResult(text="planning text")
+
+    async def scenario():
+        release = asyncio.Event()
+
+        async def upstream(request, **options):
+            yield SimpleNamespace(text="before expiry", usage=None)
+            await release.wait()
+            yield SimpleNamespace(text=" after expiry", usage=None)
+
+        provider.stream = upstream
+        task, _, outgoing = await start_request(api_client)
+        assert await read_event(outgoing) == ("delta", {"text": "before expiry"})
+        clock[0] += timedelta(hours=1)
+        release.set()
+        assert await read_event(outgoing) == ("delta", {"text": " after expiry"})
+        event, payload = await read_event(outgoing)
+        assert event == "done"
+        assert payload["stop_reason"] == "completed"
+        await asyncio.wait_for(task, 5)
+
+    asyncio.run(scenario())
+    expired = api_client.get(
+        "/v1/me", headers=shared.bearer(api_client, "fixture-token")
+    )
+    assert expired.status_code == 401
+    assert expired.json()["error"]["code"] == "access_token_expired"

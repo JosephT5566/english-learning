@@ -70,7 +70,9 @@ def test_signed_final_text_reaches_endpoint_as_valid_cards(
     monkeypatch.setattr(requests, "post", post)
     before = counts(migrated_database_engine)
     result = api_client.post(
-        PATH, headers=bearer("fixture-token"), json={"material": "synthetic material"}
+        PATH,
+        headers=bearer(api_client, "fixture-token"),
+        json={"material": "synthetic material"},
     )
     assert result.status_code == 200
     assert (
@@ -102,7 +104,9 @@ def test_malformed_provider_body_is_502_nonretryable(
     monkeypatch.setattr(requests, "post", post)
     before = counts(migrated_database_engine)
     result = api_client.post(
-        PATH, headers=bearer("fixture-token"), json={"material": "synthetic material"}
+        PATH,
+        headers=bearer(api_client, "fixture-token"),
+        json={"material": "synthetic material"},
     )
     assert result.status_code == 502
     assert result.json()["error"]["code"] == "generation_invalid_response"

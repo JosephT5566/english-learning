@@ -70,6 +70,14 @@ class Settings(BaseSettings):
         str, StringConstraints(strip_whitespace=True, min_length=1)
     ] = DEFAULT_GOOGLE_OAUTH_CLIENT_ID
     google_allowed_emails: str = ""
+    # Bounds: access 1m-1h, idle 5m-30d, absolute 5m-90d, reuse grace 0-60s.
+    # Sliding idle expiry is always capped by the fixed absolute deadline.
+    auth_access_ttl_seconds: Annotated[int, Field(ge=60, le=3600)] = 900
+    auth_refresh_idle_ttl_seconds: Annotated[int, Field(ge=300, le=2592000)] = 604800
+    auth_refresh_absolute_ttl_seconds: Annotated[int, Field(ge=300, le=7776000)] = (
+        2592000
+    )
+    auth_refresh_reuse_grace_seconds: Annotated[int, Field(ge=0, le=60)] = 10
     guest_export_deck_id: UUID | None = None
     guest_export_audience: str | None = None
     guest_export_subject: (

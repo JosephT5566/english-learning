@@ -34,7 +34,7 @@ def test_database_failure_is_retryable_and_does_not_expose_details() -> None:
         client.app.state.database_session_factory = FailingSession
         client.app.state.token_verifier = ValidTokenVerifier()
         response = client.get(
-            "/v1/decks", headers={"Authorization": "Bearer safe-test-token"}
+            "/v1/decks", headers={"Authorization": "Bearer ela_safe-test-token"}
         )
 
     assert response.status_code == 503

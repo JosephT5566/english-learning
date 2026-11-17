@@ -59,7 +59,11 @@ def post_proposal(
     body = {"messages": [{"role": "user", "content": content}]}
     if capabilities:
         body["capabilities"] = ["parts.v1"]
-    return api_client.post(STREAM_PATH, headers=headers or shared.HEADERS, json=body)
+    return api_client.post(
+        STREAM_PATH,
+        headers=headers or shared.bearer(api_client, "fixture-token"),
+        json=body,
+    )
 
 
 @pytest.fixture
@@ -150,7 +154,7 @@ def test_proposal_stream_allowlist_readonly_rollback_and_no_writes(
 def test_foreign_missing_and_archived_decks_have_no_existence_leak(
     api_client, provider, migrated_database_engine, monkeypatch
 ):
-    attacker = shared.bearer("attacker-token")
+    attacker = shared.bearer(api_client, "attacker-token")
     assert api_client.put("/v1/me/genai-consent", headers=attacker).status_code == 200
     monkeypatch.setattr(loop, "round", lambda value: 0, raising=False)
     responses, wires = [], []
@@ -174,7 +178,7 @@ def test_foreign_missing_and_archived_decks_have_no_existence_leak(
             {"id": DECK_ID},
         )
     for headers, expected in (
-        (shared.HEADERS, "deck_archived"),
+        (shared.bearer(api_client, "fixture-token"), "deck_archived"),
         (attacker, "deck_not_found"),
     ):
         responses = []
@@ -246,7 +250,9 @@ def test_proposal_without_parts_keeps_model_answer_and_writes_nothing(
             GenerationResult(text="These are editable drafts."),
         ]
         response = api_client.post(
-            shared.PATH, headers=shared.HEADERS, json=shared.BODY
+            shared.PATH,
+            headers=shared.bearer(api_client, "fixture-token"),
+            json=shared.BODY,
         )
         assert response.status_code == 200
         assert response.json()["reply"] == "These are editable drafts."
@@ -273,7 +279,7 @@ def test_proposal_without_parts_keeps_model_answer_and_writes_nothing(
 def test_omitted_deck_resolves_only_one_owned_active_deck(
     api_client, provider, migrated_database_engine, active_count, capsys
 ):
-    attacker = shared.bearer("attacker-token")
+    attacker = shared.bearer(api_client, "attacker-token")
     assert api_client.put("/v1/me/genai-consent", headers=attacker).status_code == 200
     with migrated_database_engine.begin() as connection:
         owner = connection.execute(
