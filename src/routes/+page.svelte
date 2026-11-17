@@ -14,7 +14,7 @@
   );
   let ownerSubject = $derived(
     $authSession.kind === "authenticated"
-      ? $authSession.profile.sub
+      ? String($authSession.profile.id)
       : undefined,
   );
   let practicedToday = $derived(

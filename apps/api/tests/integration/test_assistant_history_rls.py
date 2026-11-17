@@ -19,8 +19,8 @@ pytestmark = shared.pytestmark
 def test_history_rls_silent_drop_readonly_and_rollback(
     api_client, provider, migrated_database_engine, monkeypatch, capsys, part_type
 ):
-    headers = shared.HEADERS
-    foreign_headers = shared.bearer("attacker-token")
+    headers = shared.bearer(api_client, "fixture-token")
+    foreign_headers = shared.bearer(api_client, "attacker-token")
     # Create all fixtures before counts, through ordinary owner-checked endpoints.
     foreign_deck = api_client.post(
         "/v1/decks",

@@ -1,5 +1,6 @@
 <script lang="ts">
   import Header from "./Header.svelte";
+  import SessionStatus from "$lib/components/SessionStatus.svelte";
   import { onMount } from "svelte";
   import { watchSession } from "$lib/auth";
   import "../app.css";
@@ -12,6 +13,7 @@
   <a class="skip-link" href="#main-content">Skip to content</a>
 
   <Header />
+  <SessionStatus />
 
   <main id="main-content" tabindex="-1">
     {@render children()}

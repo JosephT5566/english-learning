@@ -1,21 +1,10 @@
+import { seedSignedIn } from "./auth-fixture";
 import { expect, test, type Page } from "@playwright/test";
 
 const enDeck = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const jaDeck = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
 async function signIn(page: Page) {
-  await page.addInitScript(() => {
-    const encode = (value: object) =>
-      btoa(JSON.stringify(value))
-        .replaceAll("+", "-")
-        .replaceAll("/", "_")
-        .replaceAll("=", "");
-    const exp = Math.floor(Date.now() / 1000) + 3600;
-    localStorage.setItem(
-      "gid_id_token",
-      `${encode({ alg: "none" })}.${encode({ sub: "browser-test-management", email: "browser-test@example.com", email_verified: true, exp })}.test`,
-    );
-    localStorage.setItem("gid_exp", String(exp));
-  });
+  await seedSignedIn(page, "management");
 }
 
 async function mockJsonApi(

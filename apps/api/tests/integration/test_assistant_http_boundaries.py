@@ -32,7 +32,6 @@ pytestmark = [
     ),
 ]
 PATH = "/v1/assistant/messages"
-HEADERS = bearer("fixture-token")
 BODY = {"messages": [{"role": "user", "content": "PRIVATE_INPUT"}]}
 
 
@@ -85,7 +84,9 @@ def test_assistant_http_gates_zero_calls(
 ):
     if gate == "consent":
         assert (
-            api_client.delete("/v1/me/genai-consent", headers=HEADERS).status_code
+            api_client.delete(
+                "/v1/me/genai-consent", headers=bearer(api_client, "fixture-token")
+            ).status_code
             == 200
         )
     if gate == "unconfigured":
@@ -93,7 +94,9 @@ def test_assistant_http_gates_zero_calls(
             update={"generation_model": None}
         )
     response = api_client.post(
-        PATH, headers={} if gate == "anonymous" else HEADERS, json=BODY
+        PATH,
+        headers={} if gate == "anonymous" else bearer(api_client, "fixture-token"),
+        json=BODY,
     )
     assert response.status_code == status
     assert response.json()["error"]["code"] == code
@@ -117,8 +120,12 @@ def test_assistant_http_gates_zero_calls(
 def test_assistant_invalid_http_zero_calls_before_consent(
     api_client, provider, payload
 ):
-    api_client.delete("/v1/me/genai-consent", headers=HEADERS)
-    response = api_client.post(PATH, headers=HEADERS, json=payload)
+    api_client.delete(
+        "/v1/me/genai-consent", headers=bearer(api_client, "fixture-token")
+    )
+    response = api_client.post(
+        PATH, headers=bearer(api_client, "fixture-token"), json=payload
+    )
     assert response.status_code == 422
     provider.generate.assert_not_called()
 
@@ -148,7 +155,7 @@ def test_assistant_foreign_deck_all_tools_under_restricted_rls(
     # Fixture-token is A; the separately authenticated attacker owns no fixture data.
     assert (
         api_client.put(
-            "/v1/me/genai-consent", headers=bearer("attacker-token")
+            "/v1/me/genai-consent", headers=bearer(api_client, "attacker-token")
         ).status_code
         == 200
     )
@@ -167,7 +174,9 @@ def test_assistant_foreign_deck_all_tools_under_restricted_rls(
         tool_result(calls),
         GenerationResult(text="No accessible data."),
     ]
-    response = api_client.post(PATH, headers=bearer("attacker-token"), json=BODY)
+    response = api_client.post(
+        PATH, headers=bearer(api_client, "attacker-token"), json=BODY
+    )
     assert response.status_code == 200
     assert len(response.json()["tool_calls"]) == 3
     results = [
@@ -200,7 +209,9 @@ def test_assistant_injection_blocks_unknown_and_owner_override_without_writes(
         GenerationResult(text="Blocked."),
     ]
     before = snapshot_counts(migrated_database_engine)
-    response = api_client.post(PATH, headers=HEADERS, json=BODY)
+    response = api_client.post(
+        PATH, headers=bearer(api_client, "fixture-token"), json=BODY
+    )
     assert response.status_code == 200
     calls = response.json()["tool_calls"]
     assert [c["status"] for c in calls] == ["ok", "invalid_call", "invalid_call"]
@@ -255,7 +266,9 @@ def test_assistant_stats_matches_due_and_releases_connection_each_step(
 
     provider.generate.side_effect = generate
     capsys.readouterr()
-    response = api_client.post(PATH, headers=HEADERS, json=BODY)
+    response = api_client.post(
+        PATH, headers=bearer(api_client, "fixture-token"), json=BODY
+    )
     assert response.status_code == 200
     parts = provider.generate.call_args_list[1].args[0].contents[-1]["parts"]
     due, stats = [p["functionResponse"]["response"] for p in parts]
@@ -264,7 +277,8 @@ def test_assistant_stats_matches_due_and_releases_connection_each_step(
     assert (
         len(
             api_client.get(
-                "/v1/reviews/due?target_language=en&limit=10", headers=HEADERS
+                "/v1/reviews/due?target_language=en&limit=10",
+                headers=bearer(api_client, "fixture-token"),
             ).json()["items"]
         )
         == stats["due_count"]
@@ -289,7 +303,9 @@ def test_assistant_stats_matches_due_and_releases_connection_each_step(
 )
 def test_assistant_provider_errors_are_stable(api_client, provider, code, status):
     provider.generate.side_effect = GenerationFailure(code, http_status=400)
-    response = api_client.post(PATH, headers=HEADERS, json=BODY)
+    response = api_client.post(
+        PATH, headers=bearer(api_client, "fixture-token"), json=BODY
+    )
     assert response.status_code == status
     assert response.json()["error"]["code"] == f"generation_{code}"
     assert "PRIVATE" not in response.text
@@ -297,7 +313,9 @@ def test_assistant_provider_errors_are_stable(api_client, provider, code, status
 
 def test_assistant_http_timeout_returns_safe_stop(api_client, provider, capsys):
     provider.generate.side_effect = GenerationFailure("provider_timeout")
-    response = api_client.post(PATH, headers=HEADERS, json=BODY)
+    response = api_client.post(
+        PATH, headers=bearer(api_client, "fixture-token"), json=BODY
+    )
     assert response.status_code == 200
     assert response.json()["stop_reason"] == "timeout"
     assert set(response.json()) == {"reply", "tool_calls", "stop_reason", "usage"}
@@ -342,7 +360,9 @@ def test_assistant_semantic_tool_releases_embedding_transaction_and_rebinds(
         ),
         GenerationResult(text="Found."),
     ]
-    response = api_client.post(PATH, headers=HEADERS, json=BODY)
+    response = api_client.post(
+        PATH, headers=bearer(api_client, "fixture-token"), json=BODY
+    )
     assert response.status_code == 200
     assert response.json()["tool_calls"][0]["arguments"]["limit"] == 10
     data = (
@@ -362,7 +382,11 @@ def test_assistant_custom_input_limits_and_auth_precedence(api_client, provider)
         [{"role": "user", "content": "x"}, {"role": "assistant", "content": "x"}],
         [{"role": "user", "content": "123456"}],
     ):
-        response = api_client.post(PATH, headers=HEADERS, json={"messages": messages})
+        response = api_client.post(
+            PATH,
+            headers=bearer(api_client, "fixture-token"),
+            json={"messages": messages},
+        )
         assert response.status_code == 422
     assert (
         api_client.post(
@@ -472,7 +496,9 @@ def test_assistant_total_http_deadline_includes_initial_consent(
         update={"assistant_timeout_seconds": 1}
     )
     try:
-        response = api_client.post(PATH, headers=HEADERS, json=BODY)
+        response = api_client.post(
+            PATH, headers=bearer(api_client, "fixture-token"), json=BODY
+        )
         assert response.status_code == 200
         assert response.json()["stop_reason"] == "timeout"
         assert started.is_set()
@@ -503,7 +529,9 @@ def test_assistant_consent_sql_cancellation_returns_timeout(
         return original(session, owner)
 
     monkeypatch.setattr(routes, "require_genai_consent", canceled)
-    response = api_client.post(PATH, headers=HEADERS, json=BODY)
+    response = api_client.post(
+        PATH, headers=bearer(api_client, "fixture-token"), json=BODY
+    )
     assert response.status_code == 200
     assert response.json()["stop_reason"] == "timeout"
     provider.generate.assert_not_called()
@@ -545,7 +573,9 @@ def test_assistant_json_run_log(api_client, provider, capsys, outcome, error_cod
         provider.generate.side_effect = GenerationFailure("provider_unavailable")
 
     capsys.readouterr()
-    response = api_client.post(PATH, headers=HEADERS, json=BODY)
+    response = api_client.post(
+        PATH, headers=bearer(api_client, "fixture-token"), json=BODY
+    )
     output = capsys.readouterr().out
     request_id = response.headers["X-Request-ID"]
     assert_run_event(output, request_id, "json", outcome, error_code)
@@ -595,7 +625,9 @@ def test_assistant_json_timeout_logs_once_before_late_worker_finishes(
     )
     capsys.readouterr()
     try:
-        response = api_client.post(PATH, headers=HEADERS, json=BODY)
+        response = api_client.post(
+            PATH, headers=bearer(api_client, "fixture-token"), json=BODY
+        )
         assert started.is_set() and not provider_finished.is_set()
         assert response.json()["stop_reason"] == "timeout"
         assert_run_event(
@@ -629,7 +661,9 @@ def test_assistant_json_run_log_uses_public_database_error_code(
 
     provider.generate.return_value = tool_result([("get_review_stats", {})])
     monkeypatch.setattr(tools, "get_review_stats", fail_tool)
-    response = api_client.post(PATH, headers=HEADERS, json=BODY)
+    response = api_client.post(
+        PATH, headers=bearer(api_client, "fixture-token"), json=BODY
+    )
     output = capsys.readouterr().out
     assert response.status_code == status
     assert response.json()["error"]["code"] == code
@@ -663,7 +697,9 @@ def test_assistant_json_timeout_closes_run_admission_before_late_preflight(
         monkeypatch.setattr(routes, "_require_configuration", paused_check)
         monkeypatch.setattr(routes, "bounded_call", stop_waiting)
         try:
-            response = api_client.post(PATH, headers=HEADERS, json=BODY)
+            response = api_client.post(
+                PATH, headers=bearer(api_client, "fixture-token"), json=BODY
+            )
             assert response.json()["stop_reason"] == "timeout"
         finally:
             release.set()

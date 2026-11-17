@@ -1,24 +1,8 @@
+import { seedSignedIn } from "./auth-fixture";
 import { expect, test, type Page } from "@playwright/test";
 
 async function signIn(page: Page) {
-  await page.addInitScript(() => {
-    const encode = (value: object) =>
-      btoa(JSON.stringify(value))
-        .replaceAll("+", "-")
-        .replaceAll("/", "_")
-        .replaceAll("=", "");
-    const exp = Math.floor(Date.now() / 1000) + 60 * 60;
-    const token = `${encode({ alg: "none" })}.${encode({
-      iss: "https://accounts.google.com",
-      aud: "browser-contract-test",
-      exp,
-      email: "browser-test@example.com",
-      email_verified: true,
-      sub: "browser-test-review-layout",
-    })}.test-signature`;
-    localStorage.setItem("gid_id_token", token);
-    localStorage.setItem("gid_exp", String(exp));
-  });
+  await seedSignedIn(page, "review-layout");
 }
 
 async function expectReviewToFitViewport(page: Page) {

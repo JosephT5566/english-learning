@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
 	import GenAIConsentPanel from '$lib/components/GenAIConsentPanel.svelte';
-	import { authSession } from '$lib/stores/auth';
+	import { authSession, canWrite } from '$lib/stores/auth';
 	import { resolve } from '$app/paths';
 	import TextSearchIcon from '@lucide/svelte/icons/text-search';
 	import LightbulbIcon from '@lucide/svelte/icons/lightbulb';
@@ -14,7 +14,7 @@
 		semanticSearch,
 		getGenAIConsent,
 		grantGenAIConsent,
-		withdrawGenAIConsent
+		withdrawGenAIConsent,
 	} from '$lib/api/client';
 	import type { CardSummary, Page, SemanticSearchResponse } from '$lib/api/contracts';
 
@@ -35,26 +35,35 @@
 	let maximumLength = $derived(mode === 'keyword' ? 200 : 500);
 
 	let sessionVersion = 0;
+	let ownerId: number | null = null;
 	$effect(() => {
 		const session = $authSession;
+		const nextOwner =
+			session.kind === 'authenticated' || session.kind === 'expired'
+				? (session.profile?.id ?? null)
+				: null;
 		untrack(() => {
-			sessionVersion++;
-			consent = 'unknown';
-			consentError = '';
-			failedConsentAction = undefined;
-			focusConsentHeading = false;
-			keywordResult = null;
-			semanticResult = null;
-			query = '';
-			submittedQuery = '';
-			error = null;
-			busy = false;
-			if (session.kind === 'authenticated' && mode === 'semantic') void updateConsent('read');
+			if (nextOwner !== ownerId) {
+				ownerId = nextOwner;
+				sessionVersion++;
+				consent = 'unknown';
+				consentError = '';
+				failedConsentAction = undefined;
+				focusConsentHeading = false;
+				keywordResult = null;
+				semanticResult = null;
+				query = '';
+				submittedQuery = '';
+				error = null;
+				busy = false;
+			}
+			if (session.kind === 'authenticated' && mode === 'semantic' && consent === 'unknown' && !busy)
+				void updateConsent('read');
 		});
 	});
 
 	async function selectMode(nextMode: SearchMode): Promise<void> {
-		if (busy || mode === nextMode) return;
+		if (!$canWrite || busy || mode === nextMode) return;
 		mode = nextMode;
 		keywordResult = null;
 		semanticResult = null;
@@ -81,17 +90,17 @@
 				? {
 						message: cause.message,
 						retryable: retryable && cause.retryable,
-						auth: cause.kind === 'authentication'
+						auth: cause.kind === 'authentication',
 					}
 				: {
 						message: 'The request failed unexpectedly.',
 						retryable,
-						auth: false
+						auth: false,
 					};
 	}
 
 	async function updateConsent(action: 'read' | 'grant' | 'withdraw'): Promise<void> {
-		if (busy) return;
+		if (!$canWrite || busy) return;
 		const version = sessionVersion;
 		busy = true;
 		busyMessage =
@@ -143,7 +152,7 @@
 	async function search(event?: SubmitEvent): Promise<void> {
 		event?.preventDefault();
 		const normalized = query.normalize('NFC').trim();
-		if (normalized.length < 2 || normalized.length > maximumLength || busy) return;
+		if (!$canWrite || normalized.length < 2 || normalized.length > maximumLength || busy) return;
 		if (mode === 'semantic' && consent !== 'granted') return;
 		query = normalized;
 		submittedQuery = normalized;
@@ -161,7 +170,7 @@
 				const result = await semanticSearch({
 					query: normalized,
 					target_language: 'en',
-					limit: 10
+					limit: 10,
 				});
 				if (version === sessionVersion) semanticResult = result;
 			}
@@ -184,6 +193,7 @@
 		<h1>Find a card</h1>
 		{#if mode === 'semantic'}
 			<GenAIConsentPanel
+				disabled={!$canWrite}
 				presentation="chip"
 				{consent}
 				{busy}
@@ -212,7 +222,7 @@
 			aria-pressed={mode === 'keyword'}
 			aria-label="Words & phrases"
 			title="Words & phrases"
-			disabled={busy}
+			disabled={!$canWrite || busy}
 			onclick={() => selectMode('keyword')}><TextSearchIcon size={20} aria-hidden="true" /></button
 		>
 		<button
@@ -221,13 +231,14 @@
 			aria-pressed={mode === 'semantic'}
 			aria-label="Meaning & concepts"
 			title="Meaning & concepts"
-			disabled={busy}
+			disabled={!$canWrite || busy}
 			onclick={() => selectMode('semantic')}><LightbulbIcon size={20} aria-hidden="true" /></button
 		>
 	</div>
 	{#if mode === 'semantic'}
 		<p class="scope-label">Meaning search currently uses English cards only.</p>
 		<GenAIConsentPanel
+			disabled={!$canWrite}
 			{consent}
 			{busy}
 			{updateConsent}
@@ -255,7 +266,7 @@
 					minlength="2"
 					maxlength={maximumLength}
 					required
-					disabled={busy}
+					disabled={!$canWrite || busy}
 					placeholder={mode === 'keyword'
 						? 'e.g. serendipity or べんきょう'
 						: 'e.g. a lucky discovery'}
@@ -264,7 +275,8 @@
 					type="submit"
 					aria-label={busy ? 'Searching…' : 'Search cards'}
 					title={busy ? 'Searching…' : 'Search cards'}
-					disabled={busy ||
+					disabled={!$canWrite ||
+						busy ||
 						query.trim().length < 2 ||
 						(mode === 'semantic' && consent !== 'granted')}
 				>

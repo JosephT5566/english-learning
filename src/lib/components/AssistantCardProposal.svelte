@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onDestroy, tick } from "svelte";
   import { resolve } from "$app/paths";
+  import { canWrite } from "$lib/stores/auth";
   import { getProfile } from "$lib/auth";
   import { ApiClientError, createCard, createCards } from "$lib/api/client";
   import type { CardDetail } from "$lib/api/contracts";
@@ -50,12 +51,13 @@
       ...(restored ? { key: restored.idempotencyKeys[index] } : {}),
     })),
   );
-  const ownerSubject = getProfile()?.sub;
+  const ownerId = getProfile()?.id;
+  const ownerSubject = ownerId === undefined ? undefined : String(ownerId);
   let alive = true;
   onDestroy(() => {
     alive = false;
   });
-  const current = () => alive && getProfile()?.sub === ownerSubject;
+  const current = () => alive && getProfile()?.id === ownerId;
   let busy = $state(false);
   let uncertain = $state(Boolean(restored));
   let command = $state<PendingAssistantProposal | null>(restored);
@@ -210,7 +212,14 @@
     }
   }
   async function confirm() {
-    if (busy || outcome || !selected.length || !ownerSubject || !current())
+    if (
+      !$canWrite ||
+      busy ||
+      outcome ||
+      !selected.length ||
+      !ownerSubject ||
+      !current()
+    )
       return;
     const submitted = [...selected];
     if (!uncertain) {
@@ -442,7 +451,7 @@
         <button
           class="secondary-button"
           type="button"
-          disabled={busy}
+          disabled={!$canWrite || busy}
           onclick={confirm}>{busy ? "Adding…" : "Retry"}</button
         >
       {:else}
@@ -450,7 +459,7 @@
           class="proposal-confirm"
           id={`proposal-${proposal.proposal_id}-confirm`}
           type="button"
-          disabled={busy || !selected.length}
+          disabled={!$canWrite || busy || !selected.length}
           onclick={confirm}
           >{busy
             ? "Adding…"

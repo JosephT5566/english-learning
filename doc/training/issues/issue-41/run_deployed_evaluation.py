@@ -1,5 +1,9 @@
 """Run the explicit Issue #41 deployed semantic-search workload.
 
+2026-11-17 retirement warning (#45): The live example and credential instructions below are
+historical. Do not run live mode against current app-session APIs. Only --dry-run remains
+compatible; see apps/api/README.md for the current session contract.
+
 The runner prints response content only to the local terminal for human grading. Its JSON report
 contains query IDs, relevance grades, safe response metadata, and latency observations, but never
 the Google ID token, query text, card IDs, terms, meanings, or scores.

@@ -24,7 +24,6 @@ pytestmark = [
     ),
 ]
 PATH = f"/v1/decks/{FIXTURE_DECK_ID}/card-drafts/extract"
-HEADERS = bearer("fixture-token")
 CARD = {"term": "harbor", "meaning": "shelter"}
 
 
@@ -72,27 +71,32 @@ def provider(api_client):
     ],
 )
 def test_extraction_gates_never_call_provider(api_client, provider, gate, status, code):
-    path, headers = PATH, HEADERS
+    path, headers = PATH, bearer(api_client, "fixture-token")
     if gate == "anonymous":
         headers = {}
     if gate == "foreign":
-        headers = bearer("attacker-token")
+        headers = bearer(api_client, "attacker-token")
     if gate == "missing":
         path = f"/v1/decks/{uuid4()}/card-drafts/extract"
     if gate == "archived":
         assert (
             api_client.delete(
-                f"/v1/decks/{FIXTURE_DECK_ID}", headers=HEADERS
+                f"/v1/decks/{FIXTURE_DECK_ID}",
+                headers=bearer(api_client, "fixture-token"),
             ).status_code
             == 204
         )
         assert (
-            api_client.delete("/v1/me/genai-consent", headers=HEADERS).status_code
+            api_client.delete(
+                "/v1/me/genai-consent", headers=bearer(api_client, "fixture-token")
+            ).status_code
             == 200
         )
     if gate == "consent":
         assert (
-            api_client.delete("/v1/me/genai-consent", headers=HEADERS).status_code
+            api_client.delete(
+                "/v1/me/genai-consent", headers=bearer(api_client, "fixture-token")
+            ).status_code
             == 200
         )
     if gate == "unconfigured":
@@ -125,7 +129,9 @@ def test_invalid_extraction_requests_do_not_call_provider(
     api_client, provider, changes
 ):
     response = api_client.post(
-        PATH, headers=HEADERS, json={"material": "synthetic", **changes}
+        PATH,
+        headers=bearer(api_client, "fixture-token"),
+        json={"material": "synthetic", **changes},
     )
     assert response.status_code in {413, 422}
     assert provider.calls == []
@@ -152,7 +158,11 @@ def test_invalid_output_is_rejected_without_writes(
         text=output if isinstance(output, str) else json.dumps(output)
     )
     before = counts(migrated_database_engine)
-    response = api_client.post(PATH, headers=HEADERS, json={"material": "synthetic"})
+    response = api_client.post(
+        PATH,
+        headers=bearer(api_client, "fixture-token"),
+        json={"material": "synthetic"},
+    )
     assert response.status_code == 502
     assert response.json()["error"]["code"] == "extraction_invalid_output"
     assert "cards" not in response.json()
@@ -174,7 +184,9 @@ def test_injection_material_and_instruction_cannot_write_or_add_fields(
         text=json.dumps({"cards": [{**CARD, "owner": 1, "deck_id": FIXTURE_DECK_ID}]})
     )
     before = counts(migrated_database_engine)
-    response = api_client.post(PATH, headers=HEADERS, json=payload)
+    response = api_client.post(
+        PATH, headers=bearer(api_client, "fixture-token"), json=payload
+    )
     assert response.status_code == 502
     assert response.json()["error"]["code"] == "extraction_invalid_output"
     assert counts(migrated_database_engine) == before
@@ -197,7 +209,9 @@ def test_generation_failures_are_stable_and_redacted(
 ):
     provider.outcome = GenerationFailure(code)
     response = api_client.post(
-        PATH, headers=HEADERS, json={"material": "PRIVATE_INPUT"}
+        PATH,
+        headers=bearer(api_client, "fixture-token"),
+        json={"material": "PRIVATE_INPUT"},
     )
     assert response.status_code == status
     assert response.json()["error"]["code"] == f"generation_{code}"
@@ -226,7 +240,9 @@ def test_valid_extraction_uses_deck_languages_and_releases_transaction(
     if adjustment:
         payload.update(drafts=[CARD], instruction="PRIVATE_INSTRUCTION")
     before = counts(migrated_database_engine)
-    response = api_client.post(PATH, headers=HEADERS, json=payload)
+    response = api_client.post(
+        PATH, headers=bearer(api_client, "fixture-token"), json=payload
+    )
     assert response.status_code == 200
     body = response.json()
     assert CardDrafts.model_validate({"cards": body["cards"]}).cards[0].term == "harbor"
@@ -254,7 +270,9 @@ def test_extraction_emits_one_private_safe_log(api_client, provider, capsys, kin
     if kind == "failure":
         provider.outcome = GenerationFailure("provider_timeout")
     response = api_client.post(
-        PATH, headers={} if kind == "anonymous" else HEADERS, json=payload
+        PATH,
+        headers={} if kind == "anonymous" else bearer(api_client, "fixture-token"),
+        json=payload,
     )
     output = capsys.readouterr().out
     events = [json.loads(line) for line in output.splitlines() if line.startswith("{")]

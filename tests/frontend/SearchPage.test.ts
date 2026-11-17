@@ -48,7 +48,10 @@ const japaneseCard = {
 describe("Search page", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    authSession.set({ kind: "authenticated", profile: { sub: "owner-a" } });
+    authSession.set({
+      kind: "authenticated",
+      profile: { id: 1, email: "owner-a@example.test" },
+    });
     api.getGenAIConsent.mockResolvedValue({
       genai_consent_at: "2026-11-05T00:00:00Z",
     });
@@ -268,7 +271,10 @@ describe("Search page", () => {
     );
     await screen.findByRole("button", { name: /AI meaning search is allowed/ });
     api.getGenAIConsent.mockResolvedValue({ genai_consent_at: null });
-    authSession.set({ kind: "authenticated", profile: { sub: "owner-b" } });
+    authSession.set({
+      kind: "authenticated",
+      profile: { id: 2, email: "owner-b@example.test" },
+    });
     await screen.findByRole("button", { name: "Grant consent" });
     expect(api.semanticSearch).not.toHaveBeenCalled();
   });
@@ -387,5 +393,25 @@ describe("Search page", () => {
     expect(
       screen.queryByLabelText("Describe the meaning or idea"),
     ).not.toBeInTheDocument();
+  });
+  it("preserves loaded results and query on expiry and blocks new owner requests", async () => {
+    render(SearchPage);
+    const input = screen.getByLabelText("Word, phrase, or translation");
+    await fireEvent.input(input, { target: { value: "study" } });
+    await fireEvent.click(screen.getByRole("button", { name: "Search cards" }));
+    await screen.findByRole("link", { name: /勉強/ });
+    authSession.set({
+      kind: "expired",
+      profile: { id: 1, email: "owner-a@example.test" },
+    });
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Search cards" }),
+      ).toBeDisabled(),
+    );
+    expect(input).toHaveValue("study");
+    expect(screen.getByRole("link", { name: /勉強/ })).toBeVisible();
+    await fireEvent.submit(input.closest("form")!);
+    expect(api.keywordSearch).toHaveBeenCalledTimes(1);
   });
 });

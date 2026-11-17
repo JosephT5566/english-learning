@@ -70,6 +70,14 @@ class Settings(BaseSettings):
         str, StringConstraints(strip_whitespace=True, min_length=1)
     ] = DEFAULT_GOOGLE_OAUTH_CLIENT_ID
     google_allowed_emails: str = ""
+    # Bounds: access 1m-1h, idle 5m-30d, absolute 5m-90d, reuse grace 0-60s.
+    # Sliding idle expiry is always capped by the fixed absolute deadline.
+    auth_access_ttl_seconds: Annotated[int, Field(ge=60, le=3600)] = 900
+    auth_refresh_idle_ttl_seconds: Annotated[int, Field(ge=300, le=2592000)] = 604800
+    auth_refresh_absolute_ttl_seconds: Annotated[int, Field(ge=300, le=7776000)] = (
+        2592000
+    )
+    auth_refresh_reuse_grace_seconds: Annotated[int, Field(ge=0, le=60)] = 10
     guest_export_deck_id: UUID | None = None
     guest_export_audience: str | None = None
     guest_export_subject: (
@@ -85,6 +93,51 @@ class Settings(BaseSettings):
         | None
     ) = None
     guest_export_query_timeout_ms: Annotated[int, Field(gt=0, le=10000)] = 2000
+    release_smoke_audience: str | None = None
+    release_smoke_subject: (
+        Annotated[str, StringConstraints(pattern=r"^[0-9]{1,255}$")] | None
+    ) = None
+    release_smoke_email: (
+        Annotated[
+            str,
+            StringConstraints(
+                pattern=r"^[a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+\.iam\.gserviceaccount\.com$"
+            ),
+        ]
+        | None
+    ) = None
+
+    @model_validator(mode="after")
+    def smoke_configuration(self):
+        values = (
+            self.release_smoke_audience,
+            self.release_smoke_subject,
+            self.release_smoke_email,
+        )
+        if any(value is not None for value in values):
+            if not all(values):
+                raise ValueError("release smoke requires all identity settings")
+            from urllib.parse import urlsplit
+
+            audience = urlsplit(self.release_smoke_audience)
+            if (
+                audience.scheme != "https"
+                or not audience.hostname
+                or audience.username
+                or audience.password
+                or audience.query
+                or audience.fragment
+                or self.release_smoke_audience
+                in {self.google_oauth_client_id, self.guest_export_audience}
+            ):
+                raise ValueError("release smoke requires a distinct HTTPS audience")
+            try:
+                _ = audience.port
+            except ValueError:
+                raise ValueError(
+                    "release smoke requires a valid HTTPS audience"
+                ) from None
+        return self
 
     @model_validator(mode="after")
     def export_configuration(self):

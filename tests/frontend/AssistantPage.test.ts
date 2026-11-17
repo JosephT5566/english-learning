@@ -21,7 +21,9 @@ vi.mock("$env/dynamic/public", () => ({ env: {} }));
 vi.mock("$lib/auth", () => ({
   getProfile: () => {
     const session = get(authSession);
-    return session.kind === "authenticated" ? session.profile : null;
+    return session.kind === "authenticated" || session.kind === "expired"
+      ? session.profile
+      : null;
   },
 }));
 vi.mock("$lib/api/client", async (original) => ({
@@ -41,7 +43,10 @@ describe("assistant page composer and consent", () => {
         disconnect() {}
       },
     );
-    authSession.set({ kind: "authenticated", profile: { sub: "owner-a" } });
+    authSession.set({
+      kind: "authenticated",
+      profile: { id: 1, email: "owner-a@example.test" },
+    });
     api.getGenAIConsent.mockResolvedValue(granted);
     api.grantGenAIConsent.mockResolvedValue(granted);
     api.withdrawGenAIConsent.mockResolvedValue({ genai_consent_at: null });
@@ -330,15 +335,18 @@ describe("assistant page composer and consent", () => {
   });
 
   it("remounts restored commands when switching directly between two owners", async () => {
-    const a = pendingCommand("owner-a", "A private term", "A private meaning");
-    const b = pendingCommand("owner-b", "B private term", "B private meaning");
+    const a = pendingCommand("1", "A private term", "A private meaning");
+    const b = pendingCommand("2", "B private term", "B private meaning");
     // Both commands use the legacy shared slot, as if another tab wrote B's command.
     localStorage.setItem(PENDING_ASSISTANT_STORAGE_KEY, JSON.stringify(a));
     render(AssistantPage);
     await screen.findByText("A private term");
     expect(screen.getByText("A private meaning")).toBeVisible();
     localStorage.setItem(PENDING_ASSISTANT_STORAGE_KEY, JSON.stringify(b));
-    authSession.set({ kind: "authenticated", profile: { sub: "owner-b" } });
+    authSession.set({
+      kind: "authenticated",
+      profile: { id: 2, email: "owner-b@example.test" },
+    });
     await screen.findByRole("region", { name: "Card drafts for owner-b deck" });
     expect(screen.getByText("B private term")).toBeVisible();
     expect(screen.getByText("B private meaning")).toBeVisible();
@@ -357,10 +365,10 @@ describe("assistant page composer and consent", () => {
 
   it("restores every unresolved command for the current owner", async () => {
     savePendingAssistantProposal(
-      pendingCommand("owner-a", "first private", "first meaning"),
+      pendingCommand("1", "first private", "first meaning"),
     );
     savePendingAssistantProposal({
-      ...pendingCommand("owner-a", "second private", "second meaning"),
+      ...pendingCommand("1", "second private", "second meaning"),
       proposal_id: createdId,
     });
     render(AssistantPage);
@@ -372,11 +380,7 @@ describe("assistant page composer and consent", () => {
   it.each(["committed", "pending", "dismissed"] as const)(
     "preserves %s proposal state after a stream fails before its first delta",
     async (status) => {
-      const command = pendingCommand(
-        "owner-a",
-        "stream draft",
-        "stream meaning",
-      );
+      const command = pendingCommand("1", "stream draft", "stream meaning");
       let rejectStream: (error: Error) => void = () => {};
       api.streamAssistantReply.mockImplementationOnce(
         (_messages, _ontext, _signal, options) => {
@@ -489,7 +493,10 @@ describe("assistant page composer and consent", () => {
         screen.getByRole("button", { name: "Send message" }),
       ).toBeInTheDocument(),
     );
-    authSession.set({ kind: "authenticated", profile: { sub: "owner-b" } });
+    authSession.set({
+      kind: "authenticated",
+      profile: { id: 2, email: "owner-b@example.test" },
+    });
     await waitFor(() =>
       expect(screen.queryByText("Add bank")).not.toBeInTheDocument(),
     );
@@ -552,7 +559,10 @@ describe("assistant page composer and consent", () => {
         screen.getByRole("button", { name: "Send message" }),
       ).toBeInTheDocument(),
     );
-    authSession.set({ kind: "authenticated", profile: { sub: "owner-b" } });
+    authSession.set({
+      kind: "authenticated",
+      profile: { id: 2, email: "owner-b@example.test" },
+    });
     await waitFor(() =>
       expect(screen.queryByText("Review your draft.")).not.toBeInTheDocument(),
     );
@@ -563,6 +573,65 @@ describe("assistant page composer and consent", () => {
       { role: "user", content: "new account" },
     ]);
   });
+  it("keeps the conversation and draft visible after session expiry and disables send", async () => {
+    api.streamAssistantReply.mockImplementationOnce(
+      async (_messages, ontext) => {
+        ontext("A reply to keep.");
+        return { stop: "completed", tools: [] };
+      },
+    );
+    render(AssistantPage);
+    const input = await screen.findByLabelText("Ask the assistant");
+    await fireEvent.input(input, { target: { value: "first question" } });
+    await fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+    await screen.findByText("A reply to keep.");
+    await fireEvent.input(input, { target: { value: "unsent draft" } });
+    authSession.set({
+      kind: "expired",
+      profile: { id: 1, email: "owner-a@example.test" },
+    });
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Send message" }),
+      ).toBeDisabled(),
+    );
+    expect(screen.getByText("A reply to keep.")).toBeVisible();
+    expect(screen.getByLabelText("Ask the assistant")).toHaveValue(
+      "unsent draft",
+    );
+    await fireEvent.submit(input.closest("form")!);
+    expect(api.streamAssistantReply).toHaveBeenCalledTimes(1);
+  });
+
+  it("finishes an already open assistant stream after session expiry", async () => {
+    let deliver: ((text: string) => void) | undefined;
+    let finish: (() => void) | undefined;
+    let signal: AbortSignal | undefined;
+    api.streamAssistantReply.mockImplementationOnce(
+      (_messages, ontext, requestSignal) => {
+        deliver = ontext;
+        signal = requestSignal;
+        ontext("Before expiry.");
+        return new Promise((resolve) => {
+          finish = () => resolve({ stop: "completed", tools: [] });
+        });
+      },
+    );
+    render(AssistantPage);
+    const input = await screen.findByLabelText("Ask the assistant");
+    await fireEvent.input(input, { target: { value: "first question" } });
+    await fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+    await screen.findByText("Before expiry.");
+    authSession.set({
+      kind: "expired",
+      profile: { id: 1, email: "owner-a@example.test" },
+    });
+    await waitFor(() => expect(signal?.aborted).toBe(false));
+    deliver?.(" After expiry.");
+    finish?.();
+    await screen.findByText("Before expiry. After expiry.");
+    expect(screen.getByRole("button", { name: "Send message" })).toBeDisabled();
+  });
 });
 
 const createdId = "20000000-0000-4000-8000-000000000001";
@@ -572,7 +641,7 @@ function pendingCommand(ownerSubject: string, term: string, meaning: string) {
     proposal_id: "30000000-0000-4000-8000-000000000098",
     deck: {
       id: "10000000-0000-4000-8000-000000000098",
-      title: `${ownerSubject} deck`,
+      title: `${ownerSubject === "1" ? "owner-a" : "owner-b"} deck`,
       target_language: "en",
     },
     drafts: [{ term, meaning, synonyms: [], antonyms: [] }],

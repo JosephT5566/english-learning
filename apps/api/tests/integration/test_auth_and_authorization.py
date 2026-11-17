@@ -14,6 +14,7 @@ from app.auth import VerifiedGoogleIdentity
 from app.embeddings import EmbeddingFailure
 from app.main import create_app
 from app.semantic_text import DIMENSIONS, content_hash
+from tests.integration.auth_helpers import access_headers
 from tests.integration.test_multilingual_domain_fixture import load_multilingual_fixture
 
 pytestmark = [
@@ -56,20 +57,22 @@ def api_client(
         client.app.state.token_verifier = SwitchingTokenVerifier()
         assert (
             client.put(
-                "/v1/me/genai-consent", headers=bearer("fixture-token")
+                "/v1/me/genai-consent", headers=bearer(client, "fixture-token")
             ).status_code
             == 200
         )
         yield client
 
 
-def bearer(token: str) -> dict[str, str]:
-    return {"Authorization": f"Bearer {token}"}
+def bearer(client: TestClient, token: str) -> dict[str, str]:
+    return access_headers(client, token)
 
 
-def create_headers(token: str, key: str | None = None) -> dict[str, str]:
+def create_headers(
+    client: TestClient, token: str, key: str | None = None
+) -> dict[str, str]:
     return {
-        **bearer(token),
+        **bearer(client, token),
         "Idempotency-Key": key or str(uuid4()),
     }
 
@@ -78,20 +81,22 @@ def test_google_subject_maps_to_stable_internal_user_and_updates_email(
     api_client: TestClient,
     migrated_database_engine: Engine,
 ) -> None:
-    first = api_client.get("/v1/me", headers=bearer("fixture-token"))
+    first = api_client.post("/v1/auth/session", json={"credential": "fixture-token"})
     SwitchingTokenVerifier.identities["fixture-token"] = VerifiedGoogleIdentity(
         "fixture-google-subject", "renamed@example.test"
     )
     try:
-        second = api_client.get("/v1/me", headers=bearer("fixture-token"))
+        second = api_client.post(
+            "/v1/auth/session", json={"credential": "fixture-token"}
+        )
     finally:
         SwitchingTokenVerifier.identities["fixture-token"] = VerifiedGoogleIdentity(
             "fixture-google-subject", "fixture.user@example.test"
         )
 
     assert first.status_code == second.status_code == 200
-    assert first.json()["id"] == second.json()["id"]
-    assert second.json()["email"] == "renamed@example.test"
+    assert first.json()["user"]["id"] == second.json()["user"]["id"]
+    assert second.json()["user"]["email"] == "renamed@example.test"
     with migrated_database_engine.connect() as connection:
         stored = connection.execute(
             text("SELECT normalized_email FROM users WHERE google_subject = :subject"),
@@ -111,12 +116,14 @@ def test_backend_allowlist_rejects_disallowed_account_before_user_creation(
     monkeypatch.setenv("GOOGLE_ALLOWED_EMAILS", "fixture.user@example.test")
     with TestClient(create_app(), raise_server_exceptions=False) as client:
         client.app.state.token_verifier = SwitchingTokenVerifier()
-        response = client.get("/v1/me", headers=bearer("attacker-token"))
+        response = client.post(
+            "/v1/auth/session", json={"credential": "attacker-token"}
+        )
         with migrated_database_engine.connect() as connection:
             count_after_denial = connection.execute(
                 text("SELECT count(*) FROM users")
             ).scalar_one()
-        allowed = client.get("/v1/me", headers=bearer("fixture-token"))
+        allowed = client.post("/v1/auth/session", json={"credential": "fixture-token"})
 
     assert response.status_code == 403
     assert response.json()["error"]["code"] == "account_not_allowed"
@@ -130,7 +137,7 @@ def test_backend_allowlist_rejects_disallowed_account_before_user_creation(
 def test_other_user_cannot_read_deck_card_or_due_review_by_changing_ids(
     api_client: TestClient,
 ) -> None:
-    headers = bearer("attacker-token")
+    headers = bearer(api_client, "attacker-token")
 
     deck = api_client.get(f"/v1/decks/{FIXTURE_DECK_ID}", headers=headers)
     card = api_client.get(f"/v1/cards/{FIXTURE_CARD_ID}", headers=headers)
@@ -151,7 +158,7 @@ def test_create_derives_owner_and_rejects_client_identity_and_foreign_parent(
     api_client: TestClient,
     migrated_database_engine: Engine,
 ) -> None:
-    headers = bearer("attacker-token")
+    headers = bearer(api_client, "attacker-token")
     rejected = api_client.post(
         "/v1/decks",
         json={
@@ -172,7 +179,7 @@ def test_create_derives_owner_and_rejects_client_identity_and_foreign_parent(
             "target_language": "ja",
             "explanation_language": "zh-TW",
         },
-        headers=create_headers("attacker-token"),
+        headers=create_headers(api_client, "attacker-token"),
     )
     assert deck.status_code == 201
     deck_id = deck.json()["id"]
@@ -180,7 +187,7 @@ def test_create_derives_owner_and_rejects_client_identity_and_foreign_parent(
     foreign_parent = api_client.post(
         "/v1/cards",
         json={"deck_id": FIXTURE_DECK_ID, "term": "bad", "meaning": "bad"},
-        headers=create_headers("attacker-token"),
+        headers=create_headers(api_client, "attacker-token"),
     )
     assert foreign_parent.status_code == 404
     assert foreign_parent.json()["error"]["code"] == "deck_not_found"
@@ -188,7 +195,7 @@ def test_create_derives_owner_and_rejects_client_identity_and_foreign_parent(
     card = api_client.post(
         "/v1/cards",
         json={"deck_id": deck_id, "term": "勉強", "meaning": "study"},
-        headers=create_headers("attacker-token"),
+        headers=create_headers(api_client, "attacker-token"),
     )
     assert card.status_code == 201
     card_id = card.json()["id"]
@@ -226,7 +233,7 @@ def test_create_requires_valid_idempotency_key(
     api_client: TestClient,
     value: str | None,
 ) -> None:
-    headers = bearer("fixture-token")
+    headers = bearer(api_client, "fixture-token")
     if value is not None:
         headers["Idempotency-Key"] = value
 
@@ -249,7 +256,7 @@ def test_deck_create_replays_exact_request_and_rejects_key_reuse(
     migrated_database_engine: Engine,
 ) -> None:
     key = str(uuid4())
-    headers = create_headers("fixture-token", key)
+    headers = create_headers(api_client, "fixture-token", key)
     payload = {
         "title": "Retry-safe English",
         "target_language": "en",
@@ -287,7 +294,7 @@ def test_card_create_replays_card_and_single_initial_state(
     migrated_database_engine: Engine,
 ) -> None:
     key = str(uuid4())
-    headers = create_headers("fixture-token", key)
+    headers = create_headers(api_client, "fixture-token", key)
     payload = {
         "deck_id": FIXTURE_DECK_ID,
         "term": "idempotent",
@@ -342,7 +349,7 @@ def test_card_create_commits_before_provider_timeout_and_replays_once(
     )
     key = str(uuid4())
     payload = {"deck_id": FIXTURE_DECK_ID, "term": "derived", "meaning": "safe card"}
-    headers = create_headers("fixture-token", key)
+    headers = create_headers(api_client, "fixture-token", key)
     first = api_client.post("/v1/cards", json=payload, headers=headers)
     replay = api_client.post("/v1/cards", json=payload, headers=headers)
     assert first.status_code == replay.status_code == 201
@@ -408,12 +415,12 @@ def test_card_save_sends_response_before_embedding_and_keeps_provider_failure(
                 "term": "response ordering",
                 "meaning": "committed meaning",
             },
-            headers=create_headers("fixture-token"),
+            headers=create_headers(api_client, "fixture-token"),
         )
         expected_status = 201
     else:
         original = api_client.get(
-            f"/v1/cards/{FIXTURE_CARD_ID}", headers=bearer("fixture-token")
+            f"/v1/cards/{FIXTURE_CARD_ID}", headers=bearer(api_client, "fixture-token")
         ).json()
         response = client.patch(
             f"/v1/cards/{FIXTURE_CARD_ID}",
@@ -422,7 +429,7 @@ def test_card_save_sends_response_before_embedding_and_keeps_provider_failure(
                 "term": "response ordering",
                 "meaning": "committed meaning",
             },
-            headers=bearer("fixture-token"),
+            headers=bearer(api_client, "fixture-token"),
         )
         expected_status = 200
     client.close()
@@ -472,7 +479,7 @@ def test_only_semantic_card_edits_call_provider(
     monkeypatch.setattr(
         api_client.app.state.embedding_provider, "document_embedding", embed
     )
-    headers = bearer("fixture-token")
+    headers = bearer(api_client, "fixture-token")
     original = api_client.get(f"/v1/cards/{FIXTURE_CARD_ID}", headers=headers).json()
     note = api_client.patch(
         f"/v1/cards/{FIXTURE_CARD_ID}",
@@ -529,11 +536,13 @@ def test_card_save_refreshes_hash_from_one_semantic_snapshot(
         "antonyms": [],
     }
     expected = {**payload, "language": "en"}
-    headers = bearer("fixture-token")
+    headers = bearer(api_client, "fixture-token")
     original = None
     if operation != "create":
         created = api_client.post(
-            "/v1/cards", json=payload, headers=create_headers("fixture-token")
+            "/v1/cards",
+            json=payload,
+            headers=create_headers(api_client, "fixture-token"),
         )
         assert created.status_code == 201
         original = created.json()
@@ -557,7 +566,9 @@ def test_card_save_refreshes_hash_from_one_semantic_snapshot(
     try:
         if operation == "create":
             response = api_client.post(
-                "/v1/cards", json=payload, headers=create_headers("fixture-token")
+                "/v1/cards",
+                json=payload,
+                headers=create_headers(api_client, "fixture-token"),
             )
         else:
             changes = {
@@ -610,7 +621,7 @@ def test_other_user_cannot_edit_or_archive_resources_by_changing_ids(
     api_client: TestClient,
     migrated_database_engine: Engine,
 ) -> None:
-    headers = bearer("attacker-token")
+    headers = bearer(api_client, "attacker-token")
     deck_patch = api_client.patch(
         f"/v1/decks/{FIXTURE_DECK_ID}",
         json={"version": 1, "title": "stolen"},
@@ -646,7 +657,7 @@ def test_other_user_cannot_edit_or_archive_resources_by_changing_ids(
 def test_owner_can_edit_and_archive_with_version_conflict_protection(
     api_client: TestClient,
 ) -> None:
-    headers = bearer("fixture-token")
+    headers = bearer(api_client, "fixture-token")
     deck = api_client.patch(
         f"/v1/decks/{FIXTURE_DECK_ID}",
         json={"version": 1, "title": "Renamed deck"},
@@ -701,7 +712,7 @@ def test_http_identity_rebinds_after_commit_and_isolates_both_users(
     for token in ("fixture-token", "attacker-token"):
         deck = api_client.post(
             "/v1/decks",
-            headers=create_headers(token),
+            headers=create_headers(api_client, token),
             json={
                 "title": "Owned RLS deck",
                 "target_language": "en",
@@ -711,7 +722,7 @@ def test_http_identity_rebinds_after_commit_and_isolates_both_users(
         assert deck.status_code == 201
         card = api_client.post(
             "/v1/cards",
-            headers=create_headers(token),
+            headers=create_headers(api_client, token),
             json={
                 "deck_id": deck.json()["id"],
                 "term": "RLS card",
@@ -723,7 +734,7 @@ def test_http_identity_rebinds_after_commit_and_isolates_both_users(
     assert len(set(seen)) == 2
     for index, (token, _, _) in enumerate(resources):
         _, deck, card = resources[1 - index]
-        headers = bearer(token)
+        headers = bearer(api_client, token)
         assert api_client.get(f"/v1/decks/{deck}", headers=headers).status_code == 404
         assert api_client.get(f"/v1/cards/{card}", headers=headers).status_code == 404
         assert (
@@ -750,7 +761,7 @@ def test_http_identity_rebinds_after_commit_and_isolates_both_users(
         )
         review = api_client.post(
             "/v1/reviews",
-            headers=create_headers(token),
+            headers=create_headers(api_client, token),
             json={
                 "items": [{"card_id": card, "decision": "yes", "expected_version": 1}]
             },
@@ -758,10 +769,14 @@ def test_http_identity_rebinds_after_commit_and_isolates_both_users(
         assert review.status_code == 404
     for token, deck, card in resources:
         assert (
-            api_client.get(f"/v1/decks/{deck}", headers=bearer(token)).json()["title"]
+            api_client.get(
+                f"/v1/decks/{deck}", headers=bearer(api_client, token)
+            ).json()["title"]
             == "Owned RLS deck"
         )
         assert (
-            api_client.get(f"/v1/cards/{card}", headers=bearer(token)).json()["meaning"]
+            api_client.get(
+                f"/v1/cards/{card}", headers=bearer(api_client, token)
+            ).json()["meaning"]
             == "private"
         )

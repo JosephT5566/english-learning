@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, tick, untrack } from "svelte";
+  import { onDestroy, onMount, tick, untrack } from "svelte";
   import AssistantClarification from "$lib/components/AssistantClarification.svelte";
   import AssistantCardProposal from "$lib/components/AssistantCardProposal.svelte";
   import {
@@ -9,7 +9,7 @@
   import { shouldSendOnEnter } from "$lib/assistant/composer";
   import SendIcon from "@lucide/svelte/icons/arrow-up";
   import GenAIConsentPanel from "$lib/components/GenAIConsentPanel.svelte";
-  import { authSession } from "$lib/stores/auth";
+  import { authSession, canWrite } from "$lib/stores/auth";
   import {
     ApiClientError,
     getGenAIConsent,
@@ -74,39 +74,52 @@
   let generation: AbortController | undefined;
   let sessionVersion = 0;
 
+  let ownerId: number | null = null;
+  let ownerInitialized = false;
   $effect(() => {
     const session = $authSession;
+    const nextOwner =
+      session.kind === "authenticated" || session.kind === "expired"
+        ? (session.profile?.id ?? null)
+        : null;
     untrack(() => {
-      turns = [];
-      draft = "";
-      consent = "unknown";
-      consentBusy = false;
-      sending = false;
-      formError = "";
-      consentError = "";
-      failedAction = undefined;
-      focusConsentHeading = false;
-      restoredStates = [];
-      restored =
-        session.kind === "authenticated"
-          ? loadPendingAssistantProposals(session.profile.sub ?? "")
-          : [];
-      restoredStates = restored.map((command) => ({
-        type: "proposal_state",
-        proposal_id: command.proposal_id,
-        status: "pending",
-        created_card_ids: [],
-      }));
-      if (session.kind === "authenticated") void updateConsent("read");
+      if (nextOwner !== ownerId) {
+        ownerId = nextOwner;
+        ownerInitialized = false;
+        sessionVersion++;
+        generation?.abort();
+        turns = [];
+        draft = "";
+        consent = "unknown";
+        consentBusy = false;
+        sending = false;
+        formError = "";
+        consentError = "";
+        failedAction = undefined;
+        focusConsentHeading = false;
+        restored = [];
+        restoredStates = [];
+      }
+      if (session.kind === "authenticated" && !ownerInitialized) {
+        ownerInitialized = true;
+        restored = loadPendingAssistantProposals(String(session.profile.id));
+        restoredStates = restored.map((command) => ({
+          type: "proposal_state",
+          proposal_id: command.proposal_id,
+          status: "pending",
+          created_card_ids: [],
+        }));
+        void updateConsent("read");
+      }
     });
-    return () => {
-      sessionVersion++;
-      generation?.abort();
-    };
+  });
+  onDestroy(() => {
+    sessionVersion++;
+    generation?.abort();
   });
 
   async function updateConsent(action: "read" | "grant" | "withdraw") {
-    if (consentBusy || sending) return;
+    if (!$canWrite || consentBusy || sending) return;
     const version = sessionVersion;
     consentBusy = true;
     consentError = "";
@@ -201,7 +214,7 @@
     question: ClarificationQuestion,
     choice: Parameters<typeof makeClarificationAnswer>[1],
   ) {
-    if (question !== pendingQuestion) return;
+    if (!$canWrite || question !== pendingQuestion) return;
     const answer = makeClarificationAnswer(question, choice);
     const content =
       answer.text ??
@@ -226,7 +239,14 @@
   }
 
   async function sendMessage(question: string, answer?: ClarificationAnswer) {
-    if (!question || sending || consentBusy || consent !== "granted") return;
+    if (
+      !$canWrite ||
+      !question ||
+      sending ||
+      consentBusy ||
+      consent !== "granted"
+    )
+      return;
     const restoreHistory: HistoryTurn[] = restoredStates.length
       ? [
           {
@@ -364,6 +384,7 @@
       <p class="intro">Ask about your cards or what’s due for review.</p>
     </div>
     <GenAIConsentPanel
+      disabled={!$canWrite}
       presentation="chip"
       {consent}
       busy={consentBusy || sending}
@@ -423,7 +444,8 @@
                 <AssistantClarification
                   {question}
                   answer={clarificationAnswerFor(turns, question)}
-                  disabled={question !== pendingQuestion ||
+                  disabled={!$canWrite ||
+                    question !== pendingQuestion ||
                     sending ||
                     consentBusy ||
                     consent !== "granted"}
@@ -458,6 +480,7 @@
   </div>
   <div class="bottom-row">
     <GenAIConsentPanel
+      disabled={!$canWrite}
       presentation="panel"
       {consent}
       busy={consentBusy || sending}
@@ -484,7 +507,10 @@
             maxlength={historyCharacterLimit}
             rows="1"
             placeholder="What should I review today?"
-            readonly={sending || consentBusy || consent !== "granted"}
+            readonly={!$canWrite ||
+              sending ||
+              consentBusy ||
+              consent !== "granted"}
             aria-describedby="assistant-keyboard assistant-input-reason"
             oncompositionstart={() => (composing = true)}
             oncompositionend={() => (composing = false)}
@@ -498,7 +524,8 @@
           <button
             type="submit"
             aria-label={sending ? "Replying…" : "Send message"}
-            disabled={!draft.trim() ||
+            disabled={!$canWrite ||
+              !draft.trim() ||
               sending ||
               consentBusy ||
               consent !== "granted"}

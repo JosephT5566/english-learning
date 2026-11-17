@@ -6,7 +6,12 @@ vi.mock("$env/dynamic/public", () => ({
 }));
 vi.mock("$lib/auth", () => ({
   getTokenIfValid: () => "test-token",
-  signOut: vi.fn(),
+  ensureAccessToken: async () => "test-token",
+  refreshSession: vi.fn(),
+  expireSession: vi.fn(),
+  isCurrentToken: () => true,
+  getProfile: () => null,
+  getSessionGeneration: () => 0,
 }));
 afterEach(() => vi.unstubAllGlobals());
 

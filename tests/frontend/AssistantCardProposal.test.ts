@@ -6,6 +6,7 @@ import {
   within,
 } from "@testing-library/svelte";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { authSession } from "$lib/stores/auth";
 import type { CardDetail } from "$lib/api/contracts";
 import {
   ApiClientError,
@@ -24,7 +25,20 @@ const api = vi.hoisted(() => ({
   createCards: vi.fn<typeof createCards>(),
 }));
 vi.mock("$env/dynamic/public", () => ({ env: {} }));
-vi.mock("$lib/auth", () => ({ getProfile: () => ({ sub: "owner-a" }) }));
+vi.mock("$lib/auth", async () => {
+  const { get } = await import("svelte/store");
+  const { authSession } = await import("$lib/stores/auth");
+  return {
+    getProfile: () => {
+      const session = get(authSession);
+      return session.kind === "authenticated" || session.kind === "expired"
+        ? session.profile
+        : null;
+    },
+    getTokenIfValid: vi.fn(),
+    signOut: vi.fn(),
+  };
+});
 vi.mock("$lib/api/client", async (original) => ({
   ...(await original<typeof import("$lib/api/client")>()),
   ...api,
@@ -85,6 +99,10 @@ const card = (term = "wander", id = createdId): CardDetail => ({
   review_state: null,
 });
 beforeEach(() => {
+  authSession.set({
+    kind: "authenticated",
+    profile: { id: 1, email: "owner-a@example.test" },
+  });
   vi.clearAllMocks();
   localStorage.clear();
   api.createCard.mockResolvedValue(card());
@@ -96,6 +114,20 @@ beforeEach(() => {
 });
 
 describe("assistant card proposal", () => {
+  it("keeps proposal drafts visible on expiry and disables confirmation", async () => {
+    render(AssistantCardProposal, { proposal: proposal(), onstate: vi.fn() });
+    authSession.set({
+      kind: "expired",
+      profile: { id: 1, email: "owner-a@example.test" },
+    });
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Add to Travel English · 3 cards" }),
+      ).toBeDisabled(),
+    );
+    expect(screen.getByText("wander", { selector: "strong" })).toBeVisible();
+    expect(api.createCards).not.toHaveBeenCalled();
+  });
   it("renders selected compact drafts and stable duplicate warnings without writes or storage", async () => {
     render(AssistantCardProposal, { proposal: proposal() });
     expect(screen.getAllByRole("checkbox")).toHaveLength(3);
@@ -180,7 +212,7 @@ describe("assistant card proposal", () => {
     expect(await screen.findByText("Result not confirmed")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Edit wander" })).toBeDisabled();
     expect(screen.getByRole("checkbox")).toBeDisabled();
-    const command = loadPendingAssistantProposal("owner-a");
+    const command = loadPendingAssistantProposal("1");
     expect(command).not.toBeNull();
     expect(command!.idempotencyKeys).toHaveLength(1);
     await fireEvent.click(screen.getByRole("button", { name: "Retry" }));
@@ -332,14 +364,14 @@ describe("assistant recovery boundaries", () => {
       screen.getByRole("button", { name: "Add to Travel English · 1 card" }),
     );
     await screen.findByText("Result not confirmed");
-    const saved = loadPendingAssistantProposal("owner-a");
+    const saved = loadPendingAssistantProposal("1");
     expect(saved).not.toBeNull();
     await fireEvent.click(
       screen.getByRole("button", { name: "Add to Second deck · 1 card" }),
     );
     await screen.findByRole("link", { name: "wander" });
     expect(api.createCard).toHaveBeenCalledTimes(2);
-    expect(loadPendingAssistantProposal("owner-a")).toEqual(saved);
+    expect(loadPendingAssistantProposal("1")).toEqual(saved);
     await fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     await waitFor(() => expect(api.createCard).toHaveBeenCalledTimes(3));
     expect(api.createCard.mock.calls[2]).toEqual(api.createCard.mock.calls[0]);

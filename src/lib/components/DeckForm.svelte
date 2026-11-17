@@ -8,6 +8,7 @@
 		initial = null,
 		draft = null,
 		busy = false,
+		writable = true,
 		locked = false,
 		notice = null,
 		onsave,
@@ -18,6 +19,7 @@
 		initial?: Deck | null;
 		draft?: DeckCreate | null;
 		busy?: boolean;
+		writable?: boolean;
 		locked?: boolean;
 		notice?: MutationErrorCopy | null;
 		onsave: (payload: DeckCreate) => void;
@@ -35,10 +37,15 @@
 	class="management-form"
 	onsubmit={(event) => {
 		event.preventDefault();
-		onsave({ title, target_language: language, explanation_language: explanationLanguage });
+		if (!writable || busy) return;
+		onsave({
+			title,
+			target_language: language,
+			explanation_language: explanationLanguage,
+		});
 	}}
 >
-	<fieldset disabled={busy || locked}>
+	<fieldset disabled={!writable || busy || locked}>
 		<label>
 			<span>Deck title</span>
 			<input bind:value={title} required maxlength="100" autocomplete="off" />
@@ -52,12 +59,14 @@
 			</select>
 		</label>
 	</fieldset>
-	<p class="form-context">Cards in this deck are {language === 'ja' ? 'Japanese' : 'English'}.</p>
+	<p class="form-context">
+		Cards in this deck are {language === 'ja' ? 'Japanese' : 'English'}.
+	</p>
 	{#if notice}<MutationNotice {notice} {onreload} />{/if}
 	<div class="form-actions">
 		<button type="button" class="secondary-button" disabled={busy} onclick={oncancel}>Cancel</button
 		>
-		<button type="submit" class="primary-button" disabled={busy}
+		<button type="submit" class="primary-button" disabled={!writable || busy}
 			>{busy ? 'Saving…' : 'Save deck'}</button
 		>
 	</div>

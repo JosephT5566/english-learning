@@ -1,4 +1,10 @@
-# Current-State Auth, Vocabulary, and Review Flow Trace
+# Historical Auth, Vocabulary, and Review Flow Trace (2026-08 baseline)
+
+Historical evidence only: this predates FastAPI/PostgreSQL and issue #45 app sessions. It is not
+current setup guidance. The [current auth sequence](../architecture.md#app-session-authentication-and-threat-model-45-2026-11-17)
+uses GIS exchange, memory-only app access and rotating refresh. Never recover a Google token from
+storage; the old keys are now removed. Historical Apps Script observations below remain evidence
+of that earlier system, not current behavior.
 
 - Date: 2026-08-28
 - Training ticket: [#4](https://github.com/JosephT5566/english-learning/issues/4)
@@ -99,7 +105,7 @@ The browser is not a trusted authorization or data-integrity boundary. Apps Scri
 3. `src/app.html` loads the Google Identity Services client. `initGsiOnce()` configures the public client ID and browser-visible email allowlist.
 4. Google Identity Services returns a credential to the callback after the user completes Google's flow.
 5. The browser decodes the JWT payload and checks `email`, `email_verified`, allowlist membership, and `exp`. It does not cryptographically verify the signature and does not check `aud` or `iss` here.
-6. The browser stores the raw ID token as `gid_id_token` and its expiration as `gid_exp`, then sets the Svelte `isSignedIn` store to true.
+6. In this historical baseline the browser stored the raw ID token as `gid_id_token` and expiry as `gid_exp`. Issue #45 removes both keys; current Google credentials are exchanged once and never persisted.
 7. `getTokenIfValid()` and `getIsSignedIn()` treat the token as expired when fewer than 120 seconds remain: a 60-second safety buffer plus a 60-second clock-skew allowance.
 8. Review submission reads the stored token. Apps Script sends it to Google's `tokeninfo` endpoint and checks `aud`, `iss`, `exp`, and an email allowlist before processing the update.
 

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { authSession, canWrite } from '$lib/stores/auth';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
@@ -9,7 +10,6 @@
 	import ArrowDownIcon from '@lucide/svelte/icons/arrow-down';
 	import LoaderCircleIcon from '@lucide/svelte/icons/loader-circle';
 	import ArrowDownWideNarrowIcon from '@lucide/svelte/icons/arrow-down-wide-narrow';
-	import { getProfile } from '$lib/auth';
 	import {
 		ApiClientError,
 		archiveDeck,
@@ -47,6 +47,14 @@
 		savePendingManagement,
 		type PendingManagementCreation,
 	} from '$lib/management/pending';
+
+	let currentOwnerId = $derived(
+		$authSession.kind === 'authenticated' || $authSession.kind === 'expired'
+			? ($authSession.profile?.id ?? null)
+			: null,
+	);
+	let loadedOwnerId: number | null = null;
+	let loadedQuery = '';
 
 	type ViewState = 'redirecting' | 'invalid-language' | 'loading' | 'ready' | 'error';
 	let viewState: ViewState = $state('loading');
@@ -104,7 +112,9 @@
 	}
 
 	async function loadCurrent(targetLanguage: TargetLanguage, status: ArchiveStatus): Promise<void> {
+		if (!$canWrite) return;
 		const sequence = ++requestSequence;
+		const readOwner = currentOwnerId;
 		viewState = 'loading';
 		error = null;
 		loadingMore = false;
@@ -114,7 +124,7 @@
 				getDeck(deckId),
 				getCards(deckId, status, 20, undefined, cardSort),
 			]);
-			if (sequence !== requestSequence) return;
+			if (sequence !== requestSequence || readOwner !== currentOwnerId) return;
 			if (deckResult.target_language !== targetLanguage) {
 				viewState = 'redirecting';
 				void goto(deckHref(deckResult.target_language, status), {
@@ -127,23 +137,32 @@
 			nextCursor = cardResult.next_cursor;
 			viewState = 'ready';
 		} catch (cause) {
-			if (sequence !== requestSequence) return;
+			if (sequence !== requestSequence || readOwner !== currentOwnerId) return;
+			if (!$canWrite && deck) {
+				viewState = 'ready';
+				return;
+			}
 			error = readErrorCopy(cause, 'deck');
 			viewState = 'error';
 		}
 	}
 
 	async function loadMore(): Promise<void> {
-		if (!nextCursor || loadingMore) return;
+		if (!$canWrite || !nextCursor || loadingMore) return;
 		loadingMore = true;
 		const sequence = requestSequence;
+		const readOwner = currentOwnerId;
 		try {
 			const result = await getCards(deckId, archiveStatus, 20, nextCursor, cardSort);
-			if (sequence !== requestSequence) return;
+			if (sequence !== requestSequence || readOwner !== currentOwnerId) return;
 			cards = [...cards, ...result.items];
 			nextCursor = result.next_cursor;
 		} catch (cause) {
-			if (sequence !== requestSequence) return;
+			if (sequence !== requestSequence || readOwner !== currentOwnerId) return;
+			if (!$canWrite && deck) {
+				viewState = 'ready';
+				return;
+			}
 			error = readErrorCopy(cause, 'cards');
 			viewState = 'error';
 		} finally {
@@ -152,24 +171,30 @@
 	}
 
 	async function saveDeck(payload: DeckCreate): Promise<void> {
+		if (!$canWrite) return;
+		const mutationOwner = currentOwnerId;
 		if (!deck) return;
 		mutationBusy = true;
 		mutationNotice = null;
 		try {
-			deck = await updateDeck(deck.id, {
+			const updated = await updateDeck(deck.id, {
 				version: deck.version,
 				title: payload.title,
 				explanation_language: payload.explanation_language,
 			});
+			if (currentOwnerId !== mutationOwner) return;
+			deck = updated;
 			editOpen = false;
 		} catch (cause) {
+			if (currentOwnerId !== mutationOwner) return;
 			mutationNotice = mutationErrorCopy(cause);
 		} finally {
-			mutationBusy = false;
+			if (currentOwnerId === mutationOwner) mutationBusy = false;
 		}
 	}
 
 	async function discardDeckEdits(): Promise<void> {
+		if (!$canWrite) return;
 		editOpen = false;
 		mutationNotice = null;
 		await loadCurrent(language, archiveStatus);
@@ -177,15 +202,24 @@
 	}
 
 	async function archiveCurrentDeck(): Promise<void> {
+		if (!$canWrite) return;
+		const mutationOwner = currentOwnerId;
 		if (!deck) return;
 		mutationBusy = true;
 		mutationNotice = null;
 		try {
 			await archiveDeck(deck.id);
+			if (currentOwnerId !== mutationOwner) return;
 			await goto(`${resolve('/decks')}?language=${language}&status=archived`);
 		} catch (cause) {
+			if (currentOwnerId !== mutationOwner) return;
+			if (!$canWrite) {
+				mutationNotice = mutationErrorCopy(cause);
+				return;
+			}
 			try {
 				const latest = await getDeck(deck.id);
+				if (currentOwnerId !== mutationOwner) return;
 				if (latest.archived_at) {
 					await goto(`${resolve('/decks')}?language=${language}&status=archived`);
 					return;
@@ -196,12 +230,14 @@
 			mutationNotice = mutationErrorCopy(cause);
 			archiveConfirm = false;
 		} finally {
-			mutationBusy = false;
+			if (currentOwnerId === mutationOwner) mutationBusy = false;
 		}
 	}
 
 	async function saveNewCard(fields: Omit<CardCreate, 'deck_id'>): Promise<void> {
-		const owner = getProfile()?.sub;
+		if (!$canWrite) return;
+		const mutationOwner = currentOwnerId;
+		const owner = currentOwnerId === null ? undefined : String(currentOwnerId);
 		if (!owner) {
 			mutationNotice = mutationErrorCopy(
 				new ApiClientError('Please sign in again.', 'authentication', false, 401),
@@ -221,11 +257,13 @@
 		mutationNotice = null;
 		try {
 			const created = await createCard(payload, pendingCreate.idempotencyKey);
+			if (currentOwnerId !== mutationOwner) return;
 			clearPendingManagement();
 			pendingCreate = null;
 			cardCreateOpen = false;
 			await goto(`${resolve('/cards/[cardId]', { cardId: created.id })}?language=${language}`);
 		} catch (cause) {
+			if (currentOwnerId !== mutationOwner) return;
 			mutationNotice = mutationErrorCopy(cause);
 			if (
 				!(cause instanceof ApiClientError) ||
@@ -235,11 +273,12 @@
 				pendingCreate = null;
 			}
 		} finally {
-			mutationBusy = false;
+			if (currentOwnerId === mutationOwner) mutationBusy = false;
 		}
 	}
 
 	function openCardCreate(): void {
+		if (!$canWrite) return;
 		if (jsonOutstanding && jsonQueue?.deckId !== deckId) return;
 		authoringTab = jsonOutstanding ? 'json' : 'manual';
 		if (
@@ -261,6 +300,23 @@
 	}
 
 	$effect(() => {
+		if (!$canWrite || currentOwnerId === null) return;
+		if (loadedOwnerId !== currentOwnerId) {
+			loadedOwnerId = currentOwnerId;
+			loadedQuery = '';
+			requestSequence++;
+			deck = null;
+			cards = [];
+			nextCursor = null;
+			pendingLoaded = false;
+			pendingCreate = null;
+			jsonQueue = null;
+			editOpen = false;
+			cardCreateOpen = false;
+			archiveConfirm = false;
+			mutationBusy = false;
+			mutationNotice = null;
+		}
 		const parsedLanguage = readLanguageQuery(page.url.searchParams);
 		const parsedStatus = readArchiveStatus(page.url.searchParams);
 		if (parsedLanguage.kind === 'missing') {
@@ -277,7 +333,7 @@
 		archiveStatus = parsedStatus;
 		if (!pendingLoaded) {
 			pendingLoaded = true;
-			const owner = getProfile()?.sub;
+			const owner = currentOwnerId === null ? undefined : String(currentOwnerId);
 			const pending = owner ? loadPendingManagement(owner) : null;
 			pendingCreate = pending;
 			jsonQueue = owner ? loadJsonQueue(owner) : null;
@@ -300,6 +356,9 @@
 				};
 			}
 		}
+		const query = `${deckId}:${language}:${archiveStatus}:${cardSort}`;
+		if (loadedQuery === query) return;
+		loadedQuery = query;
 		void loadCurrent(language, archiveStatus);
 	});
 </script>
@@ -335,13 +394,14 @@
 					class="primary-button action-icon"
 					type="button"
 					aria-label="New card"
-					disabled={Boolean(
-						(jsonOutstanding && jsonQueue?.deckId !== deckId) ||
-							(pendingCreate &&
-								(pendingCreate.kind !== 'card' ||
-									!('deck_id' in pendingCreate.payload) ||
-									pendingCreate.payload.deck_id !== deckId)),
-					)}
+					disabled={!$canWrite ||
+						Boolean(
+							(jsonOutstanding && jsonQueue?.deckId !== deckId) ||
+								(pendingCreate &&
+									(pendingCreate.kind !== 'card' ||
+										!('deck_id' in pendingCreate.payload) ||
+										pendingCreate.payload.deck_id !== deckId)),
+						)}
 					title={pendingCreate ? 'Resume pending card creation' : 'New card'}
 					onclick={openCardCreate}><PlusIcon size={20} aria-hidden="true" /></button
 				>
@@ -350,6 +410,7 @@
 					type="button"
 					aria-label="Edit deck"
 					title="Edit deck"
+					disabled={!$canWrite}
 					onclick={() => {
 						mutationNotice = null;
 						editOpen = true;
@@ -360,6 +421,7 @@
 					type="button"
 					aria-label="Archive deck"
 					title="Archive deck"
+					disabled={!$canWrite}
 					onclick={() => {
 						mutationNotice = null;
 						archiveConfirm = true;
@@ -408,7 +470,10 @@
 				onchange={(event) => {
 					const url = new URL(page.url);
 					url.searchParams.set('sort', event.currentTarget.value);
-					void goto(`${url.pathname}${url.search}`, { noScroll: true, keepFocus: true });
+					void goto(`${url.pathname}${url.search}`, {
+						noScroll: true,
+						keepFocus: true,
+					});
 				}}
 			>
 				<option value="updated_at">Recently updated</option>
@@ -456,7 +521,7 @@
 					aria-label={loadingMore ? 'Loading…' : 'Load more cards'}
 					title={loadingMore ? 'Loading…' : 'Load more cards'}
 					aria-busy={loadingMore}
-					disabled={loadingMore}
+					disabled={!$canWrite || loadingMore}
 					onclick={loadMore}
 					>{#if loadingMore}<LoaderCircleIcon size={20} aria-hidden="true" />{:else}<ArrowDownIcon
 							size={20}
@@ -474,6 +539,7 @@
 		onclose={() => !mutationBusy && (editOpen = false)}
 	>
 		<DeckForm
+			writable={$canWrite}
 			language={deck.target_language}
 			initial={deck}
 			busy={mutationBusy}
@@ -525,6 +591,7 @@
 			hidden={authoringTab !== 'manual'}
 		>
 			<CardForm
+				writable={$canWrite}
 				{language}
 				draft={pendingCreate?.kind === 'card' ? (pendingCreate.payload as CardCreate) : null}
 				busy={mutationBusy}
@@ -554,6 +621,7 @@
 
 {#if archiveConfirm && deck}
 	<ConfirmDialog
+		disabled={!$canWrite}
 		eyebrow="Archive deck"
 		title={`Archive “${deck.title}”?`}
 		description="Its cards leave active study but remain available from Archived decks."

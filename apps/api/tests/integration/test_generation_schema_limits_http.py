@@ -34,7 +34,9 @@ def test_extraction_count_bounds_survive_provider_schema_projection(
     )
     before = counts(migrated_database_engine)
     response = api_client.post(
-        PATH, headers=bearer("fixture-token"), json={"material": "synthetic harbor"}
+        PATH,
+        headers=bearer(api_client, "fixture-token"),
+        json={"material": "synthetic harbor"},
     )
     assert response.status_code == status
     if status == 502:

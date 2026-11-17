@@ -50,13 +50,13 @@ def test_preview_never_writes_and_confirmed_cards_replay_once(
     preview = api_client.post(
         f"/v1/decks/{FIXTURE_DECK_ID}/card-drafts/validate",
         json=payload,
-        headers=bearer("fixture-token"),
+        headers=bearer(api_client, "fixture-token"),
     )
     assert preview.status_code == 200
     assert counts(migrated_database_engine) == before
     ids = []
     for fields in preview.json()["cards"]:
-        headers = create_headers("fixture-token")
+        headers = create_headers(api_client, "fixture-token")
         command = {**fields, "deck_id": FIXTURE_DECK_ID}
         created = api_client.post("/v1/cards", json=command, headers=headers)
         replay = api_client.post("/v1/cards", json=command, headers=headers)
@@ -74,11 +74,13 @@ def test_invalid_foreign_and_archived_decks_create_no_learning_data(
     before = counts(migrated_database_engine)
     payload = {"cards": [{"term": "test", "meaning": "test"}]}
     path = f"/v1/decks/{FIXTURE_DECK_ID}/card-drafts/validate"
-    foreign = api_client.post(path, json=payload, headers=bearer("attacker-token"))
+    foreign = api_client.post(
+        path, json=payload, headers=bearer(api_client, "attacker-token")
+    )
     missing = api_client.post(
         f"/v1/decks/{uuid4()}/card-drafts/validate",
         json=payload,
-        headers=bearer("attacker-token"),
+        headers=bearer(api_client, "attacker-token"),
     )
     assert foreign.status_code == missing.status_code == 404
     assert foreign.json()["error"]["code"] == missing.json()["error"]["code"]
@@ -86,18 +88,20 @@ def test_invalid_foreign_and_archived_decks_create_no_learning_data(
         api_client.post(
             path,
             json={"cards": [{"term": "", "meaning": "test"}]},
-            headers=bearer("fixture-token"),
+            headers=bearer(api_client, "fixture-token"),
         ).status_code
         == 422
     )
     assert (
         api_client.delete(
-            f"/v1/decks/{FIXTURE_DECK_ID}", headers=bearer("fixture-token")
+            f"/v1/decks/{FIXTURE_DECK_ID}", headers=bearer(api_client, "fixture-token")
         ).status_code
         == 204
     )
     assert (
-        api_client.post(path, json=payload, headers=bearer("fixture-token")).status_code
+        api_client.post(
+            path, json=payload, headers=bearer(api_client, "fixture-token")
+        ).status_code
         == 409
     )
     assert counts(migrated_database_engine) == before
@@ -128,7 +132,7 @@ def test_bulk_locks_deck_once(api_client, card_count):
         response = api_client.post(
             f"/v1/decks/{FIXTURE_DECK_ID}/cards/bulk",
             json=bulk_payload(*(f"term-{index}" for index in range(card_count))),
-            headers=bearer("fixture-token"),
+            headers=bearer(api_client, "fixture-token"),
         )
     finally:
         event.remove(engine, "before_cursor_execute", record_deck_lock)
@@ -144,8 +148,12 @@ def test_bulk_creates_atomic_fresh_states_and_replays(
     before = counts(migrated_database_engine)
     payload = bulk_payload("second", "first")
     path = f"/v1/decks/{FIXTURE_DECK_ID}/cards/bulk"
-    created = api_client.post(path, json=payload, headers=bearer("fixture-token"))
-    replay = api_client.post(path, json=payload, headers=bearer("fixture-token"))
+    created = api_client.post(
+        path, json=payload, headers=bearer(api_client, "fixture-token")
+    )
+    replay = api_client.post(
+        path, json=payload, headers=bearer(api_client, "fixture-token")
+    )
     assert created.status_code == replay.status_code == 201
     assert created.json() == replay.json()
     results = created.json()["cards"]
@@ -174,7 +182,7 @@ def test_bulk_conflict_rolls_back_earlier_insert_and_replays_legacy_card(
     existing = api_client.post(
         "/v1/cards",
         json={"deck_id": FIXTURE_DECK_ID, "term": "old", "meaning": "old"},
-        headers=create_headers("fixture-token", key),
+        headers=create_headers(api_client, "fixture-token", key),
     )
     assert existing.status_code == 201
     before = counts(migrated_database_engine)
@@ -182,12 +190,16 @@ def test_bulk_conflict_rolls_back_earlier_insert_and_replays_legacy_card(
     payload["cards"][0]["idempotency_key"] = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
     payload["cards"][1]["idempotency_key"] = key
     path = f"/v1/decks/{FIXTURE_DECK_ID}/cards/bulk"
-    rejected = api_client.post(path, json=payload, headers=bearer("fixture-token"))
+    rejected = api_client.post(
+        path, json=payload, headers=bearer(api_client, "fixture-token")
+    )
     assert rejected.status_code == 409
     assert rejected.json()["error"]["code"] == "idempotency_key_reused"
     assert counts(migrated_database_engine) == before
     payload["cards"][1]["fields"] = {"term": "old", "meaning": "old"}
-    accepted = api_client.post(path, json=payload, headers=bearer("fixture-token"))
+    accepted = api_client.post(
+        path, json=payload, headers=bearer(api_client, "fixture-token")
+    )
     assert accepted.status_code == 201
     assert accepted.json()["cards"][1]["card"]["id"] == existing.json()["id"]
     assert counts(migrated_database_engine) == (before[0] + 1, before[1] + 1, before[2])
@@ -201,26 +213,32 @@ def test_bulk_rejects_foreign_archived_and_invalid_without_writes(
     payload = bulk_payload("valid", "invalid")
     assert (
         api_client.post(
-            path, json=payload, headers=bearer("attacker-token")
+            path, json=payload, headers=bearer(api_client, "attacker-token")
         ).status_code
         == 404
     )
     assert api_client.post(path, json=payload).status_code == 401
     payload["cards"][1]["fields"]["meaning"] = " "
     assert (
-        api_client.post(path, json=payload, headers=bearer("fixture-token")).status_code
+        api_client.post(
+            path, json=payload, headers=bearer(api_client, "fixture-token")
+        ).status_code
         == 422
     )
     payload = bulk_payload("one", "two")
     payload["cards"][1]["idempotency_key"] = payload["cards"][0]["idempotency_key"]
     assert (
-        api_client.post(path, json=payload, headers=bearer("fixture-token")).status_code
+        api_client.post(
+            path, json=payload, headers=bearer(api_client, "fixture-token")
+        ).status_code
         == 422
     )
-    api_client.delete(f"/v1/decks/{FIXTURE_DECK_ID}", headers=bearer("fixture-token"))
+    api_client.delete(
+        f"/v1/decks/{FIXTURE_DECK_ID}", headers=bearer(api_client, "fixture-token")
+    )
     assert (
         api_client.post(
-            path, json=bulk_payload("one"), headers=bearer("fixture-token")
+            path, json=bulk_payload("one"), headers=bearer(api_client, "fixture-token")
         ).status_code
         == 409
     )
@@ -260,7 +278,12 @@ def test_overlapping_bulk_batches_preserve_order_and_create_shared_card_once(
 
 def submit_bulk_with_deck_contention(api_client, engine, payloads):
     # Stabilize the fixture email so auth cannot serialize requests on the user row.
-    assert api_client.get("/v1/me", headers=bearer("fixture-token")).status_code == 200
+    assert (
+        api_client.get(
+            "/v1/me", headers=bearer(api_client, "fixture-token")
+        ).status_code
+        == 200
+    )
     barrier = Barrier(2)
     locked, release = Event(), Event()
 
@@ -274,7 +297,7 @@ def submit_bulk_with_deck_contention(api_client, engine, payloads):
         return api_client.post(
             f"/v1/decks/{FIXTURE_DECK_ID}/cards/bulk",
             json=payload,
-            headers=bearer("fixture-token"),
+            headers=bearer(api_client, "fixture-token"),
         )
 
     app_engine = api_client.app.state.database_engine
@@ -299,16 +322,20 @@ def test_bulk_exact_replay_after_archive_and_mixed_new_selection_rejected(
     payload["cards"][0]["idempotency_key"] = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
     payload["cards"][1]["idempotency_key"] = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
     path = f"/v1/decks/{FIXTURE_DECK_ID}/cards/bulk"
-    created = api_client.post(path, json=payload, headers=bearer("fixture-token"))
+    created = api_client.post(
+        path, json=payload, headers=bearer(api_client, "fixture-token")
+    )
     assert created.status_code == 201
     assert (
         api_client.delete(
-            f"/v1/decks/{FIXTURE_DECK_ID}", headers=bearer("fixture-token")
+            f"/v1/decks/{FIXTURE_DECK_ID}", headers=bearer(api_client, "fixture-token")
         ).status_code
         == 204
     )
     before = counts(migrated_database_engine)
-    replay = api_client.post(path, json=payload, headers=bearer("fixture-token"))
+    replay = api_client.post(
+        path, json=payload, headers=bearer(api_client, "fixture-token")
+    )
     assert replay.status_code == 201
     for original, repeated in zip(
         created.json()["cards"], replay.json()["cards"], strict=True
@@ -320,7 +347,9 @@ def test_bulk_exact_replay_after_archive_and_mixed_new_selection_rejected(
         assert repeated["card"]["deck"]["archived_at"] is not None
     payload["cards"].extend(bulk_payload("new")["cards"])
     payload["cards"][-1]["idempotency_key"] = "ffffffff-ffff-4fff-8fff-ffffffffffff"
-    rejected = api_client.post(path, json=payload, headers=bearer("fixture-token"))
+    rejected = api_client.post(
+        path, json=payload, headers=bearer(api_client, "fixture-token")
+    )
     assert rejected.status_code == 409
     assert rejected.json()["error"]["code"] == "deck_archived"
     assert counts(migrated_database_engine) == before
@@ -331,22 +360,24 @@ def test_bulk_key_cannot_replay_a_card_into_another_deck_or_owner(
 ):
     payload = bulk_payload("shared-key")
     path = f"/v1/decks/{FIXTURE_DECK_ID}/cards/bulk"
-    created = api_client.post(path, json=payload, headers=bearer("fixture-token"))
+    created = api_client.post(
+        path, json=payload, headers=bearer(api_client, "fixture-token")
+    )
     assert created.status_code == 201
     own_deck = api_client.post(
         "/v1/decks",
         json={"title": "Other", "target_language": "en", "explanation_language": "en"},
-        headers=create_headers("fixture-token"),
+        headers=create_headers(api_client, "fixture-token"),
     )
     assert own_deck.status_code == 201
     before = counts(migrated_database_engine)
     cross_deck = api_client.post(
         f"/v1/decks/{own_deck.json()['id']}/cards/bulk",
         json=payload,
-        headers=bearer("fixture-token"),
+        headers=bearer(api_client, "fixture-token"),
     )
     foreign_owner = api_client.post(
-        path, json=payload, headers=bearer("attacker-token")
+        path, json=payload, headers=bearer(api_client, "attacker-token")
     )
     assert cross_deck.status_code == 409
     assert cross_deck.json()["error"]["code"] == "idempotency_key_reused"
@@ -393,7 +424,7 @@ def test_bulk_and_archive_serialize_on_the_deck(
         return api_client.post(
             f"/v1/decks/{FIXTURE_DECK_ID}/cards/bulk",
             json=bulk_payload("one", "two"),
-            headers=bearer("fixture-token"),
+            headers=bearer(api_client, "fixture-token"),
         )
 
     def archive():
@@ -452,7 +483,7 @@ def test_bulk_embedding_failure_keeps_committed_cards(
     response = api_client.post(
         f"/v1/decks/{FIXTURE_DECK_ID}/cards/bulk",
         json=bulk_payload("one", "two"),
-        headers=bearer("fixture-token"),
+        headers=bearer(api_client, "fixture-token"),
     )
     assert response.status_code == 201
     expected = (before[0] + 2, before[1] + 2, before[2])

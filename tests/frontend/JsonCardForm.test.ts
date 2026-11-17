@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/svelte";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { authSession } from "$lib/stores/auth";
 import JsonCardForm from "$lib/components/JsonCardForm.svelte";
 import {
   ApiClientError,
@@ -11,11 +12,20 @@ import { JSON_QUEUE_KEY } from "$lib/management/json-cards";
 vi.mock("$env/dynamic/public", () => ({
   env: { PUBLIC_API_BASE_URL: "https://api.example.test" },
 }));
-vi.mock("$lib/auth", () => ({
-  getProfile: () => ({ sub: "owner" }),
-  getTokenIfValid: vi.fn(),
-  signOut: vi.fn(),
-}));
+vi.mock("$lib/auth", async () => {
+  const { get } = await import("svelte/store");
+  const { authSession } = await import("$lib/stores/auth");
+  return {
+    getProfile: () => {
+      const session = get(authSession);
+      return session.kind === "authenticated" || session.kind === "expired"
+        ? session.profile
+        : null;
+    },
+    getTokenIfValid: vi.fn(),
+    signOut: vi.fn(),
+  };
+});
 vi.mock("$lib/api/client", async (original) => ({
   ...(await original<typeof import("$lib/api/client")>()),
   createCards: vi.fn(),
@@ -51,12 +61,59 @@ async function preview() {
 }
 
 beforeEach(() => {
+  authSession.set({
+    kind: "authenticated",
+    profile: { id: 1, email: "owner@example.test" },
+  });
   localStorage.clear();
   vi.resetAllMocks();
   vi.mocked(validateCardDrafts).mockResolvedValue(structuredClone(drafts));
 });
 
 describe("JSON card authoring", () => {
+  it("retains preview drafts on expiry and disables bulk creation", async () => {
+    setup();
+    await preview();
+    authSession.set({
+      kind: "expired",
+      profile: { id: 1, email: "owner@example.test" },
+    });
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Add selected cards (2)" }),
+      ).toBeDisabled(),
+    );
+    expect(screen.getByText("learn", { exact: true })).toBeVisible();
+    expect(createCards).not.toHaveBeenCalled();
+  });
+  it("does not save a late preview response after the account changes", async () => {
+    let finish!: (value: typeof drafts) => void;
+    vi.mocked(validateCardDrafts).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    setup();
+    await fireEvent.input(screen.getByLabelText("Card JSON"), {
+      target: { value: JSON.stringify({ cards: drafts }) },
+    });
+    await fireEvent.click(
+      screen.getByRole("button", { name: "Validate and preview" }),
+    );
+    await waitFor(() => expect(validateCardDrafts).toHaveBeenCalledTimes(1));
+    authSession.set({
+      kind: "authenticated",
+      profile: { id: 2, email: "different@example.test" },
+    });
+    finish(drafts);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(localStorage.getItem(JSON_QUEUE_KEY)).toBeNull();
+    expect(
+      screen.queryByText("learn", { exact: true }),
+    ).not.toBeInTheDocument();
+  });
   it("formats without changing content or sending a request, including large number tokens", async () => {
     setup();
     const input = screen.getByLabelText("Card JSON") as HTMLTextAreaElement;
@@ -346,7 +403,7 @@ describe("JSON card authoring", () => {
   it("skips confirmed entries in a restored legacy queue", async () => {
     const restored = {
       version: 1 as const,
-      owner: "owner",
+      owner: "1",
       deckId: "deck",
       entries: drafts.map((fields, index) => ({
         fields,

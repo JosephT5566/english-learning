@@ -156,6 +156,10 @@ active English card。直到這個 preflight 通過後，我們才執行 v2 qual
 
 ### `run_deployed_evaluation.py`
 
+> 2026-11-17 retirement warning (#45): The live runner and token prompt described below
+> are historical and incompatible with current auth. Do not run live mode; see the
+> [current session contract](../../../../apps/api/README.md#application-sessions).
+
 這是 deployed semantic-search workload runner，會呼叫：
 
 ```text

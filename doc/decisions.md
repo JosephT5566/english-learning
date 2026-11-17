@@ -1016,3 +1016,83 @@ rerun. Q1-Q8 require no ui-design-gate because this is server-only configuration
 No migration, workflow, production, frontend or #77 rate-limit/cache/usage-ledger
 change is included. See [verification evidence](training/issues/100/verification.md)
 for local checks and their limits.
+
+## 2026-11-17: App-issued header sessions replace Google product bearers (#45)
+
+Approved by JosephT5566 in the issue #45 decision log. Google Identity Services credentials now
+have one purpose: exchange at `/v1/auth/session`. Product endpoints accept only opaque app access
+tokens; no legacy Google-bearer flag, cookie, CSRF token, custom domain, session-list UI or global
+sign-out UI is introduced. Cookies/SameSite/custom-domain approaches were considered and rejected
+for this separate static-frontend/API deployment. Header tokens keep the existing CORS boundary
+(`allow_credentials=False`) and avoid automatic browser credentials, while accepting the stated
+XSS exposure of script-readable refresh storage.
+
+Q1-Q9 are implemented or explicitly deferred as follows:
+
+1. Q1: default access 900 seconds; sliding refresh idle 604800 seconds and fixed absolute 2592000
+   seconds. Four bounded AUTH settings include reuse grace 10 seconds; rotation caps idle at the
+   absolute deadline and never extends it.
+2. Q2: access stays in module memory. Refresh uses `el_auth_refresh_v1`, and non-secret numeric
+   id/email/name/picture display data uses `el_auth_profile_v1`. Remove `gid_id_token`/`gid_exp` on
+   first load; a legacy session gets the one-time Session ended notice. Google credentials never
+   persist. PostgreSQL stores SHA-256 token hashes only.
+3. Q3: strict cutover, no dual accept. Release only when no review/unsent legacy pending is active;
+   migrate first, candidate machine smoke, API promotion, immediately matching Pages, then real GIS
+   checks. Rollback restores the compatible API and previous Pages commit together. New tables
+   can remain; revoke retained sessions before roll-forward if needed.
+4. Q4: dedicated `el-release-smoke@<project>.iam.gserviceaccount.com`, audience
+   `https://<api-host>/release-smoke` and the three RELEASE_SMOKE settings. The maintainer grants
+   only narrow workloadIdentityUser impersonation for the exact smoke workflow/main/production
+   principal; no database/deployment role. The existing deploy identity only resolves candidate.
+5. Q5: refresh rotation is row-locked. Rotated-token reuse within 10-second default grace returns
+   409 `refresh_superseded`, issuing/revoking nothing. Outside grace it returns 401 `refresh_reused`,
+   revokes the family and deletes its access hashes. Unknown/expired/revoked refresh is invalid.
+6. Q6: strict CSP is deferred under its stop condition. Browser `ajv.compile` currently requires
+   the Function constructor; the installed schema/options fail with string code generation
+   disabled. No unsafe script/style source is added and no policy is shipped. SvelteKit's static
+   bootstrap can use hashes; Ajv runtime compilation must first be replaced in the
+   [CSP follow-up](issues/issue-45-csp-followup.md). Real GIS/CSP checks remain open.
+7. Q7: machine smoke owns one persistent synthetic deck; every successful run creates/reviews and
+   archives its card, retaining review events. Failure attempts cleanup and blocks promotion;
+   failed cleanup requires maintainer investigation. No hard-delete endpoint or naturally due
+   human card is used, and no Vertex request runs.
+8. Q8: recheck the human allowlist on every app access request and refresh, revoking on removal.
+   Bind the server-derived internal owner to RLS only after auth succeeds. Smoke checks configured
+   synthetic subject/email and presence of its identity settings instead of the human allowlist.
+9. Q9: smoke uses normal exchange/access/refresh/logout. Its Google ID token, like a human Google
+   token, is rejected as a direct product bearer. Guest-export identity/audience remain separate.
+
+The browser uses per-tab single flight, Web Locks with token reread/fallback, bounded 409 and
+access-expiry retries, and storage-event sign-out. Same-user explicit sign-in replays an immutable
+pending command; another internal id clears it with count. SSE authenticates before opening and
+continues through mid-stream expiry. Tokens/auth bodies/responses are never logged. Memory-only
+access reduces persistence but cannot protect a running XSS or localStorage refresh; rotation,
+allowlist checks, logout and maintainer revocation limit exposure, not eliminate it. The
+[architecture sequence/threat model](architecture.md#app-session-authentication-and-threat-model-45-2026-11-17)
+and [release runbook](training/issues/issue-26/runbook.md) define the current boundaries.
+
+Local tests and operator-reported integration/browser runs do not establish deployed GIS, WIF,
+production cutover, real browser timing or CSP success; those remain explicit e2e follow-ups.
+
+## 2026-11-17: Explicit guest choice from session recovery supersedes "without guest fallback" (#45)
+
+This supersedes the 2026-10-22 text at original lines 349-351, "without guest fallback"; that
+historical entry remains unchanged. Per JosephT5566's #45 UI decisions (option C plus guest path),
+guest still requires an explicit choice, which can now be made from the expired-session bar.
+It is never inferred from expiry, missing credentials, sign-out or an API failure.
+
+Pages remain viewable after expiry and writes are disabled. The global amber status bar has
+primary Sign in again and secondary Continue as guest; the guest choice also appears on exchange
+failure, allowlist rejection with rejected email, explicit sign-out and other-tab sign-out.
+Notices do not auto-dismiss. There is no Switch account item or general sign-out confirmation;
+pending answers trigger a count warning explaining same-account sending and different-account
+clearing.
+
+Choosing guest first drops app tokens, keeps pending answers/profile and selects the existing
+30-minute absolute sessionStorage `/review` practice. Guest never reads/writes pending answer
+bodies or owner APIs; safe metadata supplies the non-dismissible Sign in to send bar. The fixed
+24-hour pending deadline is not renewed, and expired unsent answers announce once on next load.
+Same internal id signing in explicitly sends the exact retained command; a different id clears it
+and reports count. The guest header has a visible Sign in pill, menu-only time remaining and Leave
+guest practice. Leaving retains pending and returns to signed-out home. Static cards, memory-only
+guest answers, no persistence and base-aware navigation retain the existing guest contract.

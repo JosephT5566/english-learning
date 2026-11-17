@@ -71,6 +71,8 @@ def error_response(
     request.state.error_code = code
     response_headers = dict(headers) if headers is not None else {}
     response_headers["X-Request-ID"] = str(request_id)
+    if request.url.path.startswith("/v1/auth/"):
+        response_headers["Cache-Control"] = "no-store"
     body = ErrorResponse(
         error=ErrorBody(
             code=code,

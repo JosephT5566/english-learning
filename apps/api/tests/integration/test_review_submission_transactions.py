@@ -17,6 +17,7 @@ from sqlalchemy.exc import SQLAlchemyError
 import app.reviews as reviews_module
 from app.auth import VerifiedGoogleIdentity
 from app.main import create_app
+from tests.integration.auth_helpers import access_headers
 from tests.integration.test_multilingual_domain_fixture import load_multilingual_fixture
 
 pytestmark = [
@@ -59,7 +60,7 @@ def api_client(
     monkeypatch.setattr(reviews_module, "review_clock", lambda: REVIEWED_AT)
     with TestClient(create_app(), raise_server_exceptions=False) as client:
         client.app.state.token_verifier = FixtureTokenVerifier()
-        client.headers["Authorization"] = "Bearer fixture-token"
+        client.headers.update(access_headers(client, "fixture-token"))
         yield client
 
 
@@ -91,7 +92,7 @@ def post_review(
         "/v1/reviews",
         json=body or review_body(),
         headers={
-            "Authorization": f"Bearer {token}",
+            **access_headers(client, token),
             "Idempotency-Key": key,
         },
     )
@@ -468,3 +469,34 @@ def test_concurrent_same_key_replays_one_committed_result(
     assert [response.status_code for response in responses] == [200, 200]
     assert responses[0].json() == responses[1].json()
     assert review_counts(migrated_database_engine) == (2, 3)
+
+
+def test_exact_review_replay_survives_access_expiry_and_refresh(
+    api_client, monkeypatch
+):
+    from app import auth
+
+    clock = [datetime(2026, 11, 17, tzinfo=UTC)]
+    monkeypatch.setattr(auth, "auth_clock", lambda: clock[0])
+    issued = api_client.post("/v1/auth/session", json={"credential": "fixture-token"})
+    assert issued.status_code == 200
+    tokens = issued.json()
+    key = str(uuid4())
+    headers = {
+        "Authorization": "Bearer " + tokens["access_token"],
+        "Idempotency-Key": key,
+    }
+    first = api_client.post("/v1/reviews", headers=headers, json=review_body())
+    assert first.status_code == 200
+    clock[0] = clock[0].replace(hour=1)
+    expired = api_client.post("/v1/reviews", headers=headers, json=review_body())
+    assert expired.status_code == 401
+    assert expired.json()["error"]["code"] == "access_token_expired"
+    rotated = api_client.post(
+        "/v1/auth/refresh", json={"refresh_token": tokens["refresh_token"]}
+    )
+    assert rotated.status_code == 200
+    headers["Authorization"] = "Bearer " + rotated.json()["access_token"]
+    replay = api_client.post("/v1/reviews", headers=headers, json=review_body())
+    assert replay.status_code == 200
+    assert replay.json() == first.json()

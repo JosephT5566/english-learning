@@ -19,6 +19,7 @@ from app.embedding_backfill import run as run_backfill
 from app.embeddings import process_card
 from app.main import create_app
 from app.semantic_text import DIMENSIONS
+from tests.integration.auth_helpers import access_headers
 from tests.integration.test_learning_cards import (
     insert_card,
     insert_deck,
@@ -42,8 +43,8 @@ class Verifier:
         return VerifiedGoogleIdentity(token, f"{token}@example.test")
 
 
-def headers(token: str = "alice") -> dict[str, str]:
-    return {"Authorization": f"Bearer {token}"}
+def headers(client: TestClient, token: str = "alice") -> dict[str, str]:
+    return access_headers(client, token)
 
 
 @pytest.fixture
@@ -80,7 +81,7 @@ def count_embeddings(engine: Engine, owner: int) -> int:
 def test_new_user_grant_and_withdraw(
     client: TestClient, migrated_database_engine: Engine
 ):
-    response = client.get(CONSENT, headers=headers())
+    response = client.get(CONSENT, headers=headers(client))
     assert response.status_code == 200
     assert response.json() == {"genai_consent_at": None}
     with migrated_database_engine.connect() as connection:
@@ -88,17 +89,17 @@ def test_new_user_grant_and_withdraw(
             connection.execute(text("SELECT genai_consent_at FROM users")).scalar_one()
             is None
         )
-    grant = client.put(CONSENT, headers=headers())
+    grant = client.put(CONSENT, headers=headers(client))
     assert grant.status_code == 200
     assert (
         datetime.fromisoformat(grant.json()["genai_consent_at"]).utcoffset() is not None
     )
-    assert client.put(CONSENT, headers=headers()).json() == grant.json()
-    assert client.get(CONSENT, headers=headers()).json() == grant.json()
-    withdrawal = client.delete(CONSENT, headers=headers())
+    assert client.put(CONSENT, headers=headers(client)).json() == grant.json()
+    assert client.get(CONSENT, headers=headers(client)).json() == grant.json()
+    withdrawal = client.delete(CONSENT, headers=headers(client))
     assert withdrawal.status_code == 200
     assert withdrawal.json() == {"genai_consent_at": None}
-    assert client.get(CONSENT, headers=headers()).json() == withdrawal.json()
+    assert client.get(CONSENT, headers=headers(client)).json() == withdrawal.json()
 
 
 def test_search_without_consent_never_calls_provider(
@@ -111,7 +112,9 @@ def test_search_without_consent_never_calls_provider(
         lambda *a, **kw: calls.append(a) or [1.0] * DIMENSIONS,
     )
     response = client.post(
-        SEARCH, headers=headers(), json={"query": "an idea", "target_language": "en"}
+        SEARCH,
+        headers=headers(client),
+        json={"query": "an idea", "target_language": "en"},
     )
     assert response.status_code == 403
     assert response.json()["error"]["code"] == "genai_consent_required"
@@ -125,9 +128,9 @@ def test_card_writes_only_embed_with_consent(
     monkeypatch: pytest.MonkeyPatch,
     consented: bool,
 ):
-    owner = client.get("/v1/me", headers=headers()).json()["id"]
+    owner = client.get("/v1/me", headers=headers(client)).json()["id"]
     if consented:
-        assert client.put(CONSENT, headers=headers()).status_code == 200
+        assert client.put(CONSENT, headers=headers(client)).status_code == 200
     deck = insert_deck(migrated_database_engine, owner_id=owner)
     calls = []
     monkeypatch.setattr(
@@ -137,13 +140,13 @@ def test_card_writes_only_embed_with_consent(
     )
     response = client.post(
         "/v1/cards",
-        headers={**headers(), "Idempotency-Key": str(uuid4())},
+        headers={**headers(client), "Idempotency-Key": str(uuid4())},
         json={"deck_id": str(deck), "term": "example", "meaning": "first"},
     )
     assert response.status_code == 201
     updated = client.patch(
         f"/v1/cards/{response.json()['id']}",
-        headers=headers(),
+        headers=headers(client),
         json={"version": response.json()["version"], "meaning": "second"},
     )
     assert updated.status_code == 200
@@ -182,9 +185,9 @@ def test_withdraw_deletes_only_own_embeddings_and_blocks_search(
     engine = migrated_database_engine
     owners = []
     for token in ("alice", "bob"):
-        owner = client.get("/v1/me", headers=headers(token)).json()["id"]
+        owner = client.get("/v1/me", headers=headers(client, token)).json()["id"]
         owners.append(owner)
-        assert client.put(CONSENT, headers=headers(token)).status_code == 200
+        assert client.put(CONSENT, headers=headers(client, token)).status_code == 200
         _, card = card_for(engine, owner)
         assert (
             process_card(
@@ -202,39 +205,43 @@ def test_withdraw_deletes_only_own_embeddings_and_blocks_search(
         lambda *a, **kw: calls.append(a) or [1.0] * DIMENSIONS,
     )
     payload = {"query": "an idea", "target_language": "en"}
-    assert client.post(SEARCH, headers=headers(), json=payload).status_code == 200
+    assert client.post(SEARCH, headers=headers(client), json=payload).status_code == 200
     assert len(calls) == 1
-    assert client.delete(CONSENT, headers=headers()).status_code == 200
+    assert client.delete(CONSENT, headers=headers(client)).status_code == 200
     assert count_embeddings(engine, owners[0]) == 0
     assert count_embeddings(engine, owners[1]) == 1
-    assert client.post(SEARCH, headers=headers(), json=payload).status_code == 403
+    assert client.post(SEARCH, headers=headers(client), json=payload).status_code == 403
     assert len(calls) == 1
     assert (
-        client.get(CONSENT, headers=headers("bob")).json()["genai_consent_at"]
+        client.get(CONSENT, headers=headers(client, "bob")).json()["genai_consent_at"]
         is not None
     )
 
 
 def test_consent_routes_cannot_target_another_user(client: TestClient):
-    bob = client.get("/v1/me", headers=headers("bob")).json()["id"]
-    assert client.put(CONSENT, headers=headers("bob")).status_code == 200
+    bob = client.get("/v1/me", headers=headers(client, "bob")).json()["id"]
+    assert client.put(CONSENT, headers=headers(client, "bob")).status_code == 200
     for method in ("get", "put", "delete"):
         assert client.request(method, CONSENT).status_code == 401
         assert (
             client.request(
-                method, f"/v1/users/{bob}/genai-consent", headers=headers()
+                method, f"/v1/users/{bob}/genai-consent", headers=headers(client)
             ).status_code
             == 404
         )
         response = client.request(
-            method, CONSENT, headers=headers(), params={"owner_id": bob}
+            method, CONSENT, headers=headers(client), params={"owner_id": bob}
         )
         assert response.status_code == 200
         assert (
-            client.get(CONSENT, headers=headers("bob")).json()["genai_consent_at"]
+            client.get(CONSENT, headers=headers(client, "bob")).json()[
+                "genai_consent_at"
+            ]
             is not None
         )
-    assert client.get(CONSENT, headers=headers()).json()["genai_consent_at"] is None
+    assert (
+        client.get(CONSENT, headers=headers(client)).json()["genai_consent_at"] is None
+    )
 
 
 @pytest.mark.parametrize("regrant", [False, True])
@@ -242,8 +249,8 @@ def test_running_embedding_cannot_undo_withdrawal(
     client: TestClient, migrated_database_engine: Engine, regrant: bool
 ):
     engine = migrated_database_engine
-    owner = client.get("/v1/me", headers=headers()).json()["id"]
-    assert client.put(CONSENT, headers=headers()).status_code == 200
+    owner = client.get("/v1/me", headers=headers(client)).json()["id"]
+    assert client.put(CONSENT, headers=headers(client)).status_code == 200
     _, card = card_for(engine, owner)
     entered, release = Event(), Event()
 
@@ -258,10 +265,10 @@ def test_running_embedding_cannot_undo_withdrawal(
         )
         try:
             assert entered.wait(10)
-            assert client.delete(CONSENT, headers=headers()).status_code == 200
+            assert client.delete(CONSENT, headers=headers(client)).status_code == 200
             assert count_embeddings(engine, owner) == 0
             if regrant:
-                assert client.put(CONSENT, headers=headers()).status_code == 200
+                assert client.put(CONSENT, headers=headers(client)).status_code == 200
         finally:
             release.set()
         assert result.result(timeout=10) in {"skipped", "stale"}

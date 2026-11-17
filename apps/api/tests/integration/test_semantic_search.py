@@ -12,6 +12,7 @@ from app.database import create_database_session_factory
 from app.embeddings import EmbeddingFailure, process_card
 from app.main import create_app
 from app.semantic_text import DIMENSIONS
+from tests.integration.auth_helpers import access_headers
 from tests.integration.test_learning_cards import (
     insert_card,
     insert_deck,
@@ -47,12 +48,15 @@ def search_client(
     monkeypatch.setenv("GOOGLE_ALLOWED_EMAILS", "search@example.test")
     with TestClient(create_app(), raise_server_exceptions=False) as client:
         client.app.state.token_verifier = Verifier()
-        assert client.put("/v1/me/genai-consent", headers=headers()).status_code == 200
+        assert (
+            client.put("/v1/me/genai-consent", headers=headers(client)).status_code
+            == 200
+        )
         yield client
 
 
-def headers() -> dict[str, str]:
-    return {"Authorization": "Bearer owner-token"}
+def headers(client: TestClient) -> dict[str, str]:
+    return access_headers(client, "owner-token")
 
 
 def owner_id(engine: Engine) -> int:
@@ -91,7 +95,9 @@ def test_ranked_results_are_owner_and_eligibility_scoped(
     migrated_database_engine: Engine,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    assert search_client.get("/v1/me", headers=headers()).status_code == 200
+    assert (
+        search_client.get("/v1/me", headers=headers(search_client)).status_code == 200
+    )
     owner = owner_id(migrated_database_engine)
     deck = insert_deck(migrated_database_engine, owner_id=owner)
     nearest = add_indexed_card(
@@ -180,7 +186,7 @@ def test_ranked_results_are_owner_and_eligibility_scoped(
 
     response = search_client.post(
         "/v1/cards/semantic-search",
-        headers=headers(),
+        headers=headers(search_client),
         json={
             "query": "similar idea",
             "target_language": "en",
@@ -213,7 +219,7 @@ def test_invalid_auth_and_body_do_not_call_provider(
     )
     malformed = search_client.post(
         "/v1/cards/semantic-search",
-        headers=headers(),
+        headers=headers(search_client),
         json={"query": " ", "target_language": "en", "limit": 21},
     )
     assert unauthenticated.status_code == 401
@@ -226,7 +232,9 @@ def test_provider_failure_is_retryable_not_empty(
     migrated_database_engine: Engine,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    assert search_client.get("/v1/me", headers=headers()).status_code == 200
+    assert (
+        search_client.get("/v1/me", headers=headers(search_client)).status_code == 200
+    )
     owner = owner_id(migrated_database_engine)
     deck = insert_deck(migrated_database_engine, owner_id=owner)
     add_indexed_card(
@@ -245,7 +253,7 @@ def test_provider_failure_is_retryable_not_empty(
     )
     response = search_client.post(
         "/v1/cards/semantic-search",
-        headers=headers(),
+        headers=headers(search_client),
         json={"query": "valid query", "target_language": "en"},
     )
     assert response.status_code == 503
@@ -260,7 +268,9 @@ def test_corpus_without_current_embeddings_skips_provider_and_ranking(
     monkeypatch: pytest.MonkeyPatch,
     corpus: str,
 ) -> None:
-    assert search_client.get("/v1/me", headers=headers()).status_code == 200
+    assert (
+        search_client.get("/v1/me", headers=headers(search_client)).status_code == 200
+    )
     owner = owner_id(migrated_database_engine)
     deck = insert_deck(migrated_database_engine, owner_id=owner)
     if corpus == "unindexed":
@@ -319,7 +329,7 @@ def test_corpus_without_current_embeddings_skips_provider_and_ranking(
     try:
         response = search_client.post(
             "/v1/cards/semantic-search",
-            headers=headers(),
+            headers=headers(search_client),
             json={"query": "nothing indexed", "target_language": "en"},
         )
     finally:
@@ -350,7 +360,7 @@ def test_unconfigured_provider_still_reports_unavailable_for_empty_corpus(
 
     response = search_client.post(
         "/v1/cards/semantic-search",
-        headers=headers(),
+        headers=headers(search_client),
         json={"query": "nothing indexed", "target_language": "en"},
     )
 
@@ -364,7 +374,9 @@ def test_foreign_and_archived_decks_stop_before_provider(
     migrated_database_engine: Engine,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    assert search_client.get("/v1/me", headers=headers()).status_code == 200
+    assert (
+        search_client.get("/v1/me", headers=headers(search_client)).status_code == 200
+    )
     owner = owner_id(migrated_database_engine)
     foreign_owner = insert_user(migrated_database_engine)
     foreign_deck = insert_deck(migrated_database_engine, owner_id=foreign_owner)
@@ -387,7 +399,7 @@ def test_foreign_and_archived_decks_stop_before_provider(
 
     foreign_response = search_client.post(
         "/v1/cards/semantic-search",
-        headers=headers(),
+        headers=headers(search_client),
         json={
             "query": "foreign deck",
             "target_language": "en",
@@ -399,7 +411,7 @@ def test_foreign_and_archived_decks_stop_before_provider(
 
     archived_response = search_client.post(
         "/v1/cards/semantic-search",
-        headers=headers(),
+        headers=headers(search_client),
         json={
             "query": "archived deck",
             "target_language": "en",

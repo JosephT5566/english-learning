@@ -1,3 +1,4 @@
+import { seedSignedIn, signInAs, fixtureUserId } from "./auth-fixture";
 import { expect, test, type Page } from "@playwright/test";
 
 let root = "";
@@ -11,7 +12,23 @@ test.beforeEach(({ page, baseURL }, testInfo) => {
     throw error;
   });
 });
-const pending = '{"sentinel":"private pending bytes"}';
+const pendingCreatedAt = Date.now();
+const pending = JSON.stringify({
+  version: 2,
+  ownerId: fixtureUserId("private-account"),
+  idempotencyKey: "11111111-1111-4111-8111-111111111111",
+  payload: {
+    items: [
+      {
+        card_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        decision: "yes",
+        expected_version: 1,
+      },
+    ],
+  },
+  createdAt: pendingCreatedAt,
+  expiresAt: pendingCreatedAt + 86_400_000,
+});
 const daily = "private-daily-sentinel";
 const activityKey = "review_practiced_on_v1:private-account";
 const publicPath = "**/guest/cards.json";
@@ -22,17 +39,22 @@ const emptySnapshot = {
 };
 
 async function seed(page: Page, signedIn = false) {
+  if (signedIn) await seedSignedIn(page, "empty");
   await page.addInitScript(
-    ({ pending, daily, signedIn, activityKey }) => {
-      localStorage.setItem("pending_review_submission_v1", pending);
+    ({ pending, daily, activityKey }) => {
+      localStorage.setItem("pending_review_submission_v2", pending);
+      const command = JSON.parse(pending);
+      localStorage.setItem(
+        "el_review_pending_meta_v1",
+        JSON.stringify({
+          count: 1,
+          ownerId: command.ownerId,
+          email: "private-account@example.invalid",
+          expiresAt: command.expiresAt,
+        }),
+      );
       localStorage.setItem("isTestedToday", daily);
       localStorage.setItem(activityKey, daily);
-      if (signedIn) {
-        const exp = Math.floor(Date.now() / 1000) + 3600;
-        const token = `e30.${btoa(JSON.stringify({ sub: "browser-test-empty", exp }))}.test`;
-        localStorage.setItem("gid_id_token", token);
-        localStorage.setItem("gid_exp", String(exp));
-      }
     },
     { pending, daily, signedIn, activityKey },
   );
@@ -41,6 +63,7 @@ async function seed(page: Page, signedIn = false) {
 async function enterGuest(page: Page) {
   await page.goto(`${root}/`);
   await page
+    .locator(".review-invitation")
     .getByRole("button", { name: "Continue as guest", exact: true })
     .click();
   await expect(page).toHaveURL(new RegExp(`${root}/review$`));
@@ -114,7 +137,7 @@ for (const width of [1280, 390]) {
     expect(
       await page.evaluate(
         (activityKey) => [
-          localStorage.getItem("pending_review_submission_v1"),
+          localStorage.getItem("pending_review_submission_v2"),
           localStorage.getItem("isTestedToday"),
           localStorage.getItem(activityKey),
         ],
@@ -212,17 +235,11 @@ test("guest completion is not restored into a later private review", async ({
 }) => {
   await enterGuest(page);
   await answerBatch(page);
-  await page.evaluate(() => {
-    const exp = Math.floor(Date.now() / 1000) + 3600;
-    localStorage.setItem(
-      "gid_id_token",
-      `e30.${btoa(JSON.stringify({ sub: "browser-test-empty", exp }))}.test`,
-    );
-    localStorage.setItem("gid_exp", String(exp));
-  });
+  await signInAs(page, "empty");
   const mutations: string[] = [];
   page.on("request", (request) => {
-    if (request.method() === "POST") mutations.push(request.url());
+    if (request.method() === "POST" && !request.url().includes("/v1/auth/"))
+      mutations.push(request.url());
   });
   await page.goto(`${root}/review`);
   await expect(
@@ -247,7 +264,9 @@ test("navigating away cancels the pending guest session", async ({ page }) => {
   await expect(page.getByText("Loading cards...")).toBeVisible();
   await page.getByRole("link", { name: "Home", exact: true }).click();
   await expect(
-    page.getByRole("button", { name: "Continue as guest", exact: true }),
+    page
+      .locator(".review-invitation")
+      .getByRole("button", { name: "Continue as guest", exact: true }),
   ).toBeVisible();
   await page.waitForTimeout(600);
   expect(calls).toBe(1);
@@ -259,14 +278,7 @@ test("a later authenticated submission contains only its newly answered owned ca
 }) => {
   await enterGuest(page);
   await answerBatch(page);
-  await page.evaluate(() => {
-    const exp = Math.floor(Date.now() / 1000) + 3600;
-    localStorage.setItem(
-      "gid_id_token",
-      `e30.${btoa(JSON.stringify({ sub: "browser-test-success", exp }))}.test`,
-    );
-    localStorage.setItem("gid_exp", String(exp));
-  });
+  await signInAs(page, "success");
   await page.goto(`${root}/review`);
   await expect(page.getByText("resilient", { exact: true })).toBeVisible();
   await page.locator(".swipe--card").click();
@@ -393,7 +405,7 @@ for (const width of [1280, 390]) {
     ).toBeNull();
     expect(
       await page.evaluate(() => [
-        localStorage.getItem("pending_review_submission_v1"),
+        localStorage.getItem("pending_review_submission_v2"),
         localStorage.getItem("isTestedToday"),
       ]),
     ).toEqual([pending, daily]);

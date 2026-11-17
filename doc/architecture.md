@@ -1,6 +1,6 @@
 # Architecture Memory
 
-Last updated: 2026-11-13
+Last updated: 2026-11-17
 
 ## Stack
 
@@ -27,7 +27,7 @@ Last updated: 2026-11-13
 - `src/routes/search/+page.svelte`: authenticated multilingual keyword search plus an explicit
   English-only semantic mode with coverage and retry states; card navigation remains base-path aware.
 - `src/routes/Header.svelte`: base-path-aware primary navigation used by the shared layout.
-- `src/lib/auth.ts`: Google Identity Services initialization, token storage, token validation, profile lookup, sign-out.
+- `src/lib/auth.ts`: GIS exchange, memory-only app access, rotating refresh, cached display profile, cross-tab coordination and sign-out.
 - `src/lib/api/client.ts`: authenticated FastAPI transport, bearer-header handling, response
   validation, and typed errors.
 - `src/lib/api/generated.ts`: checked-in TypeScript generated from FastAPI's checked-in OpenAPI
@@ -67,8 +67,7 @@ Last updated: 2026-11-13
 - `apps/api/app/request_context.py`: per-request UUID generation and bounded JSON completion
   events for HTTP requests and committed/replayed review submissions.
 - `apps/api/app/health.py`: database-independent liveness and database-aware readiness contracts.
-- `apps/api/app/auth.py`: Google ID-token verification, backend verified-email allowlisting, stable
-  subject to internal-user mapping, and the reusable authenticated-user dependency.
+- `apps/api/app/auth.py`: Google verification at exchange, human/smoke principal checks, hashed app sessions, refresh rotation/reuse and the owner-binding access-token dependency.
 - `apps/api/app/reads.py`: authenticated owner-scoped deck/card/due-review routes, response models,
   normalized multilingual card substring filtering, stable tuple ordering, and safe database-failure
   translation.
@@ -159,11 +158,10 @@ Last updated: 2026-11-13
   immutable commit-tagged image as a verified zero-traffic Cloud Run candidate; Cloud Run assigns a
   fresh revision name per deployment attempt so a failed attempt can be retried without rebuilding.
 - `.github/workflows/smoke-api-candidate.yml`: protected manual WIF workflow that resolves the tagged
-  zero-traffic candidate and runs authenticated smoke checks with a supplied short-lived Google ID token.
+  zero-traffic candidate with the deploy SA, then mints a separate WIF smoke-SA ID token and exchanges it for app tokens; no operator credential input.
 - `deploy/cloud-run/release.sh`: clean-commit Cloud Build, single-task migration, and tagged
   zero-traffic Cloud Run candidate release boundary.
-- `deploy/cloud-run/smoke.sh`: public health, authenticated owned-read, and explicitly opted-in
-  idempotent review-write smoke checks for a candidate revision.
+- `deploy/cloud-run/smoke.sh`: health, Google-bearer rejection, exchange, synthetic owned reads/writes, exact review replay, archival, rotation/reuse and logout; safe summaries only.
 - `deploy/cloud-run/release.env.example`: non-secret Cloud Run/Neon resource-name and public runtime
   configuration contract. Database URLs remain version-pinned Secret Manager values.
 - `doc/training/issues/issue-26/github-gcp-neon-maintenance.zh-TW.md`: centralized GitHub variable,
@@ -218,9 +216,10 @@ writes have no fallback or dual-write path.
 
 ## Backend Read Flow
 
-1. Every product route under `/v1` verifies a Google bearer token for signature, issuer, configured
-   audience, expiry, and verified-email status. Google `sub` resolves a generated internal user ID;
-   email remains mutable profile data.
+1. Product routes accept only app access tokens. An indexed SHA-256 lookup joins the access token,
+   session and user; expiry/revocation and the current principal configuration are checked before
+   binding the internal owner. Google signature/claim verification occurs at exchange, never on
+   a product bearer request. The separate machine guest-export dependency is unchanged.
 2. Request validation rejects unsupported languages, invalid resource IDs, unsupported filters,
    and malformed or query-incompatible cursors before running the list query.
 3. Every SQL statement scopes by the resolved owner. Explicit deck, card, and tag lookups return the
@@ -236,8 +235,8 @@ writes have no fallback or dual-write path.
 
 ## Backend Write And Authorization Flow
 
-1. The reusable current-user dependency verifies the bearer token and upserts `users` by unique
-   `google_subject` in the request transaction.
+1. Exchange maps the verified external subject to `users`; the reusable current-user dependency
+   resolves an app access token to that internal owner and binds the transaction-local RLS context.
 2. Reads and mutations combine client-addressable resource IDs with the server-derived internal
    owner ID. Missing and cross-owner details both return the same non-disclosing `404`.
 3. Deck and card creates bind ownership from authenticated context. Extra request fields are
@@ -366,9 +365,9 @@ are answered by outer middleware and are not included in this event stream.
 Cloud Run platform request logs remain a separate privacy and retention audit
 boundary; deployed JSON ingestion and lookup are pending Issue #27 verification.
 
-## Data Contracts
+## Legacy Sheet data contracts (historical)
 
-`WordItem` is the core sheet-backed model. Important fields:
+`WordItem` is the historical Sheet model, retained for rollback context. Important fields:
 
 - `id`: sheet row/item identifier used for updates.
 - `content`: English word or phrase.
@@ -400,14 +399,15 @@ Review update payload shape is:
 
 ## Data Flow
 
-1. `/review` selects `OwnedReview.svelte` for an authenticated subject. That component asks the typed client for up to ten English due cards.
-2. The client sends `GET /v1/reviews/due` with the current ID token only in `Authorization` and
+1. `/review` selects `OwnedReview.svelte` for an authenticated internal user id. That component asks the typed client for up to ten English due cards.
+2. The client sends `GET /v1/reviews/due` with the memory-only app access token in `Authorization` and
    validates the successful page contract before returning it.
 3. The page shuffles the due cards and `SwipeCards.svelte` retains the flip/swipe presentation.
 4. Each answered back face emits only `card_id`, `decision`, and the due response's
    `review_state.version`; no scheduling value is calculated in the browser.
-5. The first submit creates and persists one account-scoped body/key pair. The client sends that
-   exact body to `POST /v1/reviews` with `Idempotency-Key`.
+5. Authenticated answers are saved locally under the internal user id as they are graded, keeping
+   the original 24-hour deadline. Submission/replay locks the exact body/key against further edits.
+   The client sends it to `POST /v1/reviews` with the same `Idempotency-Key` on retry.
 6. Network, authentication, retryable provider/database, and ambiguous response failures do not
    produce success. Eligible manual retries reuse the persisted body/key pair.
 7. A conflict retires the old command and refetches due state; a validated `ReviewResult` clears it
@@ -443,7 +443,7 @@ Review update payload shape is:
    centered Bits UI dialog up to 60rem wide on desktop and full-screen at 640px or narrower.
    Its header stays visible while the body scrolls; the existing mobile single-column form remains.
    Language-specific fields remain conditional within the shared form.
-2. Before create, the browser stores one exact body/UUID key for the current Google subject. An
+2. Before create, the browser stores one exact body/UUID key for the current internal user id. An
    unclear, retryable, or authentication result keeps and locks that command; an exact manual retry
    sends the same pair. Confirmation or definite rejection clears it.
 3. Edits submit the last-read resource version. A `409 version_conflict` keeps the user's values and
@@ -493,29 +493,139 @@ Review update payload shape is:
   using the existing hash-guarded embedding operation. They do not hold the card transaction or
   delay confirmation; process interruption and provider failure use the existing explicit backfill.
 
-## Auth Flow
+## App-session authentication and threat model (#45, 2026-11-17)
 
-- The auth store models initializing, signed-out, guest and authenticated sessions. Root layout
-  hydrates credentials before routing. Valid Google credentials take priority over a guest choice.
-- `enterGuestSession()` stores an absolute deadline 30 minutes after explicit selection in
-  tab-scoped `sessionStorage`. Hydration, focus and the existing one-second watcher check it;
-  reload and activity never renew it. Expired, legacy or malformed markers are removed.
-  Storage failure keeps the user on home with a recoverable message. This is UI state only.
-- Guest expiry transitions to signed-out, unmounts guest review (aborting requests), and returns
-  home with base-aware navigation. Valid authentication takes priority. Primary navigation is
-  hidden while initializing or signed-out, retaining header space and the account avatar.
-- The account avatar opens an accessible sign-in/sign-out menu. Shared Google sign-in UI accepts
-  the existing client-ID/verified-email/whitelist contract. Successful login clears the guest choice.
-- `getTokenIfValid()` rejects missing or near-expired tokens, clears stale credentials, and marks
-  the auth session signed-out. Cross-tab credential changes synchronize the current session.
-- API `401` signs out only when the request token is still the current token. A delayed old-token
-  `401` cannot remove a newer account's credentials. Current-token sign-out does not navigate or
-  remove a pending review. Explicit menu sign-out
-  additionally removes the guest choice and returns home. Same-subject login can retry an exact
-  pending command; another subject retires it before private review is initialized.
-- `/review` owns fresh-entry protection. Once private review starts, signed-out state preserves
-  its controller for reauthentication. Subject changes remount it; stale requests cannot update
-  the new account's UI or clear its pending command. Backend identity/ownership remain authoritative.
+`src/lib/auth.ts`, `src/lib/api/client.ts` and `apps/api/app/auth.py` own this boundary.
+Google proves identity only at exchange. Product requests use opaque app tokens, with no legacy
+Google-bearer compatibility flag, cookie, CSRF token, refresh cache or scheduler.
+
+```mermaid
+sequenceDiagram
+    participant GIS as Google Identity Services
+    participant Browser
+    participant API as FastAPI
+    participant DB as PostgreSQL
+    GIS-->>Browser: Credential callback (never persisted)
+    Browser->>API: POST /v1/auth/session {credential}
+    API->>API: Verify Google signature/claims and principal
+    API->>DB: Resolve user; create session and token hashes
+    API-->>Browser: App access + refresh, expiries, user/profile (no-store)
+    Note over Browser: Access in module memory; refresh and display profile in separate storage keys
+    Browser->>API: Product request with Authorization: Bearer app-access
+    API->>DB: Hash lookup; validate session/principal; bind owner
+    API-->>Browser: Owner-scoped result
+    Browser->>API: POST /v1/auth/refresh {refresh_token}
+    API->>DB: Lock session; rotate refresh; cap idle by absolute expiry
+    API-->>Browser: New access + refresh (no-store)
+    Browser->>API: POST /v1/auth/logout (refresh and/or access)
+    API->>DB: Revoke session; delete its access hashes
+    API-->>Browser: 204 (idempotent)
+```
+
+### Identity, persistence and expiry
+
+- Human exchange verifies signature, issuer, browser audience, expiry, nonblank subject/email and
+  `email_verified`, then enforces the server allowlist. The browser preserves the
+  `PUBLIC_EMAIL_WHITE_LIST` sign-in UX precheck; it cannot authorize a request. Backend exchange,
+  refresh and access remain authoritative. Google subject maps to a
+  stable internal numeric user id; email is mutable data.
+- Exchange tries the human verifier first. Only invalid human credentials may try the separately
+  configured smoke verifier. A service-account email cannot pass as a human even if allowlisted.
+  Smoke must match its exact issuer/audience/subject/email/verified-email claims and maps to
+  `service-account:<numeric sub>`, with no GenAI consent by default. Guest export remains a
+  separate machine audience/dependency and creates no product session.
+- Access uses `ela_` and refresh uses `elr_`, each from at least 32 random bytes. PostgreSQL stores
+  only 32-byte SHA-256 hashes, not credentials or raw tokens. `auth_sessions` and its access/refresh
+  tables are outside product RLS like `users`; runtime grants follow existing default privileges.
+  They are not exposed by product routes. Expired rows are cleaned opportunistically for the
+  exchanging/refreshing user, with no background job.
+- Defaults: access 900 seconds, sliding refresh idle 604800 seconds, absolute refresh 2592000
+  seconds, reuse grace 10 seconds. Rotation never extends the absolute deadline; effective idle
+  expiry is its minimum with the configured idle TTL. The four bounded `AUTH_*` settings are
+  documented in the [API README](../apps/api/README.md#configuration).
+- Every access request rechecks session deadlines/revocation and the human allowlist, then calls
+  `bind_owner`. A newly detected removed human account receives 403 `account_not_allowed` and its
+  session is revoked with access hashes deleted. Refresh also rechecks and revokes. Smoke instead
+  rechecks that all three settings remain configured and its stored synthetic subject/email match;
+  removal or identity mismatch revokes it. Audience matching is an exchange check, not a stored
+  per-session audience snapshot.
+- Refresh locks the session before inspecting/rotating a token, so concurrent current-token uses
+  cannot both rotate. Reusing a rotated token at or within grace returns 409 `refresh_superseded`,
+  issues nothing and revokes nothing. Outside grace it revokes the family (`reuse`), deletes all
+  its access hashes and returns 401 `refresh_reused`. Unknown, expired or otherwise revoked
+  refresh credentials return 401 `refresh_invalid` (allowlist rejection remains 403).
+
+### Browser, account changes and SSE
+
+- Root layout initializes auth before protected routing. State includes initializing, signed-out,
+  guest, authenticated and expired. `gid_id_token`/`gid_exp` are removed on first load; a legacy
+  session shows the one-time Session ended notice. No Google credential is persisted.
+- Access and its expiry live only in module variables. `el_auth_refresh_v1` stores refresh;
+  `el_auth_profile_v1` stores non-secret display id/email and optional string name/picture.
+  API refresh profile fields may be null; a same-user cached display value is retained. Profile
+  data is never an authorization source. Startup exchanges the stored refresh for new access.
+- Refresh is single-flight per tab and uses `navigator.locks.request` across tabs, with a guarded
+  fallback if unavailable. The token is reread after lock acquisition and after a superseded 409;
+  only one 409 retry occurs. Same-owner storage rotation keeps valid existing access, avoiding
+  reciprocal rotation. Refresh-key removal in another tab drops access and shows a recovery bar.
+- Known-expired access or 401 `access_token_expired` permits one refresh and one request retry,
+  retaining the exact body and Idempotency-Key. Other current-token 401s expire the session;
+  stale old-token responses cannot expire new credentials or update a different owner's page.
+  Terminal refresh contention is retryable without discarding the exact pending write.
+- Explicit sign-out attempts logout, clears local memory/refresh/profile and disables GIS auto
+  selection. It returns home; another tab stays on its current page with the signed-out-elsewhere
+  bar. Pending answers remain. Only sign-out with pending answers warns first, including count
+  and the same-account/different-account consequences; there is no general confirmation.
+- Account change means sign out then sign in, with no Switch account item. If an exchange arrives
+  while an old refresh exists, it logs out that session first. Generation/owner guards isolate
+  asynchronous completions. Review/pending state uses the internal id; different id clears the
+  old command and reports its count, while explicit same-user sign-in sends the preserved exact
+  command. Old subject-keyed pending format is discarded once. Ordinary silent refresh does not
+  repeatedly auto-submit pending work.
+- Replay owns an immutable pending command before awaiting HTTP; grading/submission are locked.
+  Success clears only the same key and payload; ambiguous failure offers exact Retry rather than
+  editing an already-sent key. A new login generation cannot join or be cleared by an older replay.
+- SSE authenticates through the normal dependency before opening. The browser refreshes access
+  within a 30-second margin before starting, and retries one pre-open 401 once after refresh.
+  Expiry mid-stream does not terminate an already authenticated stream; owner change/unmount
+  aborts it. Conversation history remains memory-only.
+- After expiry, pages remain viewable and writes are disabled. Option C's global polite status
+  bar offers Sign in again and explicit Continue as guest, including exchange/allowlist failures,
+  sign-out and other-tab sign-out. Rejected email is shown. Notices never auto-dismiss.
+- Guest entry first drops app credentials, retains profile/pending, selects the existing fixed
+  30-minute sessionStorage marker and navigates base-aware to `/review`. Re-entering after failed
+  sign-in does not renew a live deadline. Guest code never reads/writes pending answer bodies or
+  owner APIs; separate count/owner/email/deadline metadata supports the non-dismissible Sign in
+  to send bar. The 24-hour pending deadline is not extended; expired unsent answers announce once
+  on the next load. Guest header has a visible Sign in pill, menu-only time and Leave guest
+  practice; leaving retains pending and returns to signed-out home.
+
+### Threats, mitigations and limits
+
+- Forged JWTs, frontend owner fields and profile cache edits cannot grant backend access. Google
+  verification belongs to exchange; product requests require server-stored app hashes and owner
+  predicates/RLS. A Google ID token used directly on a product endpoint is rejected before lookup.
+- Stolen refresh can outlive a Google credential: up to the fixed 30-day default. Rotation/reuse
+  detection, short access lifetime, per-request allowlist checks, logout and maintainer revoke-all
+  limit this exposure; within-grace conflicts intentionally do not detect theft conclusively.
+- XSS can read localStorage refresh and private page data, invoke requests as the user, and reach
+  in-memory access while running. Memory-only access reduces persisted credentials, not active
+  script compromise. Display profile is non-secret but still personal data. Do not log credentials,
+  auth request bodies, refresh responses or raw exceptions; only safe request summaries are emitted.
+- A strict CSP could reduce script injection, but **no CSP is shipped by #45 Phase 6**: the current
+  JSON card editor invokes `ajv.compile`, which uses `new Function`. A local no-string-code-generation
+  probe fails with EvalError. Per Q6, do not add script `unsafe-inline`/`unsafe-eval` to make it work.
+  SvelteKit supports hashed inline bootstrap in static meta output; runtime Ajv is the blocker.
+  [The CSP follow-up](issues/issue-45-csp-followup.md) records prerequisites and required browser
+  checks. No style-src relaxation was added either; real GIS/CSP compatibility remains unverified.
+- CSRF does not apply to this header-token design: there are no auth cookies or browser-automatic
+  credentials, and CORS remains exact-origin with `allow_credentials=False`. A foreign page cannot
+  read refresh storage or attach our Authorization/JSON requests without an allowed preflight.
+  XSS in the trusted origin is a separate threat; no CSRF-token mechanism is added.
+- Strict cutover promotes API then matching Pages with a brief legacy-bearer 401 window; release
+  only with no review/unsent legacy pending active. API and Pages roll back together. The machine
+  smoke uses dedicated WIF identity and synthetic retained deck/history plus archived run cards;
+  live WIF, GIS, browser timing and release/rollback results are operator evidence, not local claims.
 
 ## Static Hosting Notes
 
@@ -534,9 +644,11 @@ Review update payload shape is:
 ## Static guest review boundary
 
 `/review` hosts separate `GuestReview.svelte` and `OwnedReview.svelte` controllers.
-Authenticated identity always selects owned review. Guests explicitly choose entry on home;
+Authenticated identity always selects owned review. Guests explicitly choose entry on home or a
+session recovery bar;
 the tab-scoped 30-minute deadline survives reload, while answers and card pools do not.
-Login, expiry and navigation unmount the guest controller and abort pending reads.
+Successful sign-in, guest expiry and navigation unmount the guest controller and abort its reads;
+a rejected exchange can retain the live guest deadline for an explicit return to guest.
 
 Guest downloads the base-aware same-origin `/guest/cards.json` once per mounted controller,
 with credentials omitted, redirects rejected, a 15-second timeout and a 512 KiB streaming cap.
@@ -775,7 +887,8 @@ See [SSE verification](issues/issue-70-verification.md#sse-follow-up).
 It reuses Drawer and CardForm for local edits, preserving original warning indices.
 Confirm invokes the existing `createCard` for one selection or atomic `createCards` for
 2-20. `src/lib/assistant/pending.ts` stores an owner-scoped unfinished command and parallel
-UUID keys under `pending_assistant_proposal_v1`, with a 24-hour TTL and validated load.
+UUID keys in `pending_assistant_proposal_v2:<internal-user-id>:<proposal-id>` slots, with a
+24-hour TTL and validated load. The v1 helper key remains only for legacy recovery.
 It preserves another owner's entry. Unknown-result retries replay exact content and keys;
 reload shows an explicit Retry surface, without restoring the transcript or auto-submitting.
 

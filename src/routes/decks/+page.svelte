@@ -1,9 +1,9 @@
 <script lang="ts">
+	import { authSession, canWrite } from '$lib/stores/auth';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
 	import PanelsTopLeftIcon from '@lucide/svelte/icons/panels-top-left';
-	import { getProfile } from '$lib/auth';
 	import { ApiClientError, createDeck, getDecks } from '$lib/api/client';
 	import type { ArchiveStatus, Deck, DeckCreate, TargetLanguage } from '$lib/api/contracts';
 	import DeckForm from '$lib/components/DeckForm.svelte';
@@ -20,6 +20,14 @@
 		savePendingManagement,
 		type PendingManagementCreation,
 	} from '$lib/management/pending';
+
+	let currentOwnerId = $derived(
+		$authSession.kind === 'authenticated' || $authSession.kind === 'expired'
+			? ($authSession.profile?.id ?? null)
+			: null,
+	);
+	let loadedOwnerId: number | null = null;
+	let loadedQuery = '';
 
 	type ViewState = 'redirecting' | 'invalid-language' | 'loading' | 'ready' | 'error';
 
@@ -42,39 +50,55 @@
 	}
 
 	async function loadCurrent(targetLanguage: TargetLanguage, status: ArchiveStatus): Promise<void> {
+		if (!$canWrite) return;
 		const sequence = ++requestSequence;
+		const readOwner = currentOwnerId;
 		viewState = 'loading';
 		error = null;
 		try {
 			const result = await getDecks(targetLanguage, status);
-			if (sequence !== requestSequence) return;
+			if (sequence !== requestSequence || readOwner !== currentOwnerId) return;
 			decks = result.items;
 			nextCursor = result.next_cursor;
 			viewState = 'ready';
 		} catch (cause) {
-			if (sequence !== requestSequence) return;
+			if (sequence !== requestSequence || readOwner !== currentOwnerId) return;
+			if (!$canWrite && decks.length) {
+				viewState = 'ready';
+				return;
+			}
 			error = readErrorCopy(cause, 'decks');
 			viewState = 'error';
 		}
 	}
 
 	async function loadMore(): Promise<void> {
-		if (!nextCursor || loadingMore) return;
+		if (!$canWrite || !nextCursor || loadingMore) return;
 		loadingMore = true;
+		const sequence = requestSequence;
+		const readOwner = currentOwnerId;
 		try {
 			const result = await getDecks(language, archiveStatus, 20, nextCursor);
+			if (sequence !== requestSequence || readOwner !== currentOwnerId) return;
 			decks = [...decks, ...result.items];
 			nextCursor = result.next_cursor;
 		} catch (cause) {
+			if (sequence !== requestSequence || readOwner !== currentOwnerId) return;
+			if (!$canWrite && decks.length) {
+				viewState = 'ready';
+				return;
+			}
 			error = readErrorCopy(cause, 'decks');
 			viewState = 'error';
 		} finally {
-			loadingMore = false;
+			if (sequence === requestSequence && readOwner === currentOwnerId) loadingMore = false;
 		}
 	}
 
 	async function saveNewDeck(payload: DeckCreate): Promise<void> {
-		const owner = getProfile()?.sub;
+		if (!$canWrite) return;
+		const mutationOwner = currentOwnerId;
+		const owner = currentOwnerId === null ? undefined : String(currentOwnerId);
 		if (!owner) {
 			createNotice = mutationErrorCopy(
 				new ApiClientError('Please sign in again.', 'authentication', false, 401),
@@ -93,11 +117,13 @@
 		createNotice = null;
 		try {
 			await createDeck(payload, pendingCreate.idempotencyKey);
+			if (currentOwnerId !== mutationOwner) return;
 			clearPendingManagement();
 			pendingCreate = null;
 			createOpen = false;
 			await loadCurrent(language, archiveStatus);
 		} catch (cause) {
+			if (currentOwnerId !== mutationOwner) return;
 			createNotice = mutationErrorCopy(cause);
 			if (
 				!(cause instanceof ApiClientError) ||
@@ -107,11 +133,12 @@
 				pendingCreate = null;
 			}
 		} finally {
-			createBusy = false;
+			if (currentOwnerId === mutationOwner) createBusy = false;
 		}
 	}
 
 	function openDeckCreate(): void {
+		if (!$canWrite) return;
 		if (
 			pendingCreate &&
 			(pendingCreate.kind !== 'deck' ||
@@ -131,6 +158,19 @@
 	}
 
 	$effect(() => {
+		if (!$canWrite || currentOwnerId === null) return;
+		if (loadedOwnerId !== currentOwnerId) {
+			loadedOwnerId = currentOwnerId;
+			loadedQuery = '';
+			requestSequence++;
+			decks = [];
+			nextCursor = null;
+			pendingLoaded = false;
+			pendingCreate = null;
+			createOpen = false;
+			createBusy = false;
+			createNotice = null;
+		}
 		const parsedLanguage = readLanguageQuery(page.url.searchParams);
 		const parsedStatus = readArchiveStatus(page.url.searchParams);
 		if (parsedLanguage.kind === 'missing') {
@@ -147,7 +187,7 @@
 		archiveStatus = parsedStatus;
 		if (!pendingLoaded) {
 			pendingLoaded = true;
-			const owner = getProfile()?.sub;
+			const owner = currentOwnerId === null ? undefined : String(currentOwnerId);
 			const pending = owner ? loadPendingManagement(owner) : null;
 			pendingCreate = pending;
 			if (
@@ -164,6 +204,9 @@
 				};
 			}
 		}
+		const query = `${language}:${archiveStatus}`;
+		if (loadedQuery === query) return;
+		loadedQuery = query;
 		void loadCurrent(language, archiveStatus);
 	});
 </script>
@@ -186,12 +229,13 @@
 				{#if archiveStatus === 'active'}<button
 						class="primary-button"
 						type="button"
-						disabled={Boolean(
-							pendingCreate &&
-								(pendingCreate.kind !== 'deck' ||
-									!('target_language' in pendingCreate.payload) ||
-									pendingCreate.payload.target_language !== language),
-						)}
+						disabled={!$canWrite ||
+							Boolean(
+								pendingCreate &&
+									(pendingCreate.kind !== 'deck' ||
+										!('target_language' in pendingCreate.payload) ||
+										pendingCreate.payload.target_language !== language),
+							)}
 						title={pendingCreate
 							? 'Finish the pending creation before starting another.'
 							: undefined}
@@ -258,7 +302,12 @@
 				{/each}
 			</ul>
 			{#if nextCursor}
-				<button class="load-more" type="button" disabled={loadingMore} onclick={loadMore}>
+				<button
+					class="load-more"
+					type="button"
+					disabled={!$canWrite || loadingMore}
+					onclick={loadMore}
+				>
 					{loadingMore ? 'Loading…' : 'Load more decks'}
 				</button>
 			{/if}
@@ -273,6 +322,7 @@
 		onclose={() => !createBusy && (createOpen = false)}
 	>
 		<DeckForm
+			writable={$canWrite}
 			{language}
 			draft={pendingCreate?.kind === 'deck' ? (pendingCreate.payload as DeckCreate) : null}
 			busy={createBusy}

@@ -48,22 +48,44 @@ before new application instances receive traffic.
 Local development works with safe disposable defaults. To override them, create an optional `.env`
 file beside `pyproject.toml`; use `.env.example` as the field reference.
 
-| Variable                           | Default                         | Constraint                                                                                                      |
-| ---------------------------------- | ------------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| `APP_ENV`                          | `local`                         | `local`, `test`, or `production`                                                                                |
-| `LOG_LEVEL`                        | `INFO`                          | `DEBUG`, `INFO`, `WARNING`, `ERROR`, or `CRITICAL`                                                              |
-| `DATABASE_URL`                     | Local disposable PostgreSQL URL | Must use the `postgresql+psycopg` driver; production also requires verified TLS or required TLS channel binding |
-| `DATABASE_CONNECT_TIMEOUT_SECONDS` | `2`                             | Integer from 1 through 10                                                                                       |
-| `GOOGLE_OAUTH_CLIENT_ID`           | Local placeholder               | Google web OAuth client ID used as the accepted token audience                                                  |
-| `GOOGLE_ALLOWED_EMAILS`            | Empty locally                   | Comma-separated verified Google email allowlist; required in production                                         |
-| `VERTEX_PROJECT_ID`                | Unset                           | Google Cloud project that enables provider-backed embeddings and semantic search when configured                |
-| `VERTEX_LOCATION`                  | `us-central1`                   | Vertex AI region used for embedding requests                                                                    |
-| `CORS_ALLOWED_ORIGINS`             | Local Vite origins              | JSON array of exact browser origins allowed to call the API                                                     |
+| Variable                            | Default                         | Constraint                                                                                                                          |
+| ----------------------------------- | ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `APP_ENV`                           | `local`                         | `local`, `test`, or `production`                                                                                                    |
+| `LOG_LEVEL`                         | `INFO`                          | `DEBUG`, `INFO`, `WARNING`, `ERROR`, or `CRITICAL`                                                                                  |
+| `DATABASE_URL`                      | Local disposable PostgreSQL URL | Must use the `postgresql+psycopg` driver; production also requires verified TLS or required TLS channel binding                     |
+| `DATABASE_CONNECT_TIMEOUT_SECONDS`  | `2`                             | Integer from 1 through 10                                                                                                           |
+| `GOOGLE_OAUTH_CLIENT_ID`            | Local placeholder               | Google web OAuth client ID accepted only by the human exchange verifier                                                             |
+| `GOOGLE_ALLOWED_EMAILS`             | Empty locally                   | Comma-separated verified Google email allowlist; checked at exchange, refresh and each human access request; required in production |
+| `AUTH_ACCESS_TTL_SECONDS`           | `900`                           | Integer 60-3600 seconds; memory-only app access lifetime                                                                            |
+| `AUTH_REFRESH_IDLE_TTL_SECONDS`     | `604800`                        | Integer 300-2592000 seconds; sliding idle deadline capped by absolute expiry                                                        |
+| `AUTH_REFRESH_ABSOLUTE_TTL_SECONDS` | `2592000`                       | Integer 300-7776000 seconds; fixed session deadline, never extended by rotation                                                     |
+| `AUTH_REFRESH_REUSE_GRACE_SECONDS`  | `10`                            | Integer 0-60 seconds; rotated-token reuse within grace returns 409 without changes                                                  |
+| `RELEASE_SMOKE_AUDIENCE`            | Unset                           | HTTPS audience distinct from `GOOGLE_OAUTH_CLIENT_ID` and `GUEST_EXPORT_AUDIENCE`; configure all three smoke settings together      |
+| `RELEASE_SMOKE_SUBJECT`             | Unset                           | Exact numeric Google service-account subject; 1-255 digits                                                                          |
+| `RELEASE_SMOKE_EMAIL`               | Unset                           | Exact `.iam.gserviceaccount.com` email of the dedicated smoke account                                                               |
+| `VERTEX_PROJECT_ID`                 | Unset                           | Google Cloud project that enables provider-backed embeddings and semantic search when configured                                    |
+| `VERTEX_LOCATION`                   | `us-central1`                   | Vertex AI region used for embedding requests                                                                                        |
+| `CORS_ALLOWED_ORIGINS`              | Local Vite origins              | JSON array of exact browser origins allowed to call the API                                                                         |
 
 Production must explicitly override `DATABASE_URL`, `GOOGLE_OAUTH_CLIENT_ID`, and
 `GOOGLE_ALLOWED_EMAILS`; their local defaults
 are rejected.
 Database URLs are treated as secrets and must not be printed or logged.
+
+Release smoke uses `POST /v1/auth/session` and the same app access/rotating refresh tokens
+as humans. Exchange tries the human audience first; only invalid human credentials try
+the separate `app.state.smoke_token_verifier`. Verified service-account emails are rejected
+on the human path even if allowlisted. Smoke requires the exact signed issuer, dedicated
+audience, subject, email and verified-email claim. It never uses the human allowlist or
+accepts a Google ID token directly as a product bearer. The synthetic user is named
+`service-account:<numeric sub>` and starts without GenAI consent.
+
+Every smoke access request and refresh re-checks that all three settings remain present
+and the stored synthetic subject/email still match. Removal or identity changes revoke
+the session with reason `operator` and delete its access tokens. Audience validation
+applies at exchange; active sessions retain their stored subject/email identity. All
+three settings unset disables new smoke exchanges. The [release runbook](../../doc/training/issues/issue-26/runbook.md#machine-identity-candidate-verification) documents WIF setup, safe synthetic smoke and the separate interactive GIS gate.
+
 `VERTEX_PROJECT_ID` is intentionally optional: when it is absent, semantic search returns the safe
 `semantic_search_not_configured` response and card writes skip provider-backed embedding work.
 Local provider calls use Application Default Credentials; the effective identity must be allowed to
@@ -195,11 +217,71 @@ uv run uvicorn app.main:create_app --factory --reload
 The development server listens on `http://127.0.0.1:8000` by default. `--reload` is for local
 development only.
 
+## Application sessions
+
+The GIS credential is exchanged once; it is never a product bearer. Auth payloads forbid extra
+fields, and credentials/refresh responses must never be logged. Successful exchange/refresh and
+logout responses use `Cache-Control: no-store`; no auth cookie or CSRF token is issued.
+
+| Endpoint                | Request                                          | Result                                                                             |
+| ----------------------- | ------------------------------------------------ | ---------------------------------------------------------------------------------- |
+| `POST /v1/auth/session` | JSON `{credential}` containing a Google ID token | App access/refresh tokens, expiries, internal user and verified display profile    |
+| `POST /v1/auth/refresh` | JSON `{refresh_token}`                           | Same response shape, with both tokens replaced; session row locked before rotation |
+| `POST /v1/auth/logout`  | JSON `{refresh_token}` and/or app bearer header  | Idempotent 204, revoke matched session(s) and delete access hashes                 |
+| `GET /v1/me`            | App access bearer                                | `{id,email}` from authenticated internal owner                                     |
+
+Exchange/refresh response shape (field names/types only; do not record real values):
+
+```ts
+type SessionTokens = {
+  access_token: string; // ela_, generated from at least 32 random bytes
+  access_expires_at: string; // timezone-aware ISO timestamp
+  refresh_token: string; // elr_, rotating, at least 32 random bytes
+  refresh_expires_at: string; // effective idle deadline, capped by absolute expiry
+  user: {
+    id: number;
+    email: string;
+  };
+  profile: {
+    name: string | null;
+    picture: string | null;
+  };
+};
+```
+
+Human claims are verified only at exchange. Profile is taken from verified claims and not stored
+in PostgreSQL; refresh may return null profile fields. The browser retains same-user cached
+values and stores only string-valued optional display fields. Access stays in module memory;
+`el_auth_refresh_v1` and `el_auth_profile_v1` are separate localStorage keys. Legacy `gid_*`
+credentials are removed; pending review privacy/recovery is keyed by internal id, not JWT subject.
+
+PostgreSQL stores only SHA-256 bytea token hashes. Access validates the token/session, idle and
+absolute deadlines and current principal before binding owner/RLS. Human allowlist removal
+revokes the session on detection. Reusing a rotated refresh within grace changes nothing;
+outside grace it revokes the family and deletes all its access hashes. Idle expiry slides only
+on successful rotation; absolute expiry stays fixed. Cleanup is opportunistic for that user.
+
+| HTTP / code                  | Meaning / client action                                                                                                                  |
+| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| 401 `invalid_authentication` | Missing/unknown/invalid product credential, revoked session or session deadline; Google/wrong-prefix bearer rejected without hash lookup |
+| 401 `access_token_expired`   | Access expired while session can still be refreshed; one refresh plus one request retry, preserving body/key                             |
+| 401 `refresh_invalid`        | Unknown, expired, revoked or disabled/mismatched smoke refresh identity; reauthenticate                                                  |
+| 409 `refresh_superseded`     | Rotated token reused within grace; issue/revoke nothing; reread current storage and retry once                                           |
+| 401 `refresh_reused`         | Rotated token reused outside grace; session revoked and access hashes deleted                                                            |
+| 403 `account_not_allowed`    | Verified human rejected at exchange, or current account removed; revoke active session on detection                                      |
+| 422 `validation_failed`      | Invalid request shape; rejected credentials are omitted from error details                                                               |
+
+For SSE, authentication occurs before the stream opens. The client refreshes near-expiry access
+before start and permits one pre-open 401 refresh/retry; expiry mid-stream does not interrupt it.
+See the [auth sequence/threat model](../../doc/architecture.md#app-session-authentication-and-threat-model-45-2026-11-17)
+and [strict release/rollback runbook](../../doc/training/issues/issue-26/runbook.md#promotion-and-frontend-cutover).
+
 ## Authenticated product APIs
 
-All `/v1` endpoints require a Google ID token in `Authorization: Bearer <token>`. The backend verifies
-the token, rejects accounts outside the configured email allowlist before user creation, and derives
-ownership from the stable Google subject; request bodies cannot select an owner.
+Product endpoints require `Authorization: Bearer <app access token>`. The backend derives
+ownership from its authenticated internal user, not body-supplied owner fields or display data.
+Health and auth exchange/refresh/logout have their separate contracts; the internal guest export
+still requires its dedicated service-account Google audience, not an app token.
 
 ```text
 GET /v1/me

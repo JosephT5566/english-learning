@@ -85,6 +85,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/auth/logout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Logout Session */
+        post: operations["logout_session_v1_auth_logout_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/auth/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Refresh Session */
+        post: operations["refresh_session_v1_auth_refresh_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/auth/session": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Exchange Session */
+        post: operations["exchange_session_v1_auth_session_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/cards": {
         parameters: {
             query?: never;
@@ -269,10 +320,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /**
-         * Get Me
-         * @description Return the authenticated internal identity without exposing Google subject.
-         */
+        /** Get Me */
         get: operations["get_me_v1_me_get"];
         put?: never;
         post?: never;
@@ -948,6 +996,11 @@ export interface components {
              */
             status: "ok";
         };
+        /** LogoutCredential */
+        LogoutCredential: {
+            /** Refresh Token */
+            refresh_token?: string | null;
+        };
         /** Message */
         Message: {
             /** Content */
@@ -1038,6 +1091,14 @@ export interface components {
              * @enum {string}
              */
             status: "ready" | "not_ready";
+        };
+        /** RefreshCredential */
+        RefreshCredential: {
+            /**
+             * Refresh Token
+             * Format: password
+             */
+            refresh_token: string;
         };
         /** ReviewResult */
         ReviewResult: {
@@ -1172,6 +1233,47 @@ export interface components {
             indexed_count: number;
             /** Items */
             items: components["schemas"]["SemanticSearchItem"][];
+        };
+        /** SessionCredential */
+        SessionCredential: {
+            /**
+             * Credential
+             * Format: password
+             */
+            credential: string;
+        };
+        /** SessionProfile */
+        SessionProfile: {
+            /** Name */
+            name?: string | null;
+            /** Picture */
+            picture?: string | null;
+        };
+        /** SessionTokens */
+        SessionTokens: {
+            /**
+             * Access Expires At
+             * Format: date-time
+             */
+            access_expires_at: string;
+            /** Access Token */
+            access_token: string;
+            profile: components["schemas"]["SessionProfile"];
+            /**
+             * Refresh Expires At
+             * Format: date-time
+             */
+            refresh_expires_at: string;
+            /** Refresh Token */
+            refresh_token: string;
+            user: components["schemas"]["SessionUser"];
+        };
+        /** SessionUser */
+        SessionUser: {
+            /** Email */
+            email: string;
+            /** Id */
+            id: number;
         };
         /** StreamMessage */
         StreamMessage: {
@@ -1385,6 +1487,103 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    logout_session_v1_auth_logout_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["LogoutCredential"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    refresh_session_v1_auth_refresh_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RefreshCredential"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionTokens"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    exchange_session_v1_auth_session_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SessionCredential"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionTokens"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
             };
         };
     };

@@ -1,5 +1,10 @@
 # Issue #24 學習筆記：Review Flow 從 Google Sheets 切換到 FastAPI/PostgreSQL
 
+Historical issue evidence: the Google-ID-token bearer and subject-keyed browser state described
+below predate issue #45. Current product requests use app access tokens after GIS exchange;
+pending privacy/recovery uses the internal user id. Do not use these old auth steps as setup
+instructions. See the [current API sessions](../../../../apps/api/README.md#application-sessions).
+
 ## 本次完成的內容
 
 這次完成了 Review Flow 從 Google Apps Script／Google Sheets 到 FastAPI／PostgreSQL 的前後端整合。

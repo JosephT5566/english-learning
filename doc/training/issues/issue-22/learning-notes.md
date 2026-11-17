@@ -1,5 +1,9 @@
 # Issue #22 學習筆記：唯讀 CSV 匯入驗證
 
+> 2026-11-17 retirement warning (#45): The Google ID-token bearer and clipboard/shell
+> walkthrough below is historical and must not be followed against the current API. Use the
+> [current app-session contract](../../../../apps/api/README.md#application-sessions) instead.
+
 ## 1. Ticket 目標
 
 這個 ticket 為 legacy Google Sheet CSV 到共用多語系 PostgreSQL model 的一次性遷移，建立安全的驗證邊界。
@@ -26,29 +30,29 @@ CSV 可能包含缺少欄位、重複 ID、錯誤日期、不支援的值、過�
 
 ### 2.2 全部 21 個 legacy fields 都有明確處理結果
 
-| Legacy field | 目的欄位或明確處理方式 |
-| --- | --- |
-| `id` | Hash 過的 source identity；不會重用為 card UUID |
-| `lessonDate` | 使用 `Asia/Taipei` 日期的 `learning_cards.learned_on` |
-| `content` | 必填的 `learning_cards.term` |
-| `type` | Canonical part of speech，或以 `other` 保存原始分類細節 |
-| `phonics` | Nullable `learning_cards.pronunciation` |
-| `chineseExplain` | 必填的 `learning_cards.meaning` |
-| `engExplain` | Nullable `learning_cards.target_language_definition` |
-| `synonyms` | 正規化且保留順序的 synonyms array |
-| `antonyms` | 正規化且保留順序的 antonyms array |
-| `tags` | 未來建立 owned tags 與 card/tag associations |
-| `note` | Nullable `learning_cards.note` |
-| `supplementary` | Nullable `learning_cards.supplementary_note` |
-| `example` | Nullable `learning_cards.example_sentence` |
-| `status` | Active 或 archived；空白時修復為 active |
-| `reviewStage` | 驗證並產生診斷，之後重設 |
-| `easeFactor` | 驗證並產生診斷，之後重設 |
-| `intervalDays` | 驗證並產生診斷，之後重設 |
-| `lastReview` | 驗證並產生診斷，之後重設 |
-| `nextReview` | 驗證並產生診斷，之後重設 |
-| `createdDate` | Card 建立時間；無效或空白時使用固定 snapshot 時間 |
-| `overdueDays` | 只用於診斷；到期狀態仍由 backend 動態計算 |
+| Legacy field     | 目的欄位或明確處理方式                                  |
+| ---------------- | ------------------------------------------------------- |
+| `id`             | Hash 過的 source identity；不會重用為 card UUID         |
+| `lessonDate`     | 使用 `Asia/Taipei` 日期的 `learning_cards.learned_on`   |
+| `content`        | 必填的 `learning_cards.term`                            |
+| `type`           | Canonical part of speech，或以 `other` 保存原始分類細節 |
+| `phonics`        | Nullable `learning_cards.pronunciation`                 |
+| `chineseExplain` | 必填的 `learning_cards.meaning`                         |
+| `engExplain`     | Nullable `learning_cards.target_language_definition`    |
+| `synonyms`       | 正規化且保留順序的 synonyms array                       |
+| `antonyms`       | 正規化且保留順序的 antonyms array                       |
+| `tags`           | 未來建立 owned tags 與 card/tag associations            |
+| `note`           | Nullable `learning_cards.note`                          |
+| `supplementary`  | Nullable `learning_cards.supplementary_note`            |
+| `example`        | Nullable `learning_cards.example_sentence`              |
+| `status`         | Active 或 archived；空白時修復為 active                 |
+| `reviewStage`    | 驗證並產生診斷，之後重設                                |
+| `easeFactor`     | 驗證並產生診斷，之後重設                                |
+| `intervalDays`   | 驗證並產生診斷，之後重設                                |
+| `lastReview`     | 驗證並產生診斷，之後重設                                |
+| `nextReview`     | 驗證並產生診斷，之後重設                                |
+| `createdDate`    | Card 建立時間；無效或空白時使用固定 snapshot 時間       |
+| `overdueDays`    | 只用於診斷；到期狀態仍由 backend 動態計算               |
 
 ### 2.3 穩定 identity 不再依賴 row position
 
@@ -289,7 +293,7 @@ uv run uvicorn app.main:create_app --factory
 先透過 frontend 登入，再於 browser developer console 執行：
 
 ```javascript
-copy(localStorage.getItem('gid_id_token'))
+copy(localStorage.getItem("gid_id_token"));
 ```
 
 這會複製目前 frontend 的 ID token，但不把 token 顯示出來。

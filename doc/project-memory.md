@@ -1,12 +1,62 @@
 # Project Memory
 
-Last updated: 2026-11-13
+Last updated: 2026-11-17
 
 This file is the current product-state index. Training milestones, evidence limits, and the next
 training action belong in [`training/project-memory.md`](training/project-memory.md); detailed
 verification records belong in the linked issue artifacts. Implementation and test results take
 precedence over stale documentation. Deployment statements below summarize recorded evidence, not
 a fresh inspection of the live services.
+
+## App-issued header sessions and explicit guest recovery (#45, 2026-11-17)
+
+Google Identity Services now posts its credential only to `/v1/auth/session`; Google ID tokens
+are rejected as product bearers and never persisted. App access (`ela_`) stays in module memory.
+Rotating refresh (`elr_`) uses `el_auth_refresh_v1`; non-secret id/email/name/picture display cache
+uses `el_auth_profile_v1`. First load removes `gid_id_token`/`gid_exp` and shows Session ended
+once for a legacy session. Internal numeric user id keys pending work and activity.
+
+Access defaults to 15 minutes; refresh idle is 7 days and absolute 30 days, with 10-second reuse
+grace. PostgreSQL holds only SHA-256 hashes. Access checks the session/principal before owner/RLS
+binding; humans are rechecked against the allowlist on every access and refresh. Smoke instead
+requires its configured synthetic identity. Refresh locks/rotates atomically; within-grace reuse
+returns a no-change 409, outside-grace reuse revokes the family and deletes access hashes.
+
+Startup refresh restores sign-in. Per-tab single-flight plus Web Locks and storage reread coordinate
+tabs, with a guarded fallback and one 409 retry. API access-expiry retry is bounded and preserves
+body/Idempotency-Key. A late same-session expired 401 reuses newer valid access once without
+another refresh; logout/account/guest transitions block that retry. SSE refreshes before opening; mid-stream expiry does not interrupt it.
+Stale old-account results cannot overwrite or sign out a new account.
+
+Option C has no healthy/silent-refresh bar. Expiry keeps pages/drafts viewable, disables writes,
+and offers Sign in again / Continue as guest. The choice also exists after exchange/allowlist
+failure (with rejected email), sign-out and other-tab sign-out. Notices do not auto-dismiss.
+Sign-out warns only if pending answers exist. Different internal id clears pending with count;
+explicit same-user sign-in sends the exact saved command. Replay locks grading against changing
+an already-sent key. The original 24-hour pending deadline is never extended.
+
+Explicit guest entry drops app tokens, keeps pending/profile, uses the existing fixed 30-minute
+sessionStorage choice and `/review` static cards. Guest code does not read/write pending answer
+bodies or call owner APIs; count-only metadata supplies the non-dismissible Sign in to send bar.
+Guest header has a visible Sign in pill and menu-only time/Leave action. Leaving retains pending.
+Unsent expiry is announced once. Guest answers remain temporary and are never sent.
+
+Release smoke now uses a dedicated WIF SA and its own audience, exchanges for normal app tokens,
+uses one persistent synthetic deck and archives each run's card while retaining review events.
+There is no human-token workflow input or Vertex request. The [runbook](training/issues/issue-26/runbook.md)
+covers migration first, candidate smoke, strict API/Pages cutover and paired rollback.
+
+CSP is **deferred under Q6**, not shipped: runtime `ajv.compile` in the JSON editor uses
+`new Function`. The installed validator/schema compiles normally and fails under Node's
+no-string-code-generation flag. No unsafe script or style allowance was added. The
+[CSP follow-up](issues/issue-45-csp-followup.md) must remove runtime compilation before enforcing
+and testing the strict meta policy. Memory-only access does not protect refresh storage from XSS.
+
+Operator-reported PostgreSQL and Phase 4 Playwright results are green. The local unit/stub checks
+establish application behavior, not live Google/WIF, production promotion, real-browser timing or
+CSP compatibility. These remain [e2e items 23-27](e2e-todo.md). No live cloud/model call occurred
+in implementation. The [architecture](architecture.md#app-session-authentication-and-threat-model-45-2026-11-17)
+and [API README](../apps/api/README.md#application-sessions) own the detailed contracts.
 
 ## Structured clarification, phase 1 (2026-11-13)
 
@@ -167,7 +217,7 @@ No production deployment or external model call was performed.
 
 ## Guest review implementation (2026-10-22)
 
-Visitors explicitly choose Continue as guest on the signed-out homepage, then use the shared
+Visitors explicitly choose Continue as guest on the signed-out homepage or a session recovery bar, then use the shared
 `/review` route to practice a random batch of up to ten published English cards.
 The guest choice stores a fixed 30-minute absolute deadline in tab-scoped `sessionStorage`.
 Reload retains that deadline but starts a fresh batch; activity never extends it. Expiry or tab
@@ -270,7 +320,7 @@ owned tags with same-owner card associations. It also adds one database-constrai
 state per card, owned idempotent review batches, and retained before/after review events. The
 complete synthetic integration fixture exercises English and Japanese through that same relational
 model. Authenticated deck/card/due-review reads now expose deterministic shared English/Japanese
-contracts. The backend verifies Google ID tokens, maps Google subject to an internal user, enforces
+contracts. The backend verifies Google identity at exchange, resolves app access to an internal user, enforces
 owned SQL scope, and provides owner-derived, idempotent deck/card create plus optimistic edit and
 archive APIs. Review writes
 now commit idempotent batches, immutable events, and current-state transitions atomically with
@@ -322,7 +372,7 @@ and sanitized snapshot remain as evidence, but the wrapper requires deliberate e
 - A card starts on the front face. The user clicks to flip it, then can drag/swipe or use action buttons on the back face.
 - Answer completion shows a `Submit Results` button. Only a validated FastAPI result confirms that
   batch was saved; retryable/authentication failures remain explicitly unconfirmed. A saved batch
-  records a best-effort browser-local `YYYY-MM-DD` activity hint scoped to the Google subject.
+  records a best-effort browser-local `YYYY-MM-DD` activity hint scoped to the internal user id.
   The homepage says "You've practiced today" for that account and date, including after an account
   switch on the mounted page. This does not establish that all due cards were reviewed. The legacy
   shared month/day marker is ignored, and unavailable marker storage cannot undo confirmed success.
@@ -330,11 +380,13 @@ and sanitized snapshot remain as evidence, but the wrapper requires deliberate e
 ## Important Behavior To Preserve
 
 - Use `$app/paths.resolve()` for route navigation so GitHub Pages base paths keep working.
-- Google sign-in is client-side and stores the Google ID token plus expiration in `localStorage`.
-- API requests require a valid ID token from `getTokenIfValid()` and send it only in the bearer
-  header.
-- Production API access also requires the verified Google email to be on the backend-configured
-  allowlist; the frontend list remains a user-experience precheck only.
+- GIS sign-in exchanges the credential once and never persists it. Access stays in memory;
+  only refresh and non-secret display profile use their versioned localStorage keys.
+- API requests use app access from `getTokenIfValid()`/`ensureAccessToken()` in the bearer header;
+  refresh/retry is bounded and preserves the exact body and Idempotency-Key.
+- Human production API access requires the verified Google email to be on the backend-configured
+  allowlist at exchange, refresh and every access request. The existing browser
+  `PUBLIC_EMAIL_WHITE_LIST` UX precheck rejects locally without granting backend access.
 - Browser API access is restricted to exact backend-configured origins; bearer and idempotency
   headers are allowed while credentialed cookies remain disabled.
 - `SwipeCards` emits decisions and observed state versions; review stages, ease, and dates are now

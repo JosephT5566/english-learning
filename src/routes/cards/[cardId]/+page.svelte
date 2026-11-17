@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { authSession, canWrite } from '$lib/stores/auth';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
@@ -13,6 +14,14 @@
 	import { readErrorCopy, type ReadErrorCopy } from '$lib/management/errors';
 	import { mutationErrorCopy, type MutationErrorCopy } from '$lib/management/mutations';
 	import { readLanguageQuery } from '$lib/management/navigation';
+
+	let currentOwnerId = $derived(
+		$authSession.kind === 'authenticated' || $authSession.kind === 'expired'
+			? ($authSession.profile?.id ?? null)
+			: null,
+	);
+	let loadedOwnerId: number | null = null;
+	let loadedQuery = '';
 
 	type ViewState = 'redirecting' | 'invalid-language' | 'loading' | 'ready' | 'error';
 	let viewState: ViewState = $state('loading');
@@ -62,12 +71,14 @@
 	}
 
 	async function loadCurrent(targetLanguage: TargetLanguage): Promise<void> {
+		if (!$canWrite) return;
 		const sequence = ++requestSequence;
+		const readOwner = currentOwnerId;
 		viewState = 'loading';
 		error = null;
 		try {
 			const result = await getCard(cardId);
-			if (sequence !== requestSequence) return;
+			if (sequence !== requestSequence || readOwner !== currentOwnerId) return;
 			if (result.deck.target_language !== targetLanguage) {
 				viewState = 'redirecting';
 				void goto(cardHref(result.deck.target_language), {
@@ -78,27 +89,40 @@
 			card = result;
 			viewState = 'ready';
 		} catch (cause) {
-			if (sequence !== requestSequence) return;
+			if (sequence !== requestSequence || readOwner !== currentOwnerId) return;
+			if (!$canWrite && card) {
+				viewState = 'ready';
+				return;
+			}
 			error = readErrorCopy(cause, 'card');
 			viewState = 'error';
 		}
 	}
 
 	async function saveCard(fields: Omit<CardCreate, 'deck_id'>): Promise<void> {
+		if (!$canWrite) return;
+		const mutationOwner = currentOwnerId;
 		if (!card) return;
 		mutationBusy = true;
 		mutationNotice = null;
 		try {
-			card = await updateCard(card.id, { version: card.version, ...fields });
+			const updated = await updateCard(card.id, {
+				version: card.version,
+				...fields,
+			});
+			if (currentOwnerId !== mutationOwner) return;
+			card = updated;
 			editing = false;
 		} catch (cause) {
+			if (currentOwnerId !== mutationOwner) return;
 			mutationNotice = mutationErrorCopy(cause);
 		} finally {
-			mutationBusy = false;
+			if (currentOwnerId === mutationOwner) mutationBusy = false;
 		}
 	}
 
 	async function discardEdits(): Promise<void> {
+		if (!$canWrite) return;
 		editing = false;
 		mutationNotice = null;
 		await loadCurrent(language);
@@ -106,17 +130,26 @@
 	}
 
 	async function archiveCurrentCard(): Promise<void> {
+		if (!$canWrite) return;
+		const mutationOwner = currentOwnerId;
 		if (!card) return;
 		mutationBusy = true;
 		mutationNotice = null;
 		try {
 			await archiveCard(card.id);
+			if (currentOwnerId !== mutationOwner) return;
 			await goto(
 				`${resolve('/decks/[deckId]', { deckId: card.deck.id })}?language=${language}&status=archived`,
 			);
 		} catch (cause) {
+			if (currentOwnerId !== mutationOwner) return;
+			if (!$canWrite) {
+				mutationNotice = mutationErrorCopy(cause);
+				return;
+			}
 			try {
 				const latest = await getCard(card.id);
+				if (currentOwnerId !== mutationOwner) return;
 				if (latest.archived_at) {
 					await goto(
 						`${resolve('/decks/[deckId]', { deckId: latest.deck.id })}?language=${language}&status=archived`,
@@ -129,11 +162,22 @@
 			mutationNotice = mutationErrorCopy(cause);
 			archiveConfirm = false;
 		} finally {
-			mutationBusy = false;
+			if (currentOwnerId === mutationOwner) mutationBusy = false;
 		}
 	}
 
 	$effect(() => {
+		if (!$canWrite || currentOwnerId === null) return;
+		if (loadedOwnerId !== currentOwnerId) {
+			loadedOwnerId = currentOwnerId;
+			loadedQuery = '';
+			requestSequence++;
+			card = null;
+			editing = false;
+			archiveConfirm = false;
+			mutationBusy = false;
+			mutationNotice = null;
+		}
 		const parsedLanguage = readLanguageQuery(page.url.searchParams);
 		if (parsedLanguage.kind === 'missing') {
 			viewState = 'redirecting';
@@ -146,6 +190,9 @@
 			return;
 		}
 		language = parsedLanguage.language;
+		const query = `${cardId}:${language}`;
+		if (loadedQuery === query) return;
+		loadedQuery = query;
 		void loadCurrent(language);
 	});
 </script>
@@ -176,7 +223,7 @@
 			<button
 				class="primary-button"
 				type="button"
-				disabled={editing || mutationBusy}
+				disabled={!$canWrite || editing || mutationBusy}
 				onclick={() => {
 					mutationNotice = null;
 					editing = true;
@@ -185,7 +232,7 @@
 			<button
 				class="danger-button"
 				type="button"
-				disabled={editing || mutationBusy}
+				disabled={!$canWrite || editing || mutationBusy}
 				onclick={() => {
 					mutationNotice = null;
 					archiveConfirm = true;
@@ -240,7 +287,9 @@
 					</dd>
 				</div>{/if}
 			{#if card.target_language_definition}<div class="detail-field wide">
-					<dt>{language === 'ja' ? 'Japanese definition' : 'English definition'}</dt>
+					<dt>
+						{language === 'ja' ? 'Japanese definition' : 'English definition'}
+					</dt>
 					<dd>{card.target_language_definition}</dd>
 				</div>{/if}
 			{#if card.example_sentence}<div class="detail-field wide">
@@ -291,6 +340,7 @@
 		onclose={() => !mutationBusy && (editing = false)}
 	>
 		<CardForm
+			writable={$canWrite}
 			{language}
 			initial={card}
 			busy={mutationBusy}
@@ -304,6 +354,7 @@
 
 {#if archiveConfirm && card}
 	<ConfirmDialog
+		disabled={!$canWrite}
 		eyebrow="Archive card"
 		title={`Remove “${card.term}” from active study?`}
 		description="It will no longer appear in active study. You can still find it in Archived cards."

@@ -1,3 +1,9 @@
+import {
+  fixtureUserId,
+  signInAs,
+  removeSessionInAnotherTab,
+  installMockGis,
+} from "./auth-fixture";
 import { expect, test } from "@playwright/test";
 
 async function answerOneCard(page: import("@playwright/test").Page) {
@@ -64,8 +70,9 @@ for (const width of [1280, 390]) {
       return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
     });
     expect(
-      await page.evaluate(() =>
-        localStorage.getItem("review_practiced_on_v1:browser-test-success"),
+      await page.evaluate(
+        (key) => localStorage.getItem(key),
+        `review_practiced_on_v1:${fixtureUserId("success")}`,
       ),
     ).toBe(date);
     expect(
@@ -86,17 +93,7 @@ for (const width of [1280, 390]) {
         () => document.documentElement.scrollWidth <= innerWidth,
       ),
     ).toBe(true);
-    await page.evaluate(() => {
-      const exp = Math.floor(Date.now() / 1000) + 3600;
-      localStorage.setItem(
-        "gid_id_token",
-        `e30.${btoa(JSON.stringify({ sub: "browser-test-other-account", exp }))}.test`,
-      );
-      localStorage.setItem("gid_exp", String(exp));
-      window.dispatchEvent(
-        new StorageEvent("storage", { key: "gid_id_token" }),
-      );
-    });
+    await signInAs(page, "other-account");
     await expect(
       page.getByRole("link", { name: /Start today.s review/ }),
     ).toBeVisible();
@@ -132,8 +129,9 @@ test("activity storage failure cannot turn a validated save into an unconfirmed 
     page.getByRole("heading", { name: "Review not confirmed" }),
   ).toHaveCount(0);
   expect(
-    await page.evaluate(() =>
-      localStorage.getItem("review_practiced_on_v1:browser-test-success"),
+    await page.evaluate(
+      (key) => localStorage.getItem(key),
+      `review_practiced_on_v1:${fixtureUserId("success")}`,
     ),
   ).toBeNull();
 });
@@ -175,12 +173,13 @@ test("an unconfirmed submission retries the identical command and succeeds once"
     page.getByRole("heading", { name: "Review not confirmed" }),
   ).toBeVisible();
   const firstPending = await page.evaluate(() =>
-    localStorage.getItem("pending_review_submission_v1"),
+    localStorage.getItem("pending_review_submission_v2"),
   );
   expect(firstPending).not.toBeNull();
   expect(
-    await page.evaluate(() =>
-      localStorage.getItem("review_practiced_on_v1:browser-test-retryable"),
+    await page.evaluate(
+      (key) => localStorage.getItem(key),
+      `review_practiced_on_v1:${fixtureUserId("retryable")}`,
     ),
   ).toBeNull();
 
@@ -192,7 +191,7 @@ test("an unconfirmed submission retries the identical command and succeeds once"
   ).toBeVisible();
   expect(
     await page.evaluate(() =>
-      localStorage.getItem("pending_review_submission_v1"),
+      localStorage.getItem("pending_review_submission_v2"),
     ),
   ).toBeNull();
   expect(commands).toHaveLength(2);
@@ -223,7 +222,7 @@ test("a stale batch is visibly rejected and retired", async ({ page }) => {
   ).toBeVisible();
   expect(
     await page.evaluate(() =>
-      localStorage.getItem("pending_review_submission_v1"),
+      localStorage.getItem("pending_review_submission_v2"),
     ),
   ).toBeNull();
 });
@@ -238,10 +237,10 @@ test("empty and authentication states are distinct", async ({ page }) => {
 
   await page.goto("/__test__/auth/unauthorized");
   await expect(
-    page.getByRole("heading", { name: "Sign in required" }),
+    page.getByText(/Session ended\.|You signed out in another tab\./).first(),
   ).toBeVisible();
   expect(
-    await page.evaluate(() => localStorage.getItem("gid_id_token")),
+    await page.evaluate(() => localStorage.getItem("el_auth_refresh_v1")),
   ).toBeNull();
 });
 
@@ -258,14 +257,14 @@ test("a submission 401 signs out but preserves the unconfirmed command", async (
   await answerOneCard(page);
 
   await expect(
-    page.getByRole("heading", { name: "Sign in required" }),
+    page.getByText(/Session ended\.|You signed out in another tab\./).first(),
   ).toBeVisible();
   expect(
-    await page.evaluate(() => localStorage.getItem("gid_id_token")),
+    await page.evaluate(() => localStorage.getItem("el_auth_refresh_v1")),
   ).toBeNull();
   expect(
     await page.evaluate(() =>
-      localStorage.getItem("pending_review_submission_v1"),
+      localStorage.getItem("pending_review_submission_v2"),
     ),
   ).not.toBeNull();
 });
@@ -291,7 +290,7 @@ for (const testCase of [
     ).toBeVisible();
     expect(
       await page.evaluate(() =>
-        localStorage.getItem("pending_review_submission_v1"),
+        localStorage.getItem("pending_review_submission_v2"),
       ),
     ).toBeNull();
   });
@@ -307,20 +306,19 @@ for (const mode of ["server-error", "invalid-response"]) {
     ).toBeVisible();
     expect(
       await page.evaluate(() =>
-        localStorage.getItem("pending_review_submission_v1"),
+        localStorage.getItem("pending_review_submission_v2"),
       ),
     ).not.toBeNull();
     expect(
       await page.evaluate(
-        (mode) =>
-          localStorage.getItem(`review_practiced_on_v1:browser-test-${mode}`),
-        mode,
+        (mode) => localStorage.getItem(`review_practiced_on_v1:${mode}`),
+        String(fixtureUserId(mode)),
       ),
     ).toBeNull();
   });
 }
 
-test("logout during private review requires sign-in without guest fallback", async ({
+test("other-tab sign-out preserves private review and offers an explicit guest choice", async ({
   page,
 }) => {
   let publicFetches = 0;
@@ -331,21 +329,37 @@ test("logout during private review requires sign-in without guest fallback", asy
   await expect(page.getByText("resilient", { exact: true })).toBeVisible();
   await page.locator(".swipe--card").click();
   await page.getByRole("button", { name: "Knew it", exact: true }).click();
-  await page.evaluate(() => {
-    localStorage.removeItem("gid_id_token");
-    localStorage.removeItem("gid_exp");
-  });
-  await page
-    .getByRole("button", { name: "Submit Results", exact: true })
-    .click();
+  const pending = await page.evaluate(() =>
+    localStorage.getItem("pending_review_submission_v2"),
+  );
+  expect(pending).not.toBeNull();
+  await removeSessionInAnotherTab(page);
   await expect(
-    page.getByRole("heading", { name: "Sign in required" }),
+    page.getByRole("button", { name: "Submit Results", exact: true }),
+  ).toBeDisabled();
+  await expect(
+    page.getByText(/Session ended\.|You signed out in another tab\./).first(),
   ).toBeVisible();
+  const status = page.getByTestId("session-status");
+  await expect(
+    status.getByRole("button", { name: "Sign in again", exact: true }),
+  ).toBeVisible();
+  await expect(
+    status.getByRole("button", { name: "Continue as guest", exact: true }),
+  ).toBeVisible();
+  expect(
+    await page.evaluate(() =>
+      localStorage.getItem("pending_review_submission_v2"),
+    ),
+  ).toBe(pending);
+  expect(
+    await page.evaluate(() => sessionStorage.getItem("learning_guest_session")),
+  ).toBeNull();
   expect(publicFetches).toBe(0);
   await expect(page).toHaveURL(/\/review$/);
 });
 
-test("changing accounts retires an uncertain private command without guest fallback", async ({
+test("changing internal user clears an uncertain command with its count without selecting guest", async ({
   page,
 }) => {
   let publicFetches = 0;
@@ -371,26 +385,15 @@ test("changing accounts retires an uncertain private command without guest fallb
   await expect(
     page.getByRole("heading", { name: "Review not confirmed" }),
   ).toBeVisible();
-  await page.evaluate(() => {
-    const exp = Math.floor(Date.now() / 1000) + 3600;
-    localStorage.setItem(
-      "gid_id_token",
-      `e30.${btoa(JSON.stringify({ sub: "browser-test-other-account", exp }))}.test`,
-    );
-    localStorage.setItem("gid_exp", String(exp));
-  });
-  await page
-    .getByRole("button", { name: "Retry submission", exact: true })
-    .click();
-  await expect(
-    page.getByText(
-      "The previous review session was removed after the account changed.",
-    ),
-  ).toBeVisible();
+  await signInAs(page, "other-account");
+  await expect(page.getByText(/1 unsent answers?.*were removed/)).toBeVisible();
   expect(
     await page.evaluate(() =>
-      localStorage.getItem("pending_review_submission_v1"),
+      localStorage.getItem("pending_review_submission_v2"),
     ),
+  ).toBeNull();
+  expect(
+    await page.evaluate(() => sessionStorage.getItem("learning_guest_session")),
   ).toBeNull();
   expect(publicFetches).toBe(0);
   await expect(page).toHaveURL(/\/review$/);
@@ -400,43 +403,11 @@ async function installGoogleSignIn(
   page: import("@playwright/test").Page,
   subject: string,
 ) {
-  await page.route("https://accounts.google.com/gsi/client", (route) =>
-    route.abort(),
-  );
-  await page.addInitScript(
-    ({ subject }) => {
-      let callback: ((response: { credential: string }) => void) | undefined;
-      Object.defineProperty(window, "google", {
-        configurable: true,
-        value: {
-          accounts: {
-            id: {
-              initialize: (options: { callback: typeof callback }) => {
-                callback = options.callback;
-              },
-              renderButton: (container: HTMLElement) => {
-                const button = document.createElement("button");
-                button.textContent = "Sign in with Google";
-                button.onclick = () => {
-                  const exp = Math.floor(Date.now() / 1000) + 3600;
-                  callback?.({
-                    credential: `e30.${btoa(JSON.stringify({ sub: subject, exp, email: "browser-test@example.com", email_verified: true }))}.test`,
-                  });
-                };
-                container.append(button);
-              },
-              disableAutoSelect: () => {},
-            },
-          },
-        },
-      });
-    },
-    { subject },
-  );
+  await installMockGis(page, subject);
 }
 
 async function signInFromMenu(page: import("@playwright/test").Page) {
-  await page.getByRole("button", { name: "Guest account menu" }).click();
+  await page.getByRole("button", { name: /account menu/i }).click();
   await page.getByRole("menuitem", { name: "Sign in", exact: true }).click();
   await page
     .getByRole("dialog")
@@ -455,10 +426,15 @@ test("guest login replaces its batch with owned review and sends no guest answer
   await installGoogleSignIn(page, "browser-test-success");
   const writes: string[] = [];
   page.on("request", (request) => {
-    if (request.method() === "POST") writes.push(request.url());
+    if (
+      request.method() === "POST" &&
+      !new URL(request.url()).pathname.startsWith("/v1/auth/")
+    )
+      writes.push(request.url());
   });
   await page.goto(`${root}/`);
   await page
+    .locator(".review-invitation")
     .getByRole("button", { name: "Continue as guest", exact: true })
     .click();
   await expect(page).toHaveTitle("Guest review - English Learning");
@@ -473,17 +449,13 @@ test("guest login replaces its batch with owned review and sends no guest answer
   await expect(
     page.getByRole("heading", { name: "Your review batch is saved!" }),
   ).toBeVisible();
-  await page.evaluate(() => {
-    localStorage.removeItem("gid_id_token");
-    localStorage.removeItem("gid_exp");
-    window.dispatchEvent(new StorageEvent("storage", { key: "gid_id_token" }));
-  });
+  await removeSessionInAnotherTab(page);
   await expect(
     page.getByRole("heading", { name: "Your review batch is saved!" }),
   ).toBeVisible();
   expect(
     await page.evaluate(() =>
-      localStorage.getItem("pending_review_submission_v1"),
+      localStorage.getItem("pending_review_submission_v2"),
     ),
   ).toBeNull();
 });
@@ -517,27 +489,19 @@ test("private 401 retains exact pending bytes and retries after same-account log
   await page.goto("/__test__/auth/success");
   await answerOneCard(page);
   await expect(
-    page.getByRole("heading", { name: "Sign in required" }),
+    page.getByText(/Session ended\.|You signed out in another tab\./).first(),
   ).toBeVisible();
   const bytes = await page.evaluate(() =>
-    localStorage.getItem("pending_review_submission_v1"),
+    localStorage.getItem("pending_review_submission_v2"),
   );
   expect(bytes).not.toBeNull();
   await signInFromMenu(page);
-  await expect(
-    page.getByRole("heading", { name: "Review not confirmed" }),
-  ).toBeVisible();
+  await expect(page.getByText(/saved answers? (were|was) sent/)).toBeVisible();
   expect(
     await page.evaluate(() =>
-      localStorage.getItem("pending_review_submission_v1"),
+      localStorage.getItem("pending_review_submission_v2"),
     ),
-  ).toBe(bytes);
-  await page
-    .getByRole("button", { name: "Retry submission", exact: true })
-    .click();
-  await expect(
-    page.getByRole("heading", { name: "Your review batch is saved!" }),
-  ).toBeVisible();
+  ).toBeNull();
   expect(commands).toHaveLength(2);
   expect(commands[1]).toEqual(commands[0]);
 });
@@ -598,17 +562,7 @@ for (const staleStatus of [200, 401]) {
     await page.goto("/__test__/auth/slow");
     await expect(page.getByText("Loading...", { exact: true })).toBeVisible();
     await expect.poll(() => reads).toBe(1);
-    await page.evaluate(() => {
-      const exp = Math.floor(Date.now() / 1000) + 3600;
-      localStorage.setItem(
-        "gid_id_token",
-        `e30.${btoa(JSON.stringify({ sub: "browser-test-new-account", exp }))}.test`,
-      );
-      localStorage.setItem("gid_exp", String(exp));
-      window.dispatchEvent(
-        new StorageEvent("storage", { key: "gid_id_token" }),
-      );
-    });
+    await signInAs(page, "new-account");
     await expect(
       page.getByText("new-account-card", { exact: true }),
     ).toBeVisible();
@@ -631,7 +585,7 @@ for (const staleStatus of [200, 401]) {
       page.getByRole("button", { name: /Account menu for/ }),
     ).toBeVisible();
     expect(
-      await page.evaluate(() => localStorage.getItem("gid_id_token")),
+      await page.evaluate(() => localStorage.getItem("el_auth_refresh_v1")),
     ).not.toBeNull();
   });
 }
@@ -651,19 +605,13 @@ for (const mode of ["conflict", "validation"]) {
         : "The review was rejected. No answers were saved.";
     await expect(page.getByRole("heading", { name: heading })).toBeVisible();
     await expect(page.getByText(explanation, { exact: true })).toBeVisible();
-    await page.evaluate(() => {
-      localStorage.removeItem("gid_id_token");
-      localStorage.removeItem("gid_exp");
-      window.dispatchEvent(
-        new StorageEvent("storage", { key: "gid_id_token" }),
-      );
-    });
+    await removeSessionInAnotherTab(page);
     await expect(
-      page.getByRole("heading", { name: "Sign in required" }),
+      page.getByText("You signed out in another tab.", { exact: true }),
     ).toBeVisible();
     expect(
       await page.evaluate(() =>
-        localStorage.getItem("pending_review_submission_v1"),
+        localStorage.getItem("pending_review_submission_v2"),
       ),
     ).toBeNull();
     await signInFromMenu(page);
@@ -676,7 +624,7 @@ for (const mode of ["conflict", "validation"]) {
     ).toBeVisible();
     expect(
       await page.evaluate(() =>
-        localStorage.getItem("pending_review_submission_v1"),
+        localStorage.getItem("pending_review_submission_v2"),
       ),
     ).toBeNull();
   });
@@ -720,6 +668,7 @@ test("a delayed private 401 after explicit sign-out cannot remove the new guest 
   await page.getByRole("menuitem", { name: "Sign out", exact: true }).click();
   await expect(page).toHaveURL(`${root}/`);
   await page
+    .locator(".review-invitation")
     .getByRole("button", { name: "Continue as guest", exact: true })
     .click();
   await expect(page).toHaveTitle("Guest review - English Learning");
@@ -748,6 +697,6 @@ test("a delayed private 401 after explicit sign-out cannot remove the new guest 
     await page.evaluate(() => sessionStorage.getItem("learning_guest_session")),
   ).toBe(guestDeadline);
   expect(
-    await page.evaluate(() => localStorage.getItem("gid_id_token")),
+    await page.evaluate(() => localStorage.getItem("el_auth_refresh_v1")),
   ).toBeNull();
 });

@@ -2223,6 +2223,28 @@
         "title": "LivenessResponse",
         "type": "object"
       },
+      "LogoutCredential": {
+        "additionalProperties": false,
+        "properties": {
+          "refresh_token": {
+            "anyOf": [
+              {
+                "format": "password",
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string",
+                "writeOnly": true
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Refresh Token"
+          }
+        },
+        "title": "LogoutCredential",
+        "type": "object"
+      },
       "Message": {
         "additionalProperties": false,
         "properties": {
@@ -2516,6 +2538,24 @@
           "checks"
         ],
         "title": "ReadinessResponse",
+        "type": "object"
+      },
+      "RefreshCredential": {
+        "additionalProperties": false,
+        "properties": {
+          "refresh_token": {
+            "format": "password",
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Refresh Token",
+            "type": "string",
+            "writeOnly": true
+          }
+        },
+        "required": [
+          "refresh_token"
+        ],
+        "title": "RefreshCredential",
         "type": "object"
       },
       "ReviewResult": {
@@ -2862,6 +2902,108 @@
           "indexed_count"
         ],
         "title": "SemanticSearchResponse",
+        "type": "object"
+      },
+      "SessionCredential": {
+        "additionalProperties": false,
+        "properties": {
+          "credential": {
+            "format": "password",
+            "maxLength": 16384,
+            "minLength": 1,
+            "title": "Credential",
+            "type": "string",
+            "writeOnly": true
+          }
+        },
+        "required": [
+          "credential"
+        ],
+        "title": "SessionCredential",
+        "type": "object"
+      },
+      "SessionProfile": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "picture": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Picture"
+          }
+        },
+        "title": "SessionProfile",
+        "type": "object"
+      },
+      "SessionTokens": {
+        "properties": {
+          "access_expires_at": {
+            "format": "date-time",
+            "title": "Access Expires At",
+            "type": "string"
+          },
+          "access_token": {
+            "title": "Access Token",
+            "type": "string"
+          },
+          "profile": {
+            "$ref": "#/components/schemas/SessionProfile"
+          },
+          "refresh_expires_at": {
+            "format": "date-time",
+            "title": "Refresh Expires At",
+            "type": "string"
+          },
+          "refresh_token": {
+            "title": "Refresh Token",
+            "type": "string"
+          },
+          "user": {
+            "$ref": "#/components/schemas/SessionUser"
+          }
+        },
+        "required": [
+          "access_token",
+          "access_expires_at",
+          "refresh_token",
+          "refresh_expires_at",
+          "user",
+          "profile"
+        ],
+        "title": "SessionTokens",
+        "type": "object"
+      },
+      "SessionUser": {
+        "properties": {
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "email"
+        ],
+        "title": "SessionUser",
         "type": "object"
       },
       "StreamMessage": {
@@ -3224,6 +3366,125 @@
           }
         ],
         "summary": "Assistant Stream"
+      }
+    },
+    "/v1/auth/logout": {
+      "post": {
+        "operationId": "logout_session_v1_auth_logout_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/LogoutCredential"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Payload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Logout Session"
+      }
+    },
+    "/v1/auth/refresh": {
+      "post": {
+        "operationId": "refresh_session_v1_auth_refresh_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RefreshCredential"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionTokens"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Refresh Session"
+      }
+    },
+    "/v1/auth/session": {
+      "post": {
+        "operationId": "exchange_session_v1_auth_session_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SessionCredential"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionTokens"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Exchange Session"
       }
     },
     "/v1/cards": {
@@ -4152,7 +4413,6 @@
     },
     "/v1/me": {
       "get": {
-        "description": "Return the authenticated internal identity without exposing Google subject.",
         "operationId": "get_me_v1_me_get",
         "responses": {
           "200": {

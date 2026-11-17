@@ -98,15 +98,16 @@ if that command fails.
 
 ## Environment Variables
 
-The app reads these public SvelteKit env vars:
+Public SvelteKit/deployment configuration uses these variables:
 
 - `PUBLIC_API_BASE_URL`: FastAPI origin/base URL used by review and deck/card management. It is
   independent of the static frontend's `paths.base`; omit the trailing slash (a trailing slash is
   normalized).
 - `PUBLIC_GOOGLE_AUTH_CLIENT_ID`: Google Identity Services OAuth client ID.
-- `PUBLIC_EMAIL_WHITE_LIST`: comma-separated allowed Google account emails.
-- The production API also receives this list as `GOOGLE_ALLOWED_EMAILS` and rejects verified Google
-  accounts outside it before creating an internal user. The browser-side check is only a UX precheck.
+- `PUBLIC_EMAIL_WHITE_LIST`: comma-separated allowlist used by the existing browser sign-in UX
+  precheck and passed to the production API as `GOOGLE_ALLOWED_EMAILS`. The precheck can reject
+  a sign-in locally; it cannot authorize a caller. The backend independently enforces its allowlist
+  at human exchange, refresh and every access request.
 
 Because these are `PUBLIC_` vars, they are bundled into browser code. Do not store secrets in them.
 Copy `.env.example` to an ignored `.env` for local frontend development and replace its placeholders.
@@ -169,6 +170,68 @@ To enable Vertex-backed generation on the API candidate, set `VERTEX_PROJECT_ID`
 Set `GENERATION_LOCATION` if the model uses a separate endpoint such as `global`. The workflow
 passes configured generation values to the revision. Without a generation location override,
 the API uses `VERTEX_LOCATION`, which also controls embedding requests.
+
+### App-session release smoke (issue #45)
+
+**Smoke API candidate** uses two WIF identities: the existing deploy SA resolves the zero-traffic
+candidate; a dedicated `el-release-smoke@<project>.iam.gserviceaccount.com` mints the smoke ID
+token. The maintainer sets `RELEASE_SMOKE_AUDIENCE` (`https://<api-host>/release-smoke`),
+`RELEASE_SMOKE_SUBJECT` (the SA's numeric unique ID), and `RELEASE_SMOKE_EMAIL` (that SA email)
+in the protected `production` environment. All three must be configured together; the audience
+must differ from `GOOGLE_OAUTH_CLIENT_ID` and `GUEST_EXPORT_AUDIENCE`. Only placeholders belong
+in documentation. The deploy workflow passes these settings to the candidate.
+
+Grant only `roles/iam.workloadIdentityUser` impersonation on this smoke SA to the exact trusted
+WIF principal. Restrict mappings/conditions and the binding to the numeric repository/owner IDs,
+`ref=refs/heads/main`, `.github/workflows/smoke-api-candidate.yml@refs/heads/main`, and the
+`production` environment subject. An environment subject alone does not prove main. Reuse the
+existing `GCP_WORKLOAD_IDENTITY_PROVIDER` only if it supports these restrictions without
+broadening deployment trust. The smoke SA has no database, Secret Manager, deployment or
+project-wide role. Do not use a key, a human token, the export SA or the deployment SA for smoke.
+The maintainer performs any IAM changes; repository checks do not provision resources.
+
+The workflow has no token input. It masks its freshly minted ID token, exchanges it for app
+tokens, checks owned reads, creates/reviews/replays/archives its own synthetic card, checks
+refresh rotation/reuse and logout, and proves direct Google bearer rejection. The fixed
+`Release smoke (synthetic)` deck and its review events persist; each run's card is archived.
+No GenAI consent is granted and no Vertex request runs. Do not paste an operator token or rely
+on a naturally due human card. Script output contains only safe statuses, booleans and counts.
+A failed run must be investigated before promotion, including failed best-effort archival.
+
+Optional `AUTH_ACCESS_TTL_SECONDS`, `AUTH_REFRESH_IDLE_TTL_SECONDS`,
+`AUTH_REFRESH_ABSOLUTE_TTL_SECONDS` and `AUTH_REFRESH_REUSE_GRACE_SECONDS` production variables
+are appended to the deploy environment string only when nonempty. Otherwise the app defaults
+apply: 900, 604800, 2592000 and 10 seconds respectively. Removing a variable omits that setting
+from the next candidate; no empty numeric value is sent. API settings validation remains the
+bounds check.
+
+Release when no review is in progress and no old pending answer remains: publish the image,
+run the additive migration first, deploy the zero-traffic candidate, run machine smoke, promote
+API, immediately deploy Pages for the same commit, then manually verify real GIS sign-in,
+reload/refresh, assistant reply, one review, sign-out and account change if available. This is a
+strict cutover: old Pages gets 401 until the matching new Pages build is live/reloaded; there is
+no dual-bearer flag. Machine smoke does not replace the interactive Google check. Release is
+complete only after both have passed on the actual release.
+
+Rollback moves API traffic to the recorded compatible revision and redeploys Pages from the
+previous commit together. The old API ignores auth tables; retained refresh sessions can be
+revoked before rolling forward again. The maintainer-only transaction is:
+
+```sql
+BEGIN;
+UPDATE auth_sessions
+SET revoked_at = CURRENT_TIMESTAMP, revoked_reason = 'operator'
+WHERE revoked_at IS NULL;
+DELETE FROM auth_access_tokens;
+COMMIT;
+```
+
+Run it with the maintenance database role in a quiet window; it does not cancel in-flight
+requests. Never roll back one side alone or automatically downgrade the tables. The full
+[release runbook](training/issues/issue-26/runbook.md#machine-identity-candidate-verification)
+distinguishes machine smoke from the interactive check. Record release identifiers, timestamps
+and safe results only, never tokens, emails, card text/IDs or bodies. Local stub/unit results do
+not establish deployed WIF, production smoke or rollback success.
 
 ## Validation Expectations
 
@@ -242,7 +305,8 @@ API-backed agent run merely to validate YAML or shell syntax.
 - Google Identity Services must be loaded in `src/app.html` for `window.google.accounts.id` to exist.
 - The legacy Sheet wrapper still documents the Apps Script `{ ok, result/error }` shape, but it has
   no ambient endpoint configuration and is not part of normal review or management navigation.
-- Auth state is currently initialized from local token helpers only where components call them; verify sign-in persistence when changing auth flow.
+- Root layout initializes app sessions before routing; startup refresh restores access from the rotating refresh key. See the [auth sequence](architecture.md#app-session-authentication-and-threat-model-45-2026-11-17).
+- CSP is deferred under issue #45 Q6 because the JSON editor compiles Ajv at runtime. Do not add unsafe script sources; see the [CSP follow-up](issues/issue-45-csp-followup.md).
 
 ## Guest review development and release gate
 

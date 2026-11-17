@@ -182,6 +182,11 @@ python3 doc/training/issues/issue-41/run_deployed_evaluation.py \
   --dry-run
 ```
 
+> 2026-11-17 retirement warning (#45): The live command and token-supply instructions below
+> are archived evidence, not a current procedure. Live mode is incompatible with app sessions;
+> use only the request-free dry-run until a separately approved auth-adapter update. Current
+> release verification uses the [machine smoke runbook](../issue-26/runbook.md#machine-identity-candidate-verification).
+
 The 30-request latency workload is already complete. Run each v2 query once for quality and keep the
 content-safe report outside the repository:
 
@@ -239,16 +244,16 @@ paths through deterministic tests or safe provider-call instrumentation.
 
 Record an observed or deterministic result for each row before closeout:
 
-| Case | Expected boundary |
-| --- | --- |
-| Empty eligible corpus | 200, empty items, `empty`, zero eligible/indexed |
-| Eligible cards with no current embeddings | 200, empty items, `empty`, indexed zero |
-| Partial embeddings | Only current ready vectors rank; `partial` reports honest counts |
-| Semantic content edit | Old hash/vector excluded until the new embedding is ready |
-| Card or deck archive | Excluded immediately at query time without re-embedding |
-| Model/version mismatch | Inactive model row is never used silently |
-| Provider outage/timeout | Safe 503; retryability matches the error class; never empty 200 |
-| Cross-owner card/deck | No result leakage; foreign deck is masked as not found |
+| Case                                      | Expected boundary                                                |
+| ----------------------------------------- | ---------------------------------------------------------------- |
+| Empty eligible corpus                     | 200, empty items, `empty`, zero eligible/indexed                 |
+| Eligible cards with no current embeddings | 200, empty items, `empty`, indexed zero                          |
+| Partial embeddings                        | Only current ready vectors rank; `partial` reports honest counts |
+| Semantic content edit                     | Old hash/vector excluded until the new embedding is ready        |
+| Card or deck archive                      | Excluded immediately at query time without re-embedding          |
+| Model/version mismatch                    | Inactive model row is never used silently                        |
+| Provider outage/timeout                   | Safe 503; retryability matches the error class; never empty 200  |
+| Cross-owner card/deck                     | No result leakage; foreign deck is masked as not found           |
 
 ## SQL versus vector boundary
 
@@ -458,16 +463,16 @@ subtracted to assign a precise latency share.
 Focused real-PostgreSQL/pgvector tests passed `11` cases across the embedding lifecycle and search
 boundary, with the existing FastAPI TestClient deprecation warning:
 
-| Case | Verified outcome |
-| --- | --- |
-| Empty eligible corpus | 200, empty items, `empty`, 0/0 coverage |
-| Eligible but fully unindexed | 200, empty items, `empty`, 0/1 indexed/eligible |
-| Partial embeddings | Only current ready vectors ranked; `partial` reported 2/4 |
-| Semantic content edit | Stale result could not overwrite new content; old hash was excluded |
-| Card/deck archive | Archived card excluded; archived owned deck returned empty before provider |
-| Model mismatch | Inactive-model vector was excluded from results and coverage |
-| Provider timeout | Safe retryable 503, never an empty success |
-| Cross-owner card/deck | Foreign card excluded; foreign deck masked as 404 before provider |
+| Case                         | Verified outcome                                                           |
+| ---------------------------- | -------------------------------------------------------------------------- |
+| Empty eligible corpus        | 200, empty items, `empty`, 0/0 coverage                                    |
+| Eligible but fully unindexed | 200, empty items, `empty`, 0/1 indexed/eligible                            |
+| Partial embeddings           | Only current ready vectors ranked; `partial` reported 2/4                  |
+| Semantic content edit        | Stale result could not overwrite new content; old hash was excluded        |
+| Card/deck archive            | Archived card excluded; archived owned deck returned empty before provider |
+| Model mismatch               | Inactive-model vector was excluded from results and coverage               |
+| Provider timeout             | Safe retryable 503, never an empty success                                 |
+| Cross-owner card/deck        | Foreign card excluded; foreign deck masked as 404 before provider          |
 
 Observed provider-call behavior was one query embedding for each valid normal, empty-corpus, or
 fully-unindexed search. Invalid authentication/body, foreign deck, and archived deck stopped before
