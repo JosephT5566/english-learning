@@ -38,14 +38,29 @@ http
       /^\/__test__\/auth\/(success|retryable|conflict|empty|unauthorized|submit-unauthorized|validation|not-found|server-error|invalid-response|slow)$/,
     );
     if (authMatch) {
-      const { token, exp } = testToken(authMatch[1]);
+      const { token } = testToken(authMatch[1]);
       response.writeHead(200, { "Content-Type": "text/html" });
-      response.end(`<!doctype html><script>
-				localStorage.setItem('gid_id_token', ${JSON.stringify(token)});
-				localStorage.setItem('gid_exp', ${JSON.stringify(String(exp))});
-				localStorage.removeItem('pending_review_submission_v1');
-				location.replace(${JSON.stringify(`${base}/review`)});
-			</script>`);
+      response.end(`<!doctype html><script type="module">
+        const response = await fetch('http://127.0.0.1:8001/v1/auth/session', {
+          method: 'POST', headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({credential: ${JSON.stringify(token)}})
+        });
+        if (!response.ok) throw new Error('Synthetic sign-in failed');
+        const session = await response.json();
+        await fetch('http://127.0.0.1:8001/__test__/auth/reset-data', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({refresh_token: session.refresh_token}) });
+        localStorage.setItem('el_auth_refresh_v1', session.refresh_token);
+        const profile = {
+          ...session.user,
+          ...(typeof session.profile.name === 'string' ? {name: session.profile.name} : {}),
+          ...(typeof session.profile.picture === 'string' ? {picture: session.profile.picture} : {})
+        };
+        localStorage.setItem('el_auth_profile_v1', JSON.stringify(profile));
+        localStorage.removeItem('pending_review_submission_v1');
+        localStorage.removeItem('pending_review_submission_v2');
+        localStorage.removeItem('el_review_pending_meta_v1');
+        sessionStorage.removeItem('learning_guest_session');
+        location.replace(${JSON.stringify(`${base}/review`)});
+      </script>`);
       return;
     }
 

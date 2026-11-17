@@ -336,3 +336,21 @@ describe("public content adapter", () => {
     }
   });
 });
+
+it("keeps the revealed card viewable but blocks grading after session expiry", async () => {
+  const onAnswer = vi.fn();
+  const { container, rerender } = render(SwipeCards, {
+    wordList: [toOwnedStudyCard(card)],
+    onAnswer,
+  });
+  const surface = container.querySelector<HTMLElement>(".swipe--card")!;
+  await fireEvent.click(surface);
+  const grade = screen.getByRole("button", { name: "Knew it" });
+  expect(grade).toBeEnabled();
+  await rerender({ answerDisabled: true });
+  expect(grade).toBeDisabled();
+  await fireEvent.keyDown(surface, { key: "4" });
+  expect(onAnswer).not.toHaveBeenCalled();
+  expect(surface).toHaveAttribute("aria-expanded", "true");
+  expect(surface).not.toHaveAttribute("data-removed");
+});

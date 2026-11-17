@@ -9,6 +9,7 @@
 		confirmLabel,
 		busyLabel = 'Working…',
 		busy = false,
+		disabled = false,
 		oncancel,
 		onconfirm,
 	}: {
@@ -19,6 +20,7 @@
 		confirmLabel: string;
 		busyLabel?: string;
 		busy?: boolean;
+		disabled?: boolean;
 		oncancel: () => void;
 		onconfirm: () => void | Promise<void>;
 	} = $props();
@@ -45,7 +47,7 @@
 			<AlertDialog.Cancel class="secondary-button h-auto" disabled={busy}>
 				{cancelLabel}
 			</AlertDialog.Cancel>
-			<button class="danger-button" type="button" disabled={busy} onclick={onconfirm}>
+			<button class="danger-button" type="button" disabled={disabled || busy} onclick={onconfirm}>
 				{busy ? busyLabel : confirmLabel}
 			</button>
 		</div>

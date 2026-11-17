@@ -1,24 +1,8 @@
+import { seedSignedIn } from "./auth-fixture";
 import { expect, test } from "@playwright/test";
 
 test.beforeEach(async ({ page }) => {
-  await page.addInitScript(() => {
-    const encode = (value: object) =>
-      btoa(JSON.stringify(value))
-        .replaceAll("+", "-")
-        .replaceAll("/", "_")
-        .replaceAll("=", "");
-    const exp = Math.floor(Date.now() / 1000) + 60 * 60;
-    const token = `${encode({ alg: "none" })}.${encode({
-      iss: "https://accounts.google.com",
-      aud: "browser-contract-test",
-      exp,
-      email: "browser-test@example.com",
-      email_verified: true,
-      sub: "browser-test-semantic-search",
-    })}.test-signature`;
-    localStorage.setItem("gid_id_token", token);
-    localStorage.setItem("gid_exp", String(exp));
-  });
+  await seedSignedIn(page, "semantic-search");
   await page.route("**/v1/me/genai-consent", (route) =>
     route.fulfill({ json: { genai_consent_at: "2026-11-05T00:00:00Z" } }),
   );

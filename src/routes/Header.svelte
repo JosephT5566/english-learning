@@ -2,8 +2,10 @@
   import { page } from "$app/state";
   import { resolve } from "$app/paths";
   import { goto } from "$app/navigation";
-  import { signOut } from "$lib/auth";
-  import { authSession } from "$lib/stores/auth";
+  import { signOut, leaveGuestSession, getGuestTimeRemaining } from "$lib/auth";
+  import { pendingReviewInfo } from "$lib/review/pending";
+  import { onMount } from "svelte";
+  import { authSession, authNotice, signInOpen } from "$lib/stores/auth";
   import AccountMenu from "$lib/components/AccountMenu.svelte";
   import GoogleSignIn from "$lib/components/GoogleSignIn.svelte";
   import { Dialog } from "bits-ui";
@@ -22,12 +24,35 @@
   let reviewPath = $derived(
     $authSession.kind === "signed-out" ? homePath : resolve("/review"),
   );
-  let signInOpen = $state(false);
-  $effect(() => {
-    if ($isSignedIn) signInOpen = false;
+  let warningOpen = $state(false);
+  let guestRemaining = $derived(
+    $authSession.kind === "guest" ? getGuestTimeRemaining() : 0,
+  );
+  let showPrivateNav = $derived(
+    $authSession.kind === "authenticated" || $authSession.kind === "expired",
+  );
+  onMount(() => {
+    const update = () => {
+      guestRemaining = getGuestTimeRemaining();
+    };
+    update();
+    const timer = window.setInterval(update, 1000);
+    return () => window.clearInterval(timer);
   });
-  async function handleSignOut() {
-    signOut();
+  $effect(() => {
+    if ($isSignedIn) signInOpen.set(false);
+  });
+  function handleSignOut() {
+    if ($pendingReviewInfo.count > 0) warningOpen = true;
+    else void confirmSignOut();
+  }
+  async function confirmSignOut() {
+    warningOpen = false;
+    await signOut();
+    await goto(resolve("/"));
+  }
+  async function leaveGuest() {
+    leaveGuestSession();
     await goto(resolve("/"));
   }
   let decksPath = $derived(resolve("/decks"));
@@ -39,7 +64,8 @@
   <nav
     aria-label="Primary navigation"
     hidden={$authSession.kind !== "guest" &&
-      $authSession.kind !== "authenticated"}
+      $authSession.kind !== "authenticated" &&
+      $authSession.kind !== "expired"}
   >
     <ul>
       <li>
@@ -54,13 +80,13 @@
       <li>
         <a
           href={reviewPath}
-          aria-label={$isSignedIn ? "Review" : "Guest review"}
-          title={$isSignedIn ? "Review" : "Guest review"}
+          aria-label={showPrivateNav ? "Review" : "Guest review"}
+          title={showPrivateNav ? "Review" : "Guest review"}
           aria-current={page.url.pathname === reviewPath ? "page" : undefined}
           ><PlayingCardsFunIcon size={20} aria-hidden="true" /></a
         >
       </li>
-      {#if $isSignedIn}
+      {#if showPrivateNav}
         <li>
           <a
             href={`${decksPath}?language=${language}`}
@@ -86,27 +112,39 @@
             href={assistantPath}
             aria-label="Assistant"
             title="Assistant"
-            aria-current={page.url.pathname === assistantPath ? "page" : undefined}
-            ><MessageCircleIcon size={20} aria-hidden="true" /></a
+            aria-current={page.url.pathname === assistantPath
+              ? "page"
+              : undefined}><MessageCircleIcon size={20} aria-hidden="true" /></a
           >
         </li>
       {/if}
     </ul>
   </nav>
   <div class="account-control">
+    {#if $authSession.kind === "guest"}<button
+        class="sign-in-pill"
+        onclick={() => signInOpen.set(true)}>Sign in</button
+      >{/if}
     <AccountMenu
-      profile={$authSession.kind === "authenticated"
+      profile={$authSession.kind === "authenticated" ||
+      $authSession.kind === "expired"
         ? $authSession.profile
         : null}
       onSignIn={() => {
-        signInOpen = true;
+        signInOpen.set(true);
       }}
       onSignOut={handleSignOut}
+      signedIn={$isSignedIn}
+      guest={$authSession.kind === "guest"}
+      timeRemaining={guestRemaining}
+      expired={$authSession.kind === "expired"}
+      signingIn={$authNotice?.kind === "signing-in"}
+      onLeaveGuest={() => void leaveGuest()}
     />
   </div>
 </header>
 
-<Dialog.Root bind:open={signInOpen}>
+<Dialog.Root bind:open={$signInOpen}>
   <Dialog.Portal>
     <Dialog.Overlay class="account-dialog-overlay" />
     <Dialog.Content
@@ -115,7 +153,7 @@
         event.stopPropagation();
         if (event.key === "Escape") {
           event.preventDefault();
-          signInOpen = false;
+          signInOpen.set(false);
         }
       }}
     >
@@ -125,6 +163,24 @@
       >
       <GoogleSignIn />
       <Dialog.Close class="account-dialog-close">Close</Dialog.Close>
+    </Dialog.Content>
+  </Dialog.Portal>
+</Dialog.Root>
+
+<Dialog.Root bind:open={warningOpen}>
+  <Dialog.Portal>
+    <Dialog.Overlay class="account-dialog-overlay" />
+    <Dialog.Content class="account-dialog">
+      <Dialog.Title>Sign out?</Dialog.Title>
+      <Dialog.Description
+        >{$pendingReviewInfo.count} answers are not sent yet. They stay on this device
+        and will be sent only when you sign in with the same account. Signing in
+        with a different account will clear them.</Dialog.Description
+      >
+      <button class="account-dialog-close" onclick={() => void confirmSignOut()}
+        >Sign out</button
+      >
+      <Dialog.Close class="account-dialog-close">Keep practising</Dialog.Close>
     </Dialog.Content>
   </Dialog.Portal>
 </Dialog.Root>
@@ -140,9 +196,26 @@
   }
 
   .account-control {
+    display: flex;
+    gap: 0.4rem;
+    align-items: center;
     position: absolute;
     right: 1rem;
     top: 1rem;
+  }
+  .sign-in-pill {
+    min-height: 44px;
+    padding: 0 0.9rem;
+    border-radius: 999px;
+    border: 1px solid rgba(64, 117, 166, 0.3);
+    background: rgba(255, 255, 255, 0.8);
+    color: #315f89;
+    font-weight: 700;
+    cursor: pointer;
+  }
+  .sign-in-pill:focus-visible {
+    outline: 3px solid rgba(64, 117, 166, 0.45);
+    outline-offset: 2px;
   }
   :global(.account-dialog-overlay) {
     position: fixed;

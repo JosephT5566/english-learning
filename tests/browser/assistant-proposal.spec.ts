@@ -1,9 +1,10 @@
+import { seedSignedIn, signInAs, fixtureUserId } from "./auth-fixture";
 import { expect, test, type Page } from "@playwright/test";
 
 const deckId = "10000000-0000-4000-8000-000000000098";
 const proposalId = "30000000-0000-4000-8000-000000000098";
 const existingId = "20000000-0000-4000-8000-000000000097";
-const storageKey = `pending_assistant_proposal_v2:browser-test-assistant:${proposalId}`;
+const storageKey = `pending_assistant_proposal_v2:${fixtureUserId("assistant")}:${proposalId}`;
 const deck = {
   id: deckId,
   title: "Travel English",
@@ -85,17 +86,7 @@ async function openProposal(page: Page) {
   ).toBeVisible();
 }
 test.beforeEach(async ({ page }) => {
-  await page.addInitScript(() => {
-    const encode = (value: object) =>
-      btoa(JSON.stringify(value))
-        .replaceAll("+", "-")
-        .replaceAll("/", "_")
-        .replaceAll("=", "");
-    const exp = Math.floor(Date.now() / 1000) + 3600;
-    const token = `${encode({ alg: "none" })}.${encode({ iss: "https://accounts.google.com", aud: "browser-contract-test", exp, email: "browser-test@example.com", email_verified: true, sub: "browser-test-assistant" })}.test-signature`;
-    localStorage.setItem("gid_id_token", token);
-    localStorage.setItem("gid_exp", String(exp));
-  });
+  await seedSignedIn(page, "assistant");
   await page.route("**/v1/me/genai-consent", (route) =>
     route.fulfill({ json: { genai_consent_at: "2026-11-12T00:00:00Z" } }),
   );
@@ -205,22 +196,7 @@ test("selects, edits and confirms one atomic bulk request, then sends committed 
   await expect(
     page.getByText("Added cards acknowledged.", { exact: true }),
   ).toBeVisible();
-  await page.evaluate(() => {
-    const token = localStorage.getItem("gid_id_token")!;
-    const payload = JSON.parse(
-      atob(token.split(".")[1].replaceAll("-", "+").replaceAll("_", "/")),
-    );
-    payload.sub = "browser-test-assistant-second-account";
-    const encoded = btoa(JSON.stringify(payload))
-      .replaceAll("+", "-")
-      .replaceAll("/", "_")
-      .replaceAll("=", "");
-    localStorage.setItem(
-      "gid_id_token",
-      `${token.split(".")[0]}.${encoded}.test-signature`,
-    );
-    window.dispatchEvent(new StorageEvent("storage", { key: "gid_id_token" }));
-  });
+  await signInAs(page, "assistant-second-account");
   await expect(
     page.getByText("Added cards acknowledged.", { exact: true }),
   ).toHaveCount(0);

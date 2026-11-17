@@ -1,211 +1,500 @@
-import {
-  PUBLIC_GOOGLE_AUTH_CLIENT_ID,
-  PUBLIC_EMAIL_WHITE_LIST,
-} from "$env/static/public";
+import { PUBLIC_GOOGLE_AUTH_CLIENT_ID } from "$env/static/public";
+import { env } from "$env/dynamic/public";
 import { browser } from "$app/environment";
-import { authSession, setSignIn, setSignOut } from "./stores/auth";
+import { get } from "svelte/store";
+import {
+  authSession,
+  authNotice,
+  setSignIn,
+  setSignOut,
+  signInOpen,
+  type SessionProfile,
+} from "./stores/auth";
 import {
   clearPendingSubmission,
+  consumePendingExpiredNotice,
+  inspectPendingReviews,
   loadPendingSubmission,
+  pendingReviewResult,
+  pendingReviewReplay,
+  reconcilePendingOwner,
+  setPendingGuestMode,
 } from "./review/pending";
 
-// ======== 設定 ========
-const STORAGE_TOKEN = "gid_id_token";
-const STORAGE_EXP = "gid_exp"; // 秒級 UNIX time
-const SAFETY_BUFFER_SEC = 60; // 快過期前 60 秒就視為無效
-const MAX_SKEW_SEC = 60; // 允許裝置時間偏差（保守）
-
-const renderedButtons = new WeakSet<HTMLElement>();
-const signInErrorListeners = new Set<(error: Error) => void>();
+export const AUTH_REFRESH_STORAGE_KEY = "el_auth_refresh_v1";
+export const AUTH_PROFILE_STORAGE_KEY = "el_auth_profile_v1";
 const GUEST_SESSION = "learning_guest_session";
 const GUEST_DURATION_MS = 30 * 60_000;
+const REFRESH_LOCK = "el_auth_refresh_v1";
+let accessToken: string | null = null;
+let accessExpiresAt = 0;
+let cachedProfile: SessionProfile | null = null;
+let generation = 0;
+let refreshFlight: {
+  generation: number;
+  promise: Promise<string | null>;
+} | null = null;
+let replayFlight: {
+  key: string;
+  generation: number;
+  promise: Promise<void>;
+} | null = null;
 let gsiInitialized = false;
+const renderedButtons = new WeakSet<HTMLElement>();
+const signInErrorListeners = new Set<(error: Error) => void>();
 
-// ======== 公用工具 ========
-type JwtPayload = {
-  iss?: string;
-  aud?: string;
-  exp: number; // seconds
-  email?: string;
-  email_verified?: boolean;
-  name?: string;
-  picture?: string;
-  sub?: string;
-};
-
-function decodeJwt(token: string): JwtPayload {
-  const [, payload] = token.split(".");
-  const bytes = Uint8Array.from(
-    atob(payload.replace(/-/g, "+").replace(/_/g, "/")),
-    (character) => character.charCodeAt(0),
-  );
-  const json = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
-  const value: unknown = JSON.parse(json);
-  if (!isJwtPayload(value)) throw new Error("Invalid Google profile");
-  return value;
+function read(key: string): string | null {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
 }
-
-function isJwtPayload(value: unknown): value is JwtPayload {
+function remove(key: string) {
+  try {
+    localStorage.removeItem(key);
+  } catch {
+    /* Storage may be disabled. */
+  }
+}
+function refreshToken(): string | null {
+  const token = read(AUTH_REFRESH_STORAGE_KEY);
+  return token?.startsWith("elr_") ? token : null;
+}
+function isProfile(value: unknown): value is SessionProfile {
   if (
-    !value ||
     typeof value !== "object" ||
-    !("exp" in value) ||
-    typeof value.exp !== "number" ||
-    !Number.isFinite(value.exp)
+    value === null ||
+    !("id" in value) ||
+    !("email" in value) ||
+    typeof value.id !== "number" ||
+    !Number.isSafeInteger(value.id) ||
+    value.id < 1 ||
+    typeof value.email !== "string" ||
+    !value.email
   )
     return false;
-  for (const key of ["iss", "aud", "email", "name", "picture", "sub"]) {
-    if (key in value && typeof Reflect.get(value, key) !== "string")
-      return false;
-  }
-  return (
-    !("email_verified" in value) || typeof value.email_verified === "boolean"
+  return ["name", "picture"].every(
+    (key) => !(key in value) || typeof Reflect.get(value, key) === "string",
   );
 }
-
-function nowSec() {
-  return Math.floor(Date.now() / 1000);
-}
-
-// ======== localStorage 存取 ========
-function saveToken(token: string, exp: number) {
-  localStorage.setItem(STORAGE_TOKEN, token);
-  localStorage.setItem(STORAGE_EXP, String(exp));
-}
-
-function loadToken(): { token: string | null; exp: number } {
+export function getCachedProfile(): SessionProfile | null {
   try {
-    const token = localStorage.getItem(STORAGE_TOKEN);
-    const exp = Number(localStorage.getItem(STORAGE_EXP) || 0);
-    return { token, exp };
+    const stored: unknown = JSON.parse(
+      read(AUTH_PROFILE_STORAGE_KEY) ?? "null",
+    );
+    if (isProfile(stored)) cachedProfile = stored;
   } catch {
-    return { token: null, exp: 0 };
+    /* A malformed display profile grants no identity. */
   }
+  return cachedProfile;
 }
-
-function clearToken() {
-  try {
-    localStorage.removeItem(STORAGE_TOKEN);
-    localStorage.removeItem(STORAGE_EXP);
-  } catch {
-    /* Storage can be disabled by the browser. */
-  }
+export function getProfile(): SessionProfile | null {
+  const session = get(authSession);
+  return session.kind === "authenticated" || session.kind === "expired"
+    ? session.profile
+    : null;
 }
-
-// 是否有效（含緩衝與時間偏差）
-function isTokenStillValid(exp: number) {
-  const now = nowSec();
-  return now + SAFETY_BUFFER_SEC + MAX_SKEW_SEC < exp;
-}
-
-// ======== 狀態查詢 ========
-function usableStoredIdentity(): {
-  token: string;
-  profile: JwtPayload & { sub: string };
-} | null {
-  const { token, exp } = loadToken();
-  if (!token || !isTokenStillValid(exp)) return null;
-  try {
-    const profile = decodeJwt(token);
-    if (!profile.sub?.trim() || !isTokenStillValid(profile.exp)) return null;
-    return { token, profile: { ...profile, sub: profile.sub } };
-  } catch {
-    return null;
-  }
-}
-
 export function getIsSignedIn(): boolean {
-  if (usableStoredIdentity()) return true;
-  clearToken();
-  return false;
+  return get(authSession).kind === "authenticated";
 }
-
-export function getProfile(): JwtPayload | null {
-  return usableStoredIdentity()?.profile ?? null;
-}
-
-export function isCurrentToken(token: string): boolean {
-  return loadToken().token === token;
-}
-
 export function getTokenIfValid(): string | null {
-  const identity = usableStoredIdentity();
-  if (!identity) {
-    clearToken();
-    setSignOut();
+  if (
+    get(authSession).kind !== "authenticated" ||
+    accessExpiresAt <= Date.now()
+  )
     return null;
-  }
-  return identity.token;
+  return accessToken;
 }
-
-// ======== 登入流程（按鈕/自動） ========
-
+export function isCurrentToken(token: string): boolean {
+  return accessToken === token;
+}
+function dropAccess() {
+  accessToken = null;
+  accessExpiresAt = 0;
+}
+export function expireSession(token?: string) {
+  if (token !== undefined && !isCurrentToken(token)) return;
+  if (get(authSession).kind === "guest") return;
+  generation++;
+  const profile = getProfile() ?? getCachedProfile();
+  dropAccess();
+  remove(AUTH_REFRESH_STORAGE_KEY);
+  authSession.set({ kind: "expired", profile });
+  authNotice.set({ kind: "expired" });
+}
+class AuthFailure extends Error {
+  constructor(
+    readonly status: number,
+    readonly code: string,
+  ) {
+    super("Sign-in did not finish. Please try again.");
+  }
+}
+async function authRequest(
+  path: string,
+  body: object,
+  token?: string,
+): Promise<unknown> {
+  const base = (env.PUBLIC_API_BASE_URL ?? "").trim().replace(/\/+$/, "");
+  if (!base) throw new Error("The API is not configured.");
+  const response = await fetch(`${base}/v1/auth/${path}`, {
+    method: "POST",
+    credentials: "omit",
+    cache: "no-store",
+    ...(path === "logout" ? { keepalive: true } : {}),
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify(body),
+  });
+  if (response.status === 204) return null;
+  let data: unknown;
+  try {
+    data = await response.json();
+  } catch {
+    throw new Error("Sign-in did not finish. Please try again.");
+  }
+  if (!response.ok) {
+    const code =
+      typeof data === "object" &&
+      data !== null &&
+      "error" in data &&
+      typeof data.error === "object" &&
+      data.error !== null &&
+      "code" in data.error &&
+      typeof data.error.code === "string"
+        ? data.error.code
+        : "authentication_failed";
+    throw new AuthFailure(response.status, code);
+  }
+  return data;
+}
+type TokenResponse = {
+  access_token: string;
+  access_expires_at: string;
+  refresh_token: string;
+  refresh_expires_at: string;
+  user: { id: number; email: string };
+  profile: { name: string | null; picture: string | null };
+};
+function isTokenResponse(value: unknown): value is TokenResponse {
+  if (typeof value !== "object" || value === null) return false;
+  const item = value as Partial<TokenResponse>;
+  return (
+    typeof item.access_token === "string" &&
+    item.access_token.startsWith("ela_") &&
+    typeof item.refresh_token === "string" &&
+    item.refresh_token.startsWith("elr_") &&
+    typeof item.access_expires_at === "string" &&
+    Number.isFinite(Date.parse(item.access_expires_at)) &&
+    Date.parse(item.access_expires_at) > Date.now() &&
+    typeof item.refresh_expires_at === "string" &&
+    Number.isFinite(Date.parse(item.refresh_expires_at)) &&
+    Date.parse(item.refresh_expires_at) > Date.now() &&
+    typeof item.user === "object" &&
+    item.user !== null &&
+    Number.isSafeInteger(item.user.id) &&
+    item.user.id > 0 &&
+    typeof item.user.email === "string" &&
+    !!item.user.email &&
+    typeof item.profile === "object" &&
+    item.profile !== null &&
+    ["name", "picture"].every(
+      (key) =>
+        Reflect.get(item.profile!, key) === null ||
+        typeof Reflect.get(item.profile!, key) === "string",
+    )
+  );
+}
+function acceptTokens(value: unknown): {
+  profile: SessionProfile;
+  cleared: number;
+} {
+  if (!isTokenResponse(value))
+    throw new Error("Sign-in did not finish. Please try again.");
+  const previous = getCachedProfile();
+  const profile: SessionProfile = {
+    id: value.user.id,
+    email: value.user.email,
+    ...(value.profile.name !== null
+      ? { name: value.profile.name }
+      : previous?.id === value.user.id && previous.name
+        ? { name: previous.name }
+        : {}),
+    ...(value.profile.picture !== null
+      ? { picture: value.profile.picture }
+      : previous?.id === value.user.id && previous.picture
+        ? { picture: previous.picture }
+        : {}),
+  };
+  // Credentials become usable only after browser persistence succeeds.
+  localStorage.setItem(AUTH_PROFILE_STORAGE_KEY, JSON.stringify(profile));
+  localStorage.setItem(AUTH_REFRESH_STORAGE_KEY, value.refresh_token);
+  cachedProfile = profile;
+  accessToken = value.access_token;
+  accessExpiresAt = Date.parse(value.access_expires_at);
+  clearGuestSelection();
+  setPendingGuestMode(false);
+  const reconciliation = reconcilePendingOwner(profile.id, profile.email);
+  setSignIn(profile);
+  if (reconciliation.cleared)
+    authNotice.set({
+      kind: "account-changed",
+      count: reconciliation.cleared,
+      ...(reconciliation.previousEmail || previous?.email
+        ? { previousEmail: reconciliation.previousEmail ?? previous?.email }
+        : {}),
+    });
+  else if (
+    !["account-changed", "saved", "pending-expired"].includes(
+      get(authNotice)?.kind ?? "",
+    )
+  )
+    authNotice.set(null);
+  if (consumePendingExpiredNotice())
+    authNotice.set({ kind: "pending-expired" });
+  return { profile, cleared: reconciliation.cleared };
+}
+export function refreshSession(): Promise<string | null> {
+  if (get(authSession).kind === "guest") return Promise.resolve(null);
+  if (refreshFlight?.generation === generation) return refreshFlight.promise;
+  const attempt = generation;
+  const ownerId = getProfile()?.id ?? getCachedProfile()?.id;
+  const run = async (): Promise<string | null> => {
+    if (attempt !== generation || get(authSession).kind === "guest")
+      return null;
+    let used = refreshToken();
+    if (!used) {
+      if (attempt === generation) expireSession();
+      return null;
+    }
+    try {
+      let value: unknown;
+      try {
+        value = await authRequest("refresh", { refresh_token: used });
+      } catch (error) {
+        if (
+          !(error instanceof AuthFailure) ||
+          error.status !== 409 ||
+          error.code !== "refresh_superseded" ||
+          attempt !== generation
+        )
+          throw error;
+        used = refreshToken();
+        if (!used) throw new AuthFailure(401, "refresh_invalid");
+        value = await authRequest("refresh", { refresh_token: used });
+      }
+      if (
+        attempt !== generation ||
+        get(authSession).kind === "guest" ||
+        refreshToken() !== used
+      )
+        return null;
+      acceptTokens(value);
+      return accessToken;
+    } catch (error) {
+      if (
+        error instanceof AuthFailure &&
+        error.status === 409 &&
+        error.code === "refresh_superseded"
+      )
+        return null;
+      if (attempt === generation && get(authSession).kind !== "guest") {
+        const email = getProfile()?.email ?? getCachedProfile()?.email;
+        expireSession();
+        if (
+          error instanceof AuthFailure &&
+          error.status === 403 &&
+          error.code === "account_not_allowed"
+        )
+          authNotice.set({ kind: "error", ...(email ? { email } : {}) });
+      }
+      return null;
+    }
+  };
+  const locks = typeof navigator !== "undefined" ? navigator.locks : undefined;
+  const withLock = async () => {
+    if (!locks?.request) return run();
+    try {
+      return await locks.request(REFRESH_LOCK, run);
+    } catch {
+      return run();
+    }
+  };
+  const promise: Promise<string | null> = withLock()
+    .then(async (token) => {
+      if (token !== null || attempt === generation) return token;
+      const kind = get(authSession).kind;
+      if (
+        ownerId === undefined ||
+        kind === "guest" ||
+        kind === "signed-out" ||
+        getCachedProfile()?.id !== ownerId
+      )
+        return null;
+      const newer = refreshFlight;
+      if (newer && newer.generation === generation && newer.promise !== promise)
+        return newer.promise;
+      return getTokenIfValid();
+    })
+    .finally(() => {
+      if (refreshFlight?.promise === promise) refreshFlight = null;
+    });
+  refreshFlight = { generation: attempt, promise };
+  return promise;
+}
+export async function ensureAccessToken(
+  minValiditySeconds = 0,
+): Promise<string | null> {
+  if (
+    get(authSession).kind === "guest" ||
+    get(authSession).kind === "signed-out"
+  )
+    return null;
+  if (accessToken && accessExpiresAt > Date.now() + minValiditySeconds * 1000)
+    return accessToken;
+  return refreshSession();
+}
+async function logoutTokens(refresh: string | null, access: string | null) {
+  if (!refresh && !access) return;
+  try {
+    await authRequest(
+      "logout",
+      refresh ? { refresh_token: refresh } : {},
+      access ?? undefined,
+    );
+  } catch {
+    /* Local sign-out remains effective when the service is unavailable. */
+  }
+}
+export async function replayPendingReviews(): Promise<void> {
+  const profile = getProfile();
+  if (!profile || get(authSession).kind !== "authenticated") return;
+  const command = loadPendingSubmission(profile.id);
+  if (!command) return;
+  const key = `${profile.id}:${command.idempotencyKey}`;
+  const attempt = generation;
+  if (replayFlight?.key === key && replayFlight.generation === attempt)
+    return replayFlight.promise;
+  const flight = { key, generation: attempt, promise: Promise.resolve() };
+  const isActive = () =>
+    replayFlight === flight &&
+    generation === attempt &&
+    get(authSession).kind === "authenticated" &&
+    getProfile()?.id === profile.id;
+  const run = async () => {
+    try {
+      if (!isActive()) return;
+      const client = await import("./api/client");
+      if (!isActive()) return;
+      const result = await client.submitReviews(
+        command.payload,
+        command.idempotencyKey,
+      );
+      if (!isActive()) return;
+      const current = loadPendingSubmission(profile.id);
+      if (
+        current?.idempotencyKey !== command.idempotencyKey ||
+        JSON.stringify(current.payload) !== JSON.stringify(command.payload)
+      )
+        return;
+      clearPendingSubmission();
+      pendingReviewResult.set({
+        ownerId: profile.id,
+        idempotencyKey: command.idempotencyKey,
+        result,
+      });
+      authNotice.set({ kind: "saved", count: command.payload.items.length });
+    } catch {
+      /* An unconfirmed exact command remains available for retry. */
+    }
+  };
+  // Publish before the first await so mounted review controls lock this command.
+  flight.promise = Promise.resolve()
+    .then(run)
+    .finally(() => {
+      if (replayFlight !== flight) return;
+      replayFlight = null;
+      pendingReviewReplay.set(null);
+    });
+  replayFlight = flight;
+  pendingReviewReplay.set({
+    ownerId: profile.id,
+    idempotencyKey: command.idempotencyKey,
+  });
+  return flight.promise;
+}
+function credentialEmail(credential: string): string | undefined {
+  try {
+    const payload = credential.split(".")[1];
+    const bytes = Uint8Array.from(
+      atob(payload.replace(/-/g, "+").replace(/_/g, "/")),
+      (char) => char.charCodeAt(0),
+    );
+    const value: unknown = JSON.parse(new TextDecoder().decode(bytes));
+    if (
+      typeof value === "object" &&
+      value !== null &&
+      "email" in value &&
+      typeof value.email === "string"
+    )
+      return value.email;
+  } catch {
+    /* Unverified display data is optional and never authorizes a request. */
+  }
+}
+export async function exchangeCredential(credential: string): Promise<void> {
+  const refresh = refreshToken();
+  const access = accessToken;
+  const attempt = ++generation;
+  dropAccess();
+  remove(AUTH_REFRESH_STORAGE_KEY);
+  if (getCachedProfile())
+    authSession.set({ kind: "expired", profile: getCachedProfile() });
+  authNotice.set({ kind: "signing-in" });
+  try {
+    if (!credential)
+      throw new Error("Sign-in did not finish. Please try again.");
+    await logoutTokens(refresh, access);
+    const value = await authRequest("session", { credential });
+    if (attempt !== generation) return;
+    acceptTokens(value);
+    signInOpen.set(false);
+    await replayPendingReviews();
+  } catch (cause) {
+    if (attempt !== generation) return;
+    dropAccess();
+    remove(AUTH_REFRESH_STORAGE_KEY);
+    const rejected =
+      cause instanceof AuthFailure &&
+      cause.status === 403 &&
+      cause.code === "account_not_allowed";
+    const email = rejected ? credentialEmail(credential) : undefined;
+    authNotice.set({ kind: "error", ...(email ? { email } : {}) });
+    const error = new Error("Sign-in did not finish. Please try again.");
+    for (const listener of signInErrorListeners) listener(error);
+  }
+}
 export function initGsiOnce() {
-  if (!browser) {
-    return;
-  }
-
-  const gis = window?.google?.accounts?.id;
-  if (!gis) {
-    throw new Error("Google Identity Services 未載入");
-  }
-
-  const EMAIL_WHITE_LIST: string[] = PUBLIC_EMAIL_WHITE_LIST.split(",");
-  if (gsiInitialized) {
-    return;
-  }
+  if (!browser || gsiInitialized) return;
+  const gis = window.google?.accounts?.id;
+  if (!gis) throw new Error("Google Identity Services 未載入");
   gis.initialize({
     client_id: PUBLIC_GOOGLE_AUTH_CLIENT_ID,
     cancel_on_tap_outside: false,
     use_fedcm_for_prompt: true,
-    callback: (res: { credential?: string }) => {
-      try {
-        const idToken = res?.credential;
-        if (!idToken) {
-          throw new Error("Did not receive Google ID token");
-        }
-        const payload = decodeJwt(idToken);
-
-        if (!payload.email || payload.email_verified !== true) {
-          throw new Error("Google login failed: Email not verified");
-        }
-        const email = String(payload.email).toLowerCase();
-        if (!EMAIL_WHITE_LIST.includes(email)) {
-          throw new Error("Google login failed: Email not in whitelist");
-        }
-
-        if (!isTokenStillValid(payload.exp)) {
-          throw new Error("Google login failed: Expired token");
-        }
-        if (!payload.sub?.trim()) {
-          throw new Error("Google login failed: No subject in token");
-        }
-        const previousSubject = getProfile()?.sub;
-        if (previousSubject && previousSubject !== payload.sub) {
-          clearPendingSubmission();
-        } else {
-          loadPendingSubmission(payload.sub);
-        }
-        saveToken(idToken, payload.exp);
-        clearGuestSelection();
-        setSignIn(payload);
-      } catch (e) {
-        const error = e instanceof Error ? e : new Error("Google login failed");
-        for (const listener of signInErrorListeners) listener(error);
-      }
+    callback: async (res: { credential?: string }) => {
+      await exchangeCredential(res?.credential ?? "");
     },
   });
   gsiInitialized = true;
 }
-
 export function renderGoogleButton(container: HTMLElement) {
-  if (!container || renderedButtons.has(container)) {
-    return;
-  }
-
-  const gis = window.google.accounts.id;
+  if (!container || renderedButtons.has(container)) return;
   container.innerHTML = "";
-  gis.renderButton(container, {
+  window.google.accounts.id.renderButton(container, {
     type: "standard",
     theme: "outline",
     size: "large",
@@ -216,41 +505,84 @@ export function renderGoogleButton(container: HTMLElement) {
   });
   renderedButtons.add(container);
 }
-
-// ======== 登出 ========
-export function signOut() {
-  clearToken();
+export async function signOut(): Promise<void> {
+  const refresh = refreshToken();
+  const access = accessToken;
+  generation++;
+  dropAccess();
+  remove(AUTH_REFRESH_STORAGE_KEY);
+  remove(AUTH_PROFILE_STORAGE_KEY);
+  cachedProfile = null;
   clearGuestSelection();
+  setPendingGuestMode(false);
   setSignOut();
-  // 可選：通知 GIS 取消自動選擇
+  signInOpen.set(false);
+  authNotice.set({ kind: "signed-out" });
   try {
     window.google?.accounts?.id?.disableAutoSelect?.();
   } catch {
-    /* GIS may be unavailable while signing out locally. */
+    /* GIS may be unavailable. */
   }
+  void logoutTokens(refresh, access);
 }
-
 function clearGuestSelection() {
   try {
     sessionStorage.removeItem(GUEST_SESSION);
   } catch {
-    /* No stored guest selection. */
+    /* No guest selection can be retained. */
   }
 }
-
+export function getGuestTimeRemaining(): number {
+  try {
+    const deadline = Number(sessionStorage.getItem(GUEST_SESSION));
+    return Number.isSafeInteger(deadline)
+      ? Math.max(0, deadline - Date.now())
+      : 0;
+  } catch {
+    return 0;
+  }
+}
 export function enterGuestSession():
   | { ok: true }
   | { ok: false; error: string } {
-  if (getIsSignedIn())
-    return { ok: false, error: "Sign out before starting guest practice." };
+  if (getGuestTimeRemaining() > 0) {
+    generation++;
+    dropAccess();
+    remove(AUTH_REFRESH_STORAGE_KEY);
+    setPendingGuestMode(true);
+    authSession.set({ kind: "guest" });
+    authNotice.set(null);
+    signInOpen.set(false);
+    return { ok: true };
+  }
+  // Snapshot only safe counts before entering guest; guest never loads answer bodies.
+  if (get(authSession).kind !== "guest") {
+    setPendingGuestMode(false);
+    try {
+      inspectPendingReviews();
+    } catch {
+      /* Metadata is optional. */
+    }
+  }
+  generation++;
+  dropAccess();
+  remove(AUTH_REFRESH_STORAGE_KEY);
   try {
     const deadline = String(Date.now() + GUEST_DURATION_MS);
     sessionStorage.setItem(GUEST_SESSION, deadline);
     if (sessionStorage.getItem(GUEST_SESSION) !== deadline)
       throw new Error("Storage unavailable");
+    setPendingGuestMode(true);
     authSession.set({ kind: "guest" });
+    authNotice.set(null);
+    signInOpen.set(false);
     return { ok: true };
   } catch {
+    const profile = getProfile() ?? getCachedProfile();
+    if (profile) {
+      authSession.set({ kind: "expired", profile });
+      authNotice.set({ kind: "expired" });
+    } else setSignOut();
     return {
       ok: false,
       error:
@@ -258,49 +590,107 @@ export function enterGuestSession():
     };
   }
 }
-
-export function initializeSession() {
-  const profile = getProfile();
-  if (profile && getIsSignedIn()) {
-    clearGuestSelection();
-    setSignIn(profile);
+export function leaveGuestSession() {
+  generation++;
+  dropAccess();
+  clearGuestSelection();
+  setPendingGuestMode(false);
+  setSignOut();
+  authNotice.set(null);
+}
+export async function initializeSession(): Promise<void> {
+  if (!browser) return;
+  const legacy = read("gid_id_token") !== null || read("gid_exp") !== null;
+  remove("gid_id_token");
+  remove("gid_exp");
+  getCachedProfile();
+  if (
+    getGuestTimeRemaining() > 0 &&
+    get(authSession).kind !== "authenticated"
+  ) {
+    setPendingGuestMode(true);
+    authSession.set({ kind: "guest" });
+    try {
+      inspectPendingReviews();
+      if (consumePendingExpiredNotice())
+        authNotice.set({ kind: "pending-expired" });
+    } catch {
+      /* Count metadata is optional. */
+    }
     return;
   }
+  clearGuestSelection();
+  setPendingGuestMode(false);
   try {
-    const stored = sessionStorage.getItem(GUEST_SESSION);
-    const deadline = Number(stored);
-    if (stored && Number.isSafeInteger(deadline) && deadline > Date.now()) {
-      authSession.set({ kind: "guest" });
+    inspectPendingReviews();
+    if (consumePendingExpiredNotice())
+      authNotice.set({ kind: "pending-expired" });
+  } catch {
+    /* Private recovery reports storage errors at submission. */
+  }
+  if (getTokenIfValid()) return;
+  if (refreshToken()) {
+    await refreshSession();
+    return;
+  }
+  if (legacy) {
+    authSession.set({ kind: "expired", profile: cachedProfile });
+    authNotice.set({ kind: "expired" });
+    return;
+  }
+  if (get(authSession).kind !== "expired") setSignOut();
+}
+export function watchSession(): () => void {
+  void initializeSession();
+  const refresh = () => {
+    if (get(authSession).kind === "guest") {
+      if (getGuestTimeRemaining() === 0) leaveGuestSession();
+    } else if (get(authSession).kind === "authenticated" && !getTokenIfValid())
+      void refreshSession();
+    else if (get(authSession).kind === "initializing") void initializeSession();
+  };
+  const storage = (event: StorageEvent) => {
+    if (event.key !== AUTH_REFRESH_STORAGE_KEY && event.key !== null) return;
+    const session = get(authSession);
+    if (session.kind === "guest") return;
+    const stored = refreshToken();
+    if (!stored) {
+      generation++;
+      dropAccess();
+      authSession.set({
+        kind: "expired",
+        profile: getProfile() ?? cachedProfile,
+      });
+      authNotice.set({ kind: "other-tab" });
       return;
     }
-  } catch {
-    /* The homepage reports storage failure when guest is selected. */
-  }
-  clearGuestSelection();
-  setSignOut();
-}
-
-export function watchSession() {
-  initializeSession();
-  const refresh = () => initializeSession();
-  const onStorage = (event: StorageEvent) => {
+    const current = getProfile();
+    const next = getCachedProfile();
+    const sameOwner = current !== null && current.id === next?.id;
+    if (sameOwner) {
+      // Rotation does not invalidate existing access; avoid reciprocal cross-tab rotations.
+      if (!getTokenIfValid() && refreshFlight?.generation !== generation)
+        void refreshSession();
+      return;
+    }
     if (
-      event.key === null ||
-      event.key === STORAGE_TOKEN ||
-      event.key === STORAGE_EXP
+      session.kind === "initializing" &&
+      refreshFlight?.generation === generation
     )
-      refresh();
+      return;
+    generation++;
+    dropAccess();
+    void refreshSession();
   };
-  window.addEventListener("storage", onStorage);
+  window.addEventListener("storage", storage);
   window.addEventListener("focus", refresh);
   const timer = window.setInterval(refresh, 1000);
   return () => {
-    window.removeEventListener("storage", onStorage);
+    window.removeEventListener("storage", storage);
     window.removeEventListener("focus", refresh);
     window.clearInterval(timer);
   };
 }
-
 export function onSignInError(listener: (error: Error) => void) {
   signInErrorListeners.add(listener);
   return () => {

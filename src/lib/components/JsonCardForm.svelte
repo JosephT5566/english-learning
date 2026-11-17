@@ -1,5 +1,7 @@
 <script lang="ts">
+  import { onDestroy } from "svelte";
   import { applyEdits, format } from "jsonc-parser";
+  import { canWrite } from "$lib/stores/auth";
   import { getProfile } from "$lib/auth";
   import {
     ApiClientError,
@@ -35,13 +37,19 @@
     onqueue: (queue: JsonCardQueue) => void;
     oncreated: () => void;
   } = $props();
+  const ownerId = getProfile()?.id;
+  let alive = true;
+  const current = () => alive && getProfile()?.id === ownerId;
+  onDestroy(() => {
+    alive = false;
+  });
   let source = $state("");
   let inputElement: HTMLTextAreaElement;
   let formatNotice = $state("");
   let queue: JsonCardQueue = $state(
     restored ?? {
       version: 1,
-      owner: getProfile()?.sub ?? "",
+      owner: ownerId === undefined ? "" : String(ownerId),
       deckId: deck.id,
       entries: [],
     },
@@ -80,6 +88,7 @@
   );
 
   function persist(): void {
+    if (!current()) return;
     saveJsonQueue(queue);
     onqueue(queue);
   }
@@ -88,7 +97,7 @@
     onbusy(value);
   }
   function checkOwner(): void {
-    if (!queue.owner || getProfile()?.sub !== queue.owner)
+    if (!$canWrite || !queue.owner || String(getProfile()?.id) !== queue.owner)
       throw new Error(
         "Sign in with the same account before continuing these drafts.",
       );
@@ -132,7 +141,7 @@
     }
   }
   function jumpToError(location: JsonErrorLocation): void {
-    if (busy || uncertain) return;
+    if (!$canWrite || busy || uncertain) return;
     inputElement.focus();
     inputElement.setSelectionRange(
       location.offset,
@@ -145,7 +154,7 @@
     inputElement.scrollTop = Math.max(0, (location.line - 2) * lineHeight);
   }
   async function preview(): Promise<void> {
-    if (busy || uncertain) return;
+    if (!$canWrite || busy || uncertain) return;
     messages = [];
     const result = validateCardJson(source);
     localResult = result;
@@ -158,6 +167,7 @@
     try {
       checkOwner();
       const cards = await validateCardDrafts(deck.id, result.value);
+      if (!current()) return;
       queue = {
         ...queue,
         entries: cards.map((fields) => ({
@@ -170,9 +180,9 @@
       editing = null;
       persist();
     } catch (cause) {
-      report(cause);
+      if (current()) report(cause);
     } finally {
-      setBusy(false);
+      if (current()) setBusy(false);
     }
   }
   function editDraft(index: number, fields: CardDraft): void {
@@ -190,7 +200,7 @@
     }
   }
   function discardDrafts(): void {
-    if (busy || uncertain) return;
+    if (!$canWrite || busy || uncertain) return;
     queue.entries = queue.entries.filter(
       (entry) => entry.status === "confirmed",
     );
@@ -203,7 +213,7 @@
     }
   }
   async function addSelected(): Promise<void> {
-    if (busy || !selected || editing !== null) return;
+    if (!$canWrite || busy || !selected || editing !== null) return;
     setBusy(true);
     messages = [];
     let wrote = false;
@@ -242,6 +252,7 @@
             fields: entry.fields,
           })),
         });
+        if (!current()) return;
         entries.forEach((entry, index) => {
           entry.cardId = created[index].id;
           entry.status = "confirmed";
@@ -249,6 +260,7 @@
         wrote = true;
         persist();
       } catch (cause) {
+        if (!current()) return;
         // Ambiguous failures retain every field/key and lock the whole selection.
         if (
           cause instanceof ApiClientError &&
@@ -265,10 +277,12 @@
         throw cause;
       }
     } catch (cause) {
-      report(cause);
+      if (current()) report(cause);
     } finally {
-      setBusy(false);
-      if (wrote) oncreated();
+      if (current()) {
+        setBusy(false);
+        if (wrote) oncreated();
+      }
     }
   }
 </script>
@@ -366,7 +380,8 @@
   <button
     type="button"
     class="secondary-button"
-    disabled={busy ||
+    disabled={!$canWrite ||
+      busy ||
       uncertain ||
       !source.trim() ||
       localResult?.valid === false}
@@ -461,7 +476,7 @@
     <button
       type="button"
       class="primary-button"
-      disabled={busy || !selected || editing !== null}
+      disabled={!$canWrite || busy || !selected || editing !== null}
       onclick={addSelected}
       >{busy
         ? "Adding cards…"

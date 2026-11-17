@@ -17,11 +17,13 @@
 		studyDirection = 'EN_ZH',
 		onAnswer,
 		onComplete,
+		answerDisabled = false,
 	}: {
 		wordList?: readonly StudyCard[];
 		studyDirection?: StudyDirection;
 		onAnswer?: (answer: CardAnswer) => void;
 		onComplete?: () => void;
+		answerDisabled?: boolean;
 	} = $props();
 
 	let root: HTMLDivElement | undefined = $state(); // .swipe
@@ -221,7 +223,7 @@
 			const s = scratch.get(el)!;
 			if (s.down) return;
 			// Only the top card AND only on back side can start dragging
-			if (!canAnswerCard(el === topCardEl(), s.isBack, isClickAndSwiping)) {
+			if (answerDisabled || !canAnswerCard(el === topCardEl(), s.isBack, isClickAndSwiping)) {
 				return;
 			}
 
@@ -305,6 +307,7 @@
 			s.down = false;
 			s.pointerId = -1;
 			if (el.hasPointerCapture(e.pointerId)) el.releasePointerCapture(e.pointerId);
+			if (answerDisabled) { snapBack(); return; }
 			// decide: 距離或速度達門檻就飛出
 			const { vx } = velocityOf(s.moveHist);
 			const fast = Math.abs(vx) > VELOCITY_THRESHOLD;
@@ -365,7 +368,7 @@
 	) {
 		const el = topCardEl();
 		const s = el ? scratch.get(el) : undefined;
-		if (!el || !s || !canAnswerCard(true, s.isBack, isClickAndSwiping)) {
+		if (answerDisabled || !el || !s || !canAnswerCard(true, s.isBack, isClickAndSwiping)) {
 			return;
 		}
 
@@ -710,7 +713,7 @@
 					id={option.decision.replace('_', '-')}
 					class:positive={option.isYes}
 					onclick={() => programmaticSwipe(option.isYes, option.decision)}
-					disabled={isClickAndSwiping || !isTopCardBack}
+					disabled={answerDisabled || isClickAndSwiping || !isTopCardBack}
 					aria-label={option.label}
 				>
 					<Icon icon={option.icon} width="26px" height="26px" aria-hidden="true" />

@@ -8,30 +8,31 @@
   type ReviewSession =
     | { kind: "waiting" }
     | { kind: "guest" }
-    | { kind: "owned"; subject: string };
+    | { kind: "owned"; ownerId: number };
   let session: ReviewSession = $state({ kind: "waiting" });
 
   $effect(() => {
     const auth = $authSession;
     if (auth.kind === "initializing") return;
-    if (auth.kind === "authenticated" && auth.profile.sub) {
-      if (session.kind !== "owned" || session.subject !== auth.profile.sub) {
-        session = { kind: "owned", subject: auth.profile.sub };
+    if (auth.kind === "authenticated" && auth.profile.id) {
+      if (session.kind !== "owned" || session.ownerId !== auth.profile.id) {
+        session = { kind: "owned", ownerId: auth.profile.id };
       }
+    } else if (auth.kind === "guest") {
+      if (session.kind !== "guest") session = { kind: "guest" };
+    } else if (auth.kind === "expired") {
+      if (auth.profile && session.kind !== "owned")
+        session = { kind: "owned", ownerId: auth.profile.id };
     } else if (session.kind !== "owned") {
-      if (auth.kind === "guest") {
-        if (session.kind !== "guest") session = { kind: "guest" };
-      } else {
-        if (session.kind !== "waiting") session = { kind: "waiting" };
-        void goto(resolve("/"), { replaceState: true });
-      }
+      if (session.kind !== "waiting") session = { kind: "waiting" };
+      void goto(resolve("/"), { replaceState: true });
     }
   });
 </script>
 
 {#if session.kind === "owned"}
-  {#key session.subject}
-    <OwnedReview ownerSubject={session.subject} />
+  {#key session.ownerId}
+    <OwnedReview ownerId={session.ownerId} />
   {/key}
 {:else if session.kind === "guest" && $authSession.kind === "guest"}
   <GuestReview />

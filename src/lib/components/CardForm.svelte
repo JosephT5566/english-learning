@@ -50,6 +50,7 @@
 		initial = null,
 		draft = null,
 		busy = false,
+		writable = true,
 		locked = false,
 		notice = null,
 		onsave,
@@ -62,6 +63,7 @@
 		initial?: CardDetail | null;
 		draft?: CardFields | null;
 		busy?: boolean;
+		writable?: boolean;
 		locked?: boolean;
 		notice?: MutationErrorCopy | null;
 		onsave: (payload: CardFields) => void;
@@ -167,6 +169,7 @@
 	}
 
 	function submit(): void {
+		if (!writable || busy) return;
 		onsave({
 			term,
 			meaning,
@@ -195,7 +198,7 @@
 		submit();
 	}}
 >
-	<fieldset disabled={busy || locked}>
+	<fieldset disabled={!writable || busy || locked}>
 		<div class="form-intro">
 			<p>Start with the two things you need to study. Add detail only when it helps.</p>
 			<span><b aria-hidden="true">*</b> Required</span>
@@ -386,7 +389,7 @@
 	<div class="form-actions">
 		<button type="button" class="secondary-button" disabled={busy} onclick={oncancel}>Cancel</button
 		>
-		<button type="submit" class="primary-button" disabled={busy}
+		<button type="submit" class="primary-button" disabled={!writable || busy}
 			>{busy ? 'Saving…' : submitLabel}</button
 		>
 	</div>

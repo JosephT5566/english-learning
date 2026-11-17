@@ -1,3 +1,4 @@
+import { seedSignedIn, signInAs } from "./auth-fixture";
 import { expect, test } from "@playwright/test";
 
 const historyCardId = "20000000-0000-0000-0000-000000000096";
@@ -7,24 +8,7 @@ function event(name: string, data: object): string {
 }
 
 test.beforeEach(async ({ page }) => {
-  await page.addInitScript(() => {
-    const encode = (value: object) =>
-      btoa(JSON.stringify(value))
-        .replaceAll("+", "-")
-        .replaceAll("/", "_")
-        .replaceAll("=", "");
-    const exp = Math.floor(Date.now() / 1000) + 3600;
-    const token = `${encode({ alg: "none" })}.${encode({
-      iss: "https://accounts.google.com",
-      aud: "browser-contract-test",
-      exp,
-      email: "browser-test@example.com",
-      email_verified: true,
-      sub: "browser-test-assistant",
-    })}.test-signature`;
-    localStorage.setItem("gid_id_token", token);
-    localStorage.setItem("gid_exp", String(exp));
-  });
+  await seedSignedIn(page, "assistant");
   await page.route("**/v1/me/genai-consent", (route) =>
     route.fulfill({ json: { genai_consent_at: "2026-11-08T00:00:00Z" } }),
   );
@@ -142,23 +126,8 @@ test("opens from navigation, shows tools and round trips memory-only card refs",
   await expect(
     page.getByText("Start with 間に合う.", { exact: true }),
   ).toBeVisible();
-  await page.evaluate(() => {
-    const old = localStorage.getItem("gid_id_token")!;
-    const payload = JSON.parse(
-      atob(old.split(".")[1].replaceAll("-", "+").replaceAll("_", "/")),
-    );
-    payload.sub = "browser-test-assistant-second-account";
-    payload.email = "second-account@example.com";
-    const encoded = btoa(JSON.stringify(payload))
-      .replaceAll("+", "-")
-      .replaceAll("/", "_")
-      .replaceAll("=", "");
-    localStorage.setItem(
-      "gid_id_token",
-      `${old.split(".")[0]}.${encoded}.test-signature`,
-    );
-    window.dispatchEvent(new StorageEvent("storage", { key: "gid_id_token" }));
-  });
+  await signInAs(page, "assistant-second-account");
+  await expect(page.locator(".conversation .turn")).toHaveCount(0);
   await expect(
     page.getByText("Before switching account", { exact: true }),
   ).toHaveCount(0);

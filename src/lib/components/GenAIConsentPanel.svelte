@@ -3,6 +3,7 @@
 
   let {
     consent,
+    disabled = false,
     busy,
     updateConsent,
     onConfirmWithdraw,
@@ -19,6 +20,7 @@
   }: {
     consent: "unknown" | "required" | "granted" | "confirm-withdraw";
     busy: boolean;
+    disabled?: boolean;
     updateConsent: (action: "read" | "grant" | "withdraw") => Promise<void>;
     onConfirmWithdraw: () => void;
     onKeepConsent: () => void;
@@ -66,7 +68,7 @@
       class="chip secondary"
       aria-label={`${allowedMessage} Manage AI consent`}
       aria-expanded={consent === "confirm-withdraw"}
-      disabled={busy || consent === "confirm-withdraw"}
+      disabled={disabled || busy || consent === "confirm-withdraw"}
       onclick={onConfirmWithdraw}>AI on · Manage</button
     >
   {/if}
@@ -86,7 +88,7 @@
       {/if}
       <button
         type="button"
-        disabled={busy}
+        disabled={disabled || busy}
         onclick={() => updateConsent("grant")}
         >{busy
           ? "Granting…"
@@ -107,13 +109,13 @@
         <button
           type="button"
           class="secondary"
-          disabled={busy}
+          disabled={disabled || busy}
           onclick={keepConsent}>Keep consent</button
         >
         <button
           type="button"
           class="danger"
-          disabled={busy}
+          disabled={disabled || busy}
           onclick={() => updateConsent("withdraw")}
           >{busy
             ? "Withdrawing…"
@@ -136,7 +138,7 @@
           {error}
         </p>
       {/if}
-      <button type="button" onclick={() => updateConsent("read")}
+      <button type="button" {disabled} onclick={() => updateConsent("read")}
         >Retry consent check</button
       >
     {/if}

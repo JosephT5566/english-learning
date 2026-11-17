@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy } from "svelte";
-  import { authSession } from "$lib/stores/auth";
+  import { authSession, canWrite } from "$lib/stores/auth";
   import { resolve } from "$app/paths";
   import Icon from "@iconify/svelte";
   import SwipeCards from "$lib/components/SwipeCards.svelte";
@@ -22,10 +22,12 @@
     createPendingSubmission,
     loadPendingSubmission,
     savePendingSubmission,
+    pendingReviewReplay,
+    pendingReviewResult,
     type PendingReviewSubmission,
   } from "$lib/review/pending";
 
-  let { ownerSubject }: { ownerSubject: string } = $props();
+  let { ownerId }: { ownerId: number } = $props();
   let active = true;
   let operation = 0;
   onDestroy(() => {
@@ -44,11 +46,6 @@
     | "rejected"
     | "success";
 
-  let interruptedPresentation: {
-    viewState: ReviewViewState;
-    message: string;
-    requestId: string | undefined;
-  } = { viewState: "loading", message: "", requestId: undefined };
   let cards = $state<DueCard[]>([]);
   let answers = $state<ReviewSubmissionItem[]>([]);
   let pending = $state<PendingReviewSubmission | null>(null);
@@ -61,37 +58,51 @@
     cards.length > 0 && answers.length === cards.length,
   );
 
+  let replayingKey = $state("");
+  let replayInProgress = $derived($pendingReviewReplay?.ownerId === ownerId);
   $effect(() => {
+    const flight = $pendingReviewReplay;
     if (
-      $authSession.kind === "signed-out" &&
-      viewState !== "authentication_required" &&
-      viewState !== "success"
-    ) {
-      operation++;
-      if (viewState === "reviewing" && allAnswered && !pending) {
-        pending = createPendingSubmission(ownerSubject, { items: answers });
-        savePendingSubmission(pending);
-      }
-      showAuthenticationRequired();
-    } else if (
+      flight?.ownerId === ownerId &&
+      pending?.idempotencyKey === flight.idempotencyKey &&
+      replayingKey !== flight.idempotencyKey &&
       $authSession.kind === "authenticated" &&
-      $authSession.profile.sub === ownerSubject &&
-      viewState === "authentication_required"
+      $authSession.profile.id === ownerId
     ) {
-      if (pending) {
+      replayingKey = flight.idempotencyKey;
+      operation++;
+      viewState = "submitting";
+    }
+    const replay = $pendingReviewResult;
+    if (
+      replay &&
+      replay.ownerId === ownerId &&
+      replay.idempotencyKey === pending?.idempotencyKey &&
+      $authSession.kind === "authenticated" &&
+      $authSession.profile.id === ownerId
+    ) {
+      pendingReviewResult.set(null);
+      replayingKey = "";
+      operation++;
+      result = replay.result;
+      pending = null;
+      viewState = "success";
+      markPracticedToday(String(ownerId));
+    }
+    if (replayingKey && flight?.idempotencyKey !== replayingKey) {
+      replayingKey = "";
+      if (pending && viewState === "submitting") {
         viewState = "retryable_error";
         message =
           "Your review is not confirmed yet. Retry the same submission.";
-      } else if (
-        interruptedPresentation.viewState === "loading" ||
-        interruptedPresentation.viewState === "submitting"
-      ) {
-        void initialize();
-      } else {
-        viewState = interruptedPresentation.viewState;
-        message = interruptedPresentation.message;
-        requestId = interruptedPresentation.requestId;
       }
+    }
+    if (
+      $authSession.kind === "authenticated" &&
+      $authSession.profile.id === ownerId &&
+      viewState === "authentication_required"
+    ) {
+      void initialize();
     }
   });
 
@@ -100,8 +111,8 @@
   });
 
   async function initialize() {
-    const subject = getProfile()?.sub;
-    if (!subject) {
+    const subject = getProfile()?.id;
+    if (!subject || !$canWrite) {
       showAuthenticationRequired();
       return;
     }
@@ -120,6 +131,7 @@
   }
 
   async function loadCards() {
+    if (!$canWrite || replayInProgress) return;
     const currentOperation = ++operation;
     viewState = "loading";
     message = "";
@@ -139,6 +151,7 @@
   }
 
   function recordAnswer(answer: CardAnswer) {
+    if (!$canWrite || replayInProgress || viewState !== "reviewing") return;
     const card = cards.find((item) => item.id === answer.cardId);
     if (!card || answers.some((item) => item.card_id === card.id)) return;
     answers = [
@@ -149,22 +162,30 @@
         expected_version: card.review_state.version,
       },
     ];
+    const command = pending
+      ? { ...pending, payload: { items: answers } }
+      : createPendingSubmission(ownerId, { items: answers });
+    try {
+      savePendingSubmission(command);
+      pending = command;
+    } catch {
+      message =
+        "Answers could not be saved on this device. Keep this page open and try again.";
+    }
   }
 
   function isCurrent(currentOperation: number) {
     return (
-      active &&
-      operation === currentOperation &&
-      getProfile()?.sub === ownerSubject
+      active && operation === currentOperation && getProfile()?.id === ownerId
     );
   }
 
   async function submit() {
-    if (viewState === "submitting") return;
-    const subject = getProfile()?.sub;
+    if (viewState === "submitting" || !$canWrite || replayInProgress) return;
+    const subject = getProfile()?.id;
     if (!subject) {
       if (!pending && allAnswered) {
-        pending = createPendingSubmission(ownerSubject, { items: answers });
+        pending = createPendingSubmission(ownerId, { items: answers });
         savePendingSubmission(pending);
       }
       showAuthenticationRequired();
@@ -173,13 +194,13 @@
     let command = pending;
     if (
       command &&
-      (command.ownerSubject !== subject || command.expiresAt <= Date.now())
+      (command.ownerId !== subject || command.expiresAt <= Date.now())
     ) {
       clearPendingSubmission();
       pending = null;
       viewState = "rejected";
       message =
-        command.ownerSubject !== subject
+        command.ownerId !== subject
           ? "The previous review session was removed after the account changed."
           : "The unconfirmed review expired. Reload current reviews before answering again.";
       return;
@@ -204,12 +225,12 @@
       clearPendingSubmission();
       pending = null;
       viewState = "success";
-      markPracticedToday(ownerSubject);
+      markPracticedToday(String(ownerId));
     } catch (error) {
       if (
         active &&
         operation === currentOperation &&
-        (!getProfile()?.sub || getProfile()?.sub === ownerSubject)
+        (!getProfile()?.id || getProfile()?.id === ownerId)
       ) {
         handleSubmissionFailure(error);
       }
@@ -270,12 +291,11 @@
   }
 
   function showAuthenticationRequired() {
-    if (viewState !== "authentication_required") {
-      interruptedPresentation = { viewState, message, requestId };
-    }
-    viewState = "authentication_required";
-    message =
-      "Your answers are not confirmed. Sign in again, then return here to retry them.";
+    // Keep the current cards in place; the global strip owns reauthentication.
+    if (cards.length) viewState = "reviewing";
+    else if (pending) viewState = "retryable_error";
+    else viewState = "authentication_required";
+    message = "Your answers are not confirmed. Sign in again to send them.";
   }
 </script>
 
@@ -302,10 +322,16 @@
       <p class="font-[Contrail_One] text-slate-500" aria-live="polite">
         {Math.min(answers.length + 1, cards.length)} / {cards.length}
       </p>
-      <SwipeCards wordList={studyCards} onAnswer={recordAnswer} />
+      <SwipeCards
+        wordList={studyCards}
+        onAnswer={recordAnswer}
+        answerDisabled={!$canWrite || replayInProgress}
+      />
       {#if allAnswered}
-        <button class="review-action" onclick={() => void submit()}
-          >Submit Results</button
+        <button
+          class="review-action"
+          disabled={!$canWrite || replayInProgress}
+          onclick={() => void submit()}>Submit Results</button
         >
       {/if}
     </div>
@@ -340,8 +366,10 @@
     <section class="review-status" role="alert">
       <h1>Review not saved</h1>
       <p>{message}</p>
-      <button class="review-action" onclick={() => void loadCards()}
-        >Reload current reviews</button
+      <button
+        class="review-action"
+        disabled={!$canWrite || replayInProgress}
+        onclick={() => void loadCards()}>Reload current reviews</button
       >
       {#if requestId}<small>Request ID: {requestId}</small>{/if}
     </section>
@@ -349,8 +377,10 @@
     <section class="review-status" role="alert">
       <h1>Review not confirmed</h1>
       <p>{message}</p>
-      <button class="review-action" onclick={() => void submit()}
-        >Retry submission</button
+      <button
+        class="review-action"
+        disabled={!$canWrite || replayInProgress}
+        onclick={() => void submit()}>Retry submission</button
       >
       {#if requestId}<small>Request ID: {requestId}</small>{/if}
     </section>
@@ -358,8 +388,10 @@
     <section class="review-status" role="alert">
       <h1>Review unavailable</h1>
       <p>{message}</p>
-      <button class="review-action" onclick={() => void loadCards()}
-        >Reload reviews</button
+      <button
+        class="review-action"
+        disabled={!$canWrite || replayInProgress}
+        onclick={() => void loadCards()}>Reload reviews</button
       >
       {#if requestId}<small>Request ID: {requestId}</small>{/if}
     </section>

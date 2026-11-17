@@ -1,6 +1,15 @@
 import type { components } from "./generated";
 import { env } from "$env/dynamic/public";
-import { getTokenIfValid, isCurrentToken, signOut } from "$lib/auth";
+import {
+  getTokenIfValid,
+  isCurrentToken,
+  ensureAccessToken,
+  refreshSession,
+  expireSession,
+  getProfile,
+} from "$lib/auth";
+import { get } from "svelte/store";
+import { authNotice, authSession } from "$lib/stores/auth";
 import {
   isCardDraft,
   type CardDraft,
@@ -81,8 +90,19 @@ async function authenticatedResponse(
   path: string,
   init: RequestInit = {},
 ): Promise<Response> {
-  const token = getTokenIfValid();
-  if (!token) {
+  const ownerId = getProfile()?.id;
+  const previousToken = getTokenIfValid();
+  const token = await ensureAccessToken(path.endsWith("/stream") ? 30 : 0);
+  if (!token && get(authSession).kind === "authenticated") {
+    throw new ApiClientError(
+      "Session is refreshing in another tab. Please try again.",
+      "api",
+      true,
+      undefined,
+      "refresh_superseded",
+    );
+  }
+  if (!token || (ownerId !== undefined && getProfile()?.id !== ownerId)) {
     throw new ApiClientError(
       "Please sign in again.",
       "authentication",
@@ -92,25 +112,25 @@ async function authenticatedResponse(
   }
 
   const url = endpoint(path);
-  let response: Response;
-  try {
-    response = await fetch(url, {
-      ...init,
-      headers: {
-        ...init.headers,
-        Authorization: `Bearer ${token}`,
-      },
-    });
-  } catch (cause) {
-    if (init.signal?.aborted) throw cause;
-    throw new ApiClientError(
-      "We could not reach the service. The result is not confirmed yet.",
-      "network",
-      true,
-    );
-  }
-
-  if (!response.ok) {
+  async function send(
+    accessToken: string,
+    refreshed: boolean,
+  ): Promise<Response> {
+    let response: Response;
+    try {
+      response = await fetch(url, {
+        ...init,
+        headers: { ...init.headers, Authorization: `Bearer ${accessToken}` },
+      });
+    } catch (cause) {
+      if (init.signal?.aborted) throw cause;
+      throw new ApiClientError(
+        "We could not reach the service. The result is not confirmed yet.",
+        "network",
+        true,
+      );
+    }
+    if (response.ok) return response;
     const data = await parseJson(response);
     const error: ApiErrorBody = isApiErrorEnvelope(data)
       ? data.error
@@ -120,7 +140,42 @@ async function authenticatedResponse(
           retryable: response.status >= 500,
           request_id: response.headers.get("X-Request-ID") ?? "",
         };
-    if (response.status === 401 && isCurrentToken(token)) signOut();
+    if (response.status === 401 && isCurrentToken(accessToken)) {
+      if (
+        !refreshed &&
+        (error.code === "access_token_expired" || path.endsWith("/stream"))
+      ) {
+        const renewed = await refreshSession();
+        if (
+          renewed &&
+          !init.signal?.aborted &&
+          (ownerId === undefined || getProfile()?.id === ownerId)
+        )
+          return send(renewed, true);
+        if (
+          !renewed &&
+          get(authSession).kind === "authenticated" &&
+          isCurrentToken(accessToken)
+        ) {
+          throw new ApiClientError(
+            "Session is refreshing in another tab. Please try again.",
+            "api",
+            true,
+            undefined,
+            "refresh_superseded",
+          );
+        }
+      }
+      expireSession(accessToken);
+    } else if (
+      response.status === 403 &&
+      error.code === "account_not_allowed" &&
+      isCurrentToken(accessToken)
+    ) {
+      const email = getProfile()?.email;
+      expireSession(accessToken);
+      authNotice.set({ kind: "error", email });
+    }
     throw new ApiClientError(
       error.message,
       response.status === 401 ? "authentication" : "api",
@@ -131,7 +186,7 @@ async function authenticatedResponse(
       error.details,
     );
   }
-  return response;
+  return send(token, previousToken !== token);
 }
 
 async function authenticatedRequest(

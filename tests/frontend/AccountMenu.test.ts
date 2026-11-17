@@ -49,6 +49,7 @@ describe("Account menu", () => {
     const { container, rerender } = setup({
       profile: {
         name: "Alex Chen",
+        email: "alex@example.test",
         picture: "https://example.test/avatar.png",
       },
     });
@@ -59,7 +60,11 @@ describe("Account menu", () => {
     expect(container.querySelector("img")).not.toBeInTheDocument();
     expect(screen.getByRole("button")).toHaveTextContent("AC");
     await rerender({
-      profile: { name: "Alex Chen", picture: "https://example.test/new.png" },
+      profile: {
+        name: "Alex Chen",
+        email: "alex@example.test",
+        picture: "https://example.test/new.png",
+      },
     });
     expect(container.querySelector("img")).toHaveAttribute(
       "src",
@@ -116,4 +121,21 @@ describe("Account menu", () => {
     );
     await waitFor(() => expect(trigger).toHaveFocus());
   });
+});
+
+it("shows the guest deadline only inside the menu and offers Leave guest practice", async () => {
+  const leave = vi.fn();
+  setup({ guest: true, timeRemaining: 24 * 60_000, onLeaveGuest: leave });
+  expect(screen.queryByText(/ends in/)).not.toBeInTheDocument();
+  await fireEvent.click(
+    screen.getByRole("button", { name: "Guest account menu" }),
+  );
+  expect(await screen.findByText(/ends in 24 min/)).toBeVisible();
+  expect(
+    screen.queryByRole("menuitem", { name: /Switch account/i }),
+  ).not.toBeInTheDocument();
+  await fireEvent.click(
+    screen.getByRole("menuitem", { name: "Leave guest practice" }),
+  );
+  expect(leave).toHaveBeenCalledOnce();
 });

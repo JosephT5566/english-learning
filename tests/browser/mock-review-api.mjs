@@ -1,4 +1,5 @@
 import http from "node:http";
+import { randomBytes, randomUUID } from "node:crypto";
 
 const mode = process.env.MOCK_REVIEW_MODE ?? "ambiguous";
 const port = Number(process.env.MOCK_REVIEW_PORT ?? 8001);
@@ -8,23 +9,197 @@ const japaneseCardId = "ffffffff-ffff-4fff-8fff-ffffffffffff";
 const englishDeckId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const japaneseDeckId = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
 const requestId = "99999999-9999-4999-8999-999999999999";
-let firstCommand;
-let createdDeck;
-let createdCard;
-let ambiguousCreate;
-let mutableCards = new Map();
+const ownerData = new Map();
+
+const sessions = new Map();
+const accessTokens = new Map();
+const refreshTokens = new Map();
+const blockedEmails = new Set();
+const reuseGraceMs = 10_000;
+
+function fixtureUserId(subject) {
+  let hash = 2166136261;
+  for (const character of subject)
+    hash = Math.imul(hash ^ character.charCodeAt(0), 16777619) >>> 0;
+  return (hash % 2147483646) + 1;
+}
+
+function issueTokens(session) {
+  const access_token = `ela_${randomBytes(32).toString("base64url")}`;
+  const refresh_token = `elr_${randomBytes(32).toString("base64url")}`;
+  const expiresAt = Date.now() + 900_000;
+  session.idleExpiresAt = Math.min(
+    session.absoluteExpiresAt,
+    Date.now() + 604_800_000,
+  );
+  accessTokens.set(access_token, { session, expiresAt });
+  refreshTokens.set(refresh_token, { session, rotatedAt: null });
+  session.currentRefresh = refresh_token;
+  return {
+    access_token,
+    access_expires_at: new Date(expiresAt).toISOString(),
+    refresh_token,
+    refresh_expires_at: new Date(session.idleExpiresAt).toISOString(),
+    user: { id: session.id, email: session.email },
+    profile: { name: session.name, picture: session.picture },
+  };
+}
+
+function revokeSession(session) {
+  session.revoked = true;
+  for (const [token, value] of accessTokens)
+    if (value.session === session) accessTokens.delete(token);
+}
+
+function invalidAuth(response, code = "invalid_authentication", status = 401) {
+  error(response, status, code, "Authentication credentials are invalid.");
+}
 
 function modeFor(request) {
-  if (mode !== "by-subject") return mode;
-  try {
-    const token = request.headers.authorization?.slice("Bearer ".length) ?? "";
-    const payload = JSON.parse(
-      Buffer.from(token.split(".")[1], "base64url").toString(),
-    );
-    return String(payload.sub).replace("browser-test-", "");
-  } catch {
-    return "unauthorized";
-  }
+  const token = request.headers.authorization?.slice("Bearer ".length) ?? "";
+  return accessTokens.get(token)?.session.mode ?? "unauthorized";
+}
+
+function handleAuth(request, response) {
+  const pathname = new URL(request.url ?? "/", `http://127.0.0.1:${port}`)
+    .pathname;
+  if (
+    request.method !== "POST" ||
+    (!pathname.startsWith("/v1/auth/") &&
+      !pathname.startsWith("/__test__/auth/"))
+  )
+    return false;
+  readJson(request, (body) => {
+    if (pathname === "/v1/auth/session") {
+      let claims;
+      try {
+        claims = JSON.parse(
+          Buffer.from(
+            String(body.credential).split(".")[1],
+            "base64url",
+          ).toString(),
+        );
+      } catch {
+        invalidAuth(response);
+        return;
+      }
+      if (
+        !claims.sub ||
+        !claims.email ||
+        claims.iss !== "https://accounts.google.com" ||
+        claims.aud !== "browser-contract-test" ||
+        claims.email_verified !== true ||
+        claims.exp <= Date.now() / 1000
+      ) {
+        invalidAuth(response);
+        return;
+      }
+      const requestMode =
+        mode === "by-subject"
+          ? String(claims.sub).replace("browser-test-", "")
+          : mode;
+      if (
+        claims.email !== "browser-test@example.com" ||
+        blockedEmails.has(claims.email) ||
+        requestMode === "allowlist-rejected"
+      ) {
+        invalidAuth(response, "account_not_allowed", 403);
+        return;
+      }
+      const id = fixtureUserId(claims.sub);
+      if (!ownerData.has(id)) ownerData.set(id, { mutableCards: new Map() });
+      const session = {
+        data: ownerData.get(id),
+        id,
+        email: claims.email,
+        name: claims.name ?? "Browser Test",
+        picture: claims.picture ?? null,
+        mode: requestMode,
+        revoked: false,
+        absoluteExpiresAt: Date.now() + 2_592_000_000,
+      };
+      sessions.set(randomUUID(), session);
+      json(response, 200, issueTokens(session));
+      return;
+    }
+    const record = refreshTokens.get(body.refresh_token);
+    const bearerToken =
+      request.headers.authorization?.slice("Bearer ".length) ?? "";
+    if (pathname === "/v1/auth/logout") {
+      const session = record?.session ?? accessTokens.get(bearerToken)?.session;
+      if (session) revokeSession(session);
+      response.writeHead(204, headers({ "Cache-Control": "no-store" }));
+      response.end();
+      return;
+    }
+    if (pathname.startsWith("/__test__/auth/")) {
+      if (!record) {
+        invalidAuth(response);
+        return;
+      }
+      const session = record.session;
+      if (pathname.endsWith("reset-data")) {
+        const data = { mutableCards: new Map() };
+        ownerData.set(session.id, data);
+        for (const value of sessions.values())
+          if (value.id === session.id) value.data = data;
+      } else if (pathname.endsWith("expire-access")) {
+        for (const value of accessTokens.values())
+          if (value.session === session) value.expiresAt = Date.now() - 1;
+      } else if (pathname.endsWith("revoke")) revokeSession(session);
+      else if (pathname.endsWith("allowlist")) {
+        session.allowed = body.allowed !== false;
+        if (session.allowed) blockedEmails.delete(session.email);
+        else blockedEmails.add(session.email);
+      } else if (pathname.endsWith("reuse-outside-grace"))
+        record.rotatedAt = Date.now() - reuseGraceMs - 1;
+      else if (!pathname.endsWith("session")) {
+        error(response, 404, "endpoint_not_found", "Unknown test hook.");
+        return;
+      }
+      json(response, 200, {
+        id: session.id,
+        revoked: session.revoked,
+        allowed: session.allowed !== false,
+      });
+      return;
+    }
+    if (pathname !== "/v1/auth/refresh") {
+      error(response, 404, "endpoint_not_found", "Unknown auth endpoint.");
+      return;
+    }
+    if (
+      !record ||
+      record.session.revoked ||
+      record.session.idleExpiresAt <= Date.now() ||
+      record.session.absoluteExpiresAt <= Date.now()
+    ) {
+      invalidAuth(response, "refresh_invalid");
+      return;
+    }
+    if (
+      record.session.allowed === false ||
+      blockedEmails.has(record.session.email)
+    ) {
+      revokeSession(record.session);
+      invalidAuth(response, "account_not_allowed", 403);
+      return;
+    }
+    if (record.rotatedAt !== null) {
+      if (Date.now() - record.rotatedAt <= reuseGraceMs)
+        invalidAuth(response, "refresh_superseded", 409);
+      else {
+        revokeSession(record.session);
+        invalidAuth(response, "refresh_reused");
+      }
+      return;
+    }
+    record.rotatedAt = Date.now();
+    const tokens = issueTokens(record.session);
+    tokens.profile = { name: null, picture: null };
+    json(response, 200, tokens);
+  });
+  return true;
 }
 
 const reviewState = {
@@ -105,7 +280,7 @@ function headers(extra = {}) {
     "Access-Control-Allow-Origin": origin,
     "Access-Control-Allow-Headers":
       "Authorization, Content-Type, Idempotency-Key",
-    "Access-Control-Allow-Methods": "GET, POST, PATCH, DELETE, OPTIONS",
+    "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
     "Content-Type": "application/json",
     "Access-Control-Expose-Headers": "Retry-After, X-Request-ID",
     ...extra,
@@ -113,7 +288,10 @@ function headers(extra = {}) {
 }
 
 function json(response, status, body) {
-  response.writeHead(status, headers({ "X-Request-ID": requestId }));
+  response.writeHead(
+    status,
+    headers({ "X-Request-ID": requestId, "Cache-Control": "no-store" }),
+  );
   response.end(JSON.stringify(body));
 }
 
@@ -146,6 +324,8 @@ const server = http.createServer((request, response) => {
     return;
   }
 
+  if (handleAuth(request, response)) return;
+
   if (!request.headers.authorization?.startsWith("Bearer ")) {
     error(
       response,
@@ -153,6 +333,33 @@ const server = http.createServer((request, response) => {
       "authentication_required",
       "Authentication is required.",
     );
+    return;
+  }
+  const token = request.headers.authorization.slice("Bearer ".length);
+  const access = token.startsWith("ela_") ? accessTokens.get(token) : null;
+  if (
+    !access ||
+    access.session.revoked ||
+    access.session.idleExpiresAt <= Date.now() ||
+    access.session.absoluteExpiresAt <= Date.now()
+  ) {
+    invalidAuth(response);
+    return;
+  }
+  if (
+    access.session.allowed === false ||
+    blockedEmails.has(access.session.email)
+  ) {
+    revokeSession(access.session);
+    invalidAuth(response, "account_not_allowed", 403);
+    return;
+  }
+  if (access.expiresAt <= Date.now()) {
+    invalidAuth(response, "access_token_expired");
+    return;
+  }
+  if (request.method === "GET" && request.url === "/v1/me") {
+    json(response, 200, { id: access.session.id, email: access.session.email });
     return;
   }
   const requestMode = modeFor(request);
@@ -241,10 +448,10 @@ const server = http.createServer((request, response) => {
       json(response, 200, {
         items: [
           deck(language, archived),
-          ...(createdDeck &&
-          createdDeck.target_language === language &&
+          ...(access.session.data.createdDeck &&
+          access.session.data.createdDeck.target_language === language &&
           !archived
-            ? [createdDeck]
+            ? [access.session.data.createdDeck]
             : []),
         ],
         next_cursor: null,
@@ -264,8 +471,8 @@ const server = http.createServer((request, response) => {
       return;
     }
     const id = parsedUrl.pathname.split("/").at(-1);
-    if (createdDeck?.id === id) {
-      json(response, 200, createdDeck);
+    if (access.session.data.createdDeck?.id === id) {
+      json(response, 200, access.session.data.createdDeck);
       return;
     }
     json(response, 200, deck(id === japaneseDeckId ? "ja" : "en"));
@@ -274,7 +481,7 @@ const server = http.createServer((request, response) => {
   if (request.method === "GET" && parsedUrl.pathname === "/v1/cards") {
     const japanese = parsedUrl.searchParams.get("deck_id") === japaneseDeckId;
     const archived = parsedUrl.searchParams.get("status") === "archived";
-    const dynamic = [...mutableCards.values()].filter(
+    const dynamic = [...access.session.data.mutableCards.values()].filter(
       (item) =>
         item.deck.id === parsedUrl.searchParams.get("deck_id") &&
         Boolean(item.archived_at) === archived,
@@ -296,8 +503,8 @@ const server = http.createServer((request, response) => {
       return;
     }
     const id = parsedUrl.pathname.split("/").at(-1);
-    if (mutableCards.has(id)) {
-      json(response, 200, mutableCards.get(id));
+    if (access.session.data.mutableCards.has(id)) {
+      json(response, 200, access.session.data.mutableCards.get(id));
       return;
     }
     json(response, 200, card(id === japaneseCardId ? "ja" : "en", true));
@@ -315,14 +522,14 @@ const server = http.createServer((request, response) => {
         );
         return;
       }
-      createdDeck ??= {
+      access.session.data.createdDeck ??= {
         ...deck(payload.target_language),
         id: "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
         title: payload.title,
         explanation_language: payload.explanation_language,
         version: 1,
       };
-      json(response, 201, createdDeck);
+      json(response, 201, access.session.data.createdDeck);
     });
     return;
   }
@@ -374,17 +581,21 @@ const server = http.createServer((request, response) => {
         return;
       }
       const key = request.headers["idempotency-key"];
-      if (requestMode === "management-ambiguous-create" && !ambiguousCreate) {
-        ambiguousCreate = { key, raw };
+      if (
+        requestMode === "management-ambiguous-create" &&
+        !access.session.data.ambiguousCreate
+      ) {
+        access.session.data.ambiguousCreate = { key, raw };
       } else if (
         requestMode === "management-ambiguous-create" &&
-        (ambiguousCreate.key !== key || ambiguousCreate.raw !== raw)
+        (access.session.data.ambiguousCreate.key !== key ||
+          access.session.data.ambiguousCreate.raw !== raw)
       ) {
         error(response, 409, "idempotency_key_reused", "The retry changed.");
         return;
       }
       const japanese = payload.deck_id === japaneseDeckId;
-      createdCard ??= {
+      access.session.data.createdCard ??= {
         ...card(japanese ? "ja" : "en", true),
         id: "abababab-abab-4bab-8bab-abababababab",
         deck: card(japanese ? "ja" : "en", true).deck,
@@ -396,17 +607,20 @@ const server = http.createServer((request, response) => {
         review_state: reviewState,
         archived_at: null,
       };
-      mutableCards.set(createdCard.id, createdCard);
+      access.session.data.mutableCards.set(
+        access.session.data.createdCard.id,
+        access.session.data.createdCard,
+      );
       if (
         requestMode === "management-ambiguous-create" &&
-        ambiguousCreate.raw === raw &&
-        ambiguousCreate.firstResponse !== false
+        access.session.data.ambiguousCreate.raw === raw &&
+        access.session.data.ambiguousCreate.firstResponse !== false
       ) {
-        ambiguousCreate.firstResponse = false;
+        access.session.data.ambiguousCreate.firstResponse = false;
         json(response, 201, { outcome: "unclear" });
         return;
       }
-      json(response, 201, createdCard);
+      json(response, 201, access.session.data.createdCard);
     });
     return;
   }
@@ -427,9 +641,10 @@ const server = http.createServer((request, response) => {
       }
       const id = parsedUrl.pathname.split("/").at(-1);
       const current =
-        mutableCards.get(id) ?? card(id === japaneseCardId ? "ja" : "en", true);
+        access.session.data.mutableCards.get(id) ??
+        card(id === japaneseCardId ? "ja" : "en", true);
       const updated = { ...current, ...payload, version: current.version + 1 };
-      mutableCards.set(id, updated);
+      access.session.data.mutableCards.set(id, updated);
       json(response, 200, updated);
     });
     return;
@@ -441,8 +656,9 @@ const server = http.createServer((request, response) => {
   ) {
     const id = parsedUrl.pathname.split("/").at(-1);
     const current =
-      mutableCards.get(id) ?? card(id === japaneseCardId ? "ja" : "en", true);
-    mutableCards.set(id, {
+      access.session.data.mutableCards.get(id) ??
+      card(id === japaneseCardId ? "ja" : "en", true);
+    access.session.data.mutableCards.set(id, {
       ...current,
       archived_at: "2026-09-12T00:00:00Z",
       version: current.version + 1,
@@ -566,9 +782,9 @@ const server = http.createServer((request, response) => {
       }
       if (
         (requestMode === "ambiguous" || requestMode === "retryable") &&
-        !firstCommand
+        !access.session.data.firstCommand
       ) {
-        firstCommand = { key, raw };
+        access.session.data.firstCommand = { key, raw };
         if (requestMode === "retryable") {
           error(
             response,
@@ -584,8 +800,9 @@ const server = http.createServer((request, response) => {
       }
       if (
         (requestMode === "ambiguous" || requestMode === "retryable") &&
-        firstCommand &&
-        (firstCommand.key !== key || firstCommand.raw !== raw)
+        access.session.data.firstCommand &&
+        (access.session.data.firstCommand.key !== key ||
+          access.session.data.firstCommand.raw !== raw)
       ) {
         error(
           response,

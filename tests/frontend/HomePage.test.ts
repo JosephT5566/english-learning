@@ -15,7 +15,7 @@ vi.mock("$lib/auth", () => ({
 describe("home practice activity", () => {
   beforeEach(() => {
     localStorage.clear();
-    setSignIn({ sub: "account-a" });
+    setSignIn({ id: 1, email: "a@example.test" });
   });
 
   afterEach(() => {
@@ -41,18 +41,18 @@ describe("home practice activity", () => {
   it("refreshes practice status when the account changes on the mounted homepage", async () => {
     const now = new Date();
     localStorage.setItem(
-      "review_practiced_on_v1:account-a",
+      "review_practiced_on_v1:1",
       `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`,
     );
     render(HomePage);
     expect(
       await screen.findByRole("heading", { name: "You've practiced today" }),
     ).toBeVisible();
-    setSignIn({ sub: "account-b" });
+    setSignIn({ id: 2, email: "b@example.test" });
     expect(
       await screen.findByRole("link", { name: /Start today.s review/ }),
     ).toBeVisible();
-    setSignIn({ sub: "account-a" });
+    setSignIn({ id: 1, email: "a@example.test" });
     expect(
       await screen.findByRole("heading", { name: "You've practiced today" }),
     ).toBeVisible();
@@ -71,7 +71,7 @@ describe("home practice activity", () => {
   it("expires the hint and updates the date at local midnight while mounted", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date(2026, 11, 31, 23, 59, 59));
-    localStorage.setItem("review_practiced_on_v1:account-a", "2026-12-31");
+    localStorage.setItem("review_practiced_on_v1:1", "2026-12-31");
     const { container } = render(HomePage);
     await tick();
     expect(

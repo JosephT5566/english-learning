@@ -1,3 +1,4 @@
+import { seedSignedIn } from "./auth-fixture";
 import { expect, test } from "@playwright/test";
 
 let root = "";
@@ -98,12 +99,7 @@ for (const width of [320, 390, 1280]) {
 test("explicit sign out returns home and requires a new guest selection", async ({
   page,
 }) => {
-  await page.addInitScript(() => {
-    const exp = Math.floor(Date.now() / 1000) + 3600;
-    const token = `e30.${btoa(JSON.stringify({ sub: "browser-test-empty", exp }))}.test`;
-    localStorage.setItem("gid_id_token", token);
-    localStorage.setItem("gid_exp", String(exp));
-  });
+  await seedSignedIn(page, "empty");
   await page.goto(`${root}/review`);
   await expect(
     page.getByRole("navigation", { name: "Primary navigation" }),
@@ -119,7 +115,9 @@ test("explicit sign out returns home and requires a new guest selection", async 
     page.getByRole("navigation", { name: "Primary navigation" }),
   ).toHaveCount(0);
   await expect(
-    page.getByRole("button", { name: "Continue as guest" }),
+    page
+      .locator(".review-invitation")
+      .getByRole("button", { name: "Continue as guest" }),
   ).toBeVisible();
   expect(
     await page.evaluate(() => sessionStorage.getItem("learning_guest_session")),
@@ -137,6 +135,7 @@ for (const flipped of [false, true]) {
     });
     await page.goto(`${root}/`);
     await page
+      .locator(".review-invitation")
       .getByRole("button", { name: "Continue as guest", exact: true })
       .click();
     const active = page.locator('.swipe--card[aria-hidden="false"]');
