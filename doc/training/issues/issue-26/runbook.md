@@ -294,74 +294,66 @@ The workflow:
 6. Calls the candidate `/health/live` and `/health/ready` endpoints and records its URL, revision,
    image, and previous traffic in the job summary.
 
-This is only the public candidate gate. Obtain a fresh Google ID token and run the authenticated
-smoke script below before promotion. The workflow never promotes or rolls back traffic, reruns
-Alembic, rebuilds the image, or reads a database secret.
+This is only the public candidate gate. Run **Smoke API candidate** on the same selected
+commit before promotion. It keeps the deployment identity for candidate discovery and mints a
+separate short-lived ID token for the dedicated smoke service account. No operator supplies a
+credential, and the runner never receives a database secret. The workflow never promotes traffic,
+reruns Alembic or rebuilds the image.
 
-If this workflow fails after Cloud Run has created a revision, use GitHub Actions **Re-run failed
-jobs**. The retry creates another zero-traffic revision from the same immutable image and moves the
-`candidate` tag only as part of that deployment. Do not create an empty commit or rerun the publish
-workflow merely to obtain a new revision name.
+If candidate deployment fails after creating a revision, use GitHub Actions **Re-run failed
+jobs**. The retry creates another zero-traffic revision from the same immutable image. Do not
+create an empty commit just to obtain a new revision name.
 
-Alternatively, run the protected **Smoke API candidate** workflow with a fresh allowlisted Google
-ID token. It resolves the current zero-traffic `candidate` tag and runs the same script. Its optional
-semantic-search input sends one fixed, bounded English query through Vertex and validates the
-response contract, stable distance ordering, coverage counts, and absence of raw vectors. Its
-optional review-write input changes one real due card and verifies exact replay. `workflow_dispatch`
-inputs are not GitHub secrets; the workflow masks the token in runner logs, but the dispatch input
-itself is still a short-lived credential and must not be reused or placed in committed files. Use
-the existing `production` environment approval and inspect only the safe run summary.
+## Machine-identity candidate verification
 
-## Candidate verification
+The maintainer provisions `el-release-smoke@<project>.iam.gserviceaccount.com` and configures the
+three protected `production` environment variables below. These are placeholders, not commands
+to run as part of repository verification.
 
-Obtain the tagged candidate URL from the Cloud Run service and run public checks:
+| Variable                 | Maintainer-supplied value                                                      |
+| ------------------------ | ------------------------------------------------------------------------------ |
+| `RELEASE_SMOKE_AUDIENCE` | `https://<api-host>/release-smoke`, distinct from browser and export audiences |
+| `RELEASE_SMOKE_SUBJECT`  | Numeric unique ID of the dedicated smoke service account                       |
+| `RELEASE_SMOKE_EMAIL`    | `el-release-smoke@<project>.iam.gserviceaccount.com`                           |
 
-```bash
-deploy/cloud-run/smoke.sh https://candidate---SERVICE_HASH.REGION.run.app
-```
+Supply all three together to both the API revision and the smoke workflow. Grant only
+`roles/iam.workloadIdentityUser` on this service account to the exact trusted WIF principal:
+restrict numeric repository/owner IDs, `ref=refs/heads/main`,
+`.github/workflows/smoke-api-candidate.yml@refs/heads/main`, and the `production` environment
+subject. Reuse `GCP_WORKLOAD_IDENTITY_PROVIDER` only when its mappings/conditions support these
+restrictions without broadening deployment trust. The smoke account needs no database,
+Secret Manager, deployment or project-wide role. Do not reuse the deployment/export identity,
+create a key, or grant a user-token path. The existing deploy-SA step still resolves the
+zero-traffic candidate before the separate smoke-SA authentication step.
 
-For authenticated checks, obtain a fresh Google ID token without saving it to a file or shell
-history, export it in the current shell, and run:
+Run **Smoke API candidate** through its protected `production` environment on the candidate's
+commit. There is no token input and no optional real-account write or provider-backed query.
+The workflow masks its minted ID token before passing it as `RELEASE_SMOKE_ID_TOKEN` to
+`deploy/cloud-run/smoke.sh`. The script requires Bash, Python 3 and curl and performs:
 
-```bash
-GOOGLE_ID_TOKEN="$GOOGLE_ID_TOKEN" \
-  deploy/cloud-run/smoke.sh https://candidate---SERVICE_HASH.REGION.run.app
-```
+1. Public liveness/readiness, then Google ID-token bearer rejection on `/v1/me` (401).
+2. Exchange for app access/refresh tokens, then an owned `/v1/me` read.
+3. Find the fixed `Release smoke (synthetic)` English deck across list pages, creating it only
+   when missing. This deck persists under the synthetic owner.
+4. Create its own due card, submit one review, and replay the exact body and Idempotency-Key.
+   The two committed results must match.
+5. Archive that card through the existing soft-archive DELETE route. Keep the deck and review
+   events; do not add or use a hard-delete endpoint.
+6. Rotate refresh, then reuse the old token: 409 `refresh_superseded` within grace, or 401
+   `refresh_reused` outside grace. Logout and require the resulting access token to return 401.
 
-The authenticated check calls `/v1/me` and one owner-scoped deck list.
+The synthetic principal has no GenAI consent by default. This smoke makes no assistant,
+semantic-search or other Vertex request and never relies on a naturally due human card.
+Temporary token/header/body files are private and removed on exit. Failure after card creation
+attempts archival and logout; a transport failure can also prevent cleanup, so investigate a
+`cleanup_card_archived=false` summary before promotion and archive any leftover synthetic card.
+Do not promote a failed run. Never inspect or copy its credential files into evidence.
 
-To make exactly one provider-backed semantic request without printing its query results, opt in
-explicitly:
-
-```bash
-GOOGLE_ID_TOKEN="$GOOGLE_ID_TOKEN" CONFIRM_SEMANTIC_SEARCH=yes \
-  deploy/cloud-run/smoke.sh https://candidate---SERVICE_HASH.REGION.run.app
-```
-
-The safe summary contains only status, request ID, result count, index status, coverage counts, and
-the single curl total-time observation. It does not establish p50/p95 or independently establish
-retrieval quality. Inspect one expected Top-K result locally if a bounded quality observation is
-required, but do not copy card content or IDs into logs or committed evidence.
-
-To deliberately mutate one due English card and verify exact idempotent replay, opt in explicitly:
-
-```bash
-GOOGLE_ID_TOKEN="$GOOGLE_ID_TOKEN" CONFIRM_REVIEW_WRITE=yes \
-  deploy/cloud-run/smoke.sh https://candidate---SERVICE_HASH.REGION.run.app
-```
-
-Record only response status, request IDs, safe counts, the release image/revision, migration
-revision, single-request timing observations, and timestamps. Do not commit tokens, database URLs,
-user content, card IDs, raw vectors, or raw responses.
-
-Before promotion, verify:
-
-- the migration job succeeded and `alembic current` reports the expected head;
-- liveness and readiness return `200`;
-- an invalid/missing bearer token is rejected;
-- the authenticated user sees only owned data;
-- the controlled write and identical replay return the same committed result;
-- production logs contain no token, database URL, or learning content.
+Record only status codes, booleans/counts, image/revision/migration identifiers and timestamps.
+Do not record tokens, emails, card text/IDs, request/response bodies or database URLs. The script
+suppresses response bodies and curl errors; only fixed safe failure summaries reach its output.
+A local stub test proves request order and output filtering, not live WIF or candidate success.
+Release completion requires an actual green candidate smoke and the interactive check below.
 
 ## Promotion and frontend cutover
 
@@ -383,10 +375,30 @@ gcloud run services update-traffic "$API_SERVICE" \
   --to-revisions CANDIDATE_REVISION=100
 ```
 
-After the stable API URL passes the same smoke checks, set the GitHub Pages
-`PUBLIC_API_BASE_URL` repository variable to that HTTPS origin and trigger the existing Pages
-deployment. Verify sign-in, one owned read, one review write, English/Japanese management, and the
-absence of Apps Script requests before declaring the frontend cutover live.
+Use the strict app-token cutover for issue #45; there is no legacy-bearer compatibility flag.
+Release only when the owner is not mid-review and no unsent review is pending. The old
+subject-keyed pending format is discarded by the new frontend, so finish/sync it first.
+
+1. Merge the approved commit and publish its image. Run the additive auth migration first;
+   the previous API revision ignores the new tables.
+2. Deploy the zero-traffic API candidate with the smoke settings and run the machine smoke.
+3. Record the previous API revision and Pages commit, then promote the verified candidate to
+   100% using the traffic command above.
+4. Immediately dispatch Pages for the same commit. Keep the existing stable
+   `PUBLIC_API_BASE_URL` origin; only update it if the API origin actually changed. Until Pages
+   is live and the user reloads, the old frontend's Google bearer receives 401. This planned
+   cutover window lasts for the Pages build/deploy; it has not been timed here.
+5. Complete the manual interactive check. Do not call the release complete until it passes.
+
+### Manual interactive Google sign-in check
+
+Use the deployed GIS button with an allowlisted human account; do not extract, paste or store a
+Google token. Verify sign-in/exchange, reload/startup refresh, automatic access refresh, an
+assistant reply, one owned read and one review write, sign-out, and sign-out then sign-in with a
+different account if available. Verify English/Japanese management and no Apps Script requests.
+Check that session expiry preserves the page and disables writes, and that guest entry remains
+an explicit choice. This verifies browser/GIS behavior that the machine identity cannot prove.
+Record only pass/fail and release identifiers, without private conversation or learning content.
 
 ## Application rollback
 
@@ -400,9 +412,27 @@ gcloud run services update-traffic "$API_SERVICE" \
   --to-revisions PREVIOUS_COMPATIBLE_REVISION=100
 ```
 
-Re-run health and authenticated read checks. If the frontend was cut over, restore its previously
-recorded API origin/revision as needed. Do not point the application at a second writable database,
-automatically downgrade the schema, or claim rollback success without a timed rehearsal.
+Immediately redeploy Pages from the recorded previous commit as well. API and Pages must
+always roll back together; neither old/new pairing is compatible. Re-run health and the
+interactive checks appropriate to that previous version. Do not point the app at a second
+writable database, downgrade the additive auth tables automatically, or claim success without
+verification. The old API ignores these tables; issued refresh tokens become orphans. Before
+rolling forward again, the maintainer can revoke the retained app sessions during a maintenance
+window with no active review or concurrent sign-in:
+
+```sql
+BEGIN;
+UPDATE auth_sessions
+SET revoked_at = CURRENT_TIMESTAMP, revoked_reason = 'operator'
+WHERE revoked_at IS NULL;
+DELETE FROM auth_access_tokens;
+COMMIT;
+```
+
+Run this using the authorized maintenance database role, never a workflow token or the browser.
+Revoked sessions make retained refresh hashes unusable. This does not cancel requests already
+executing; the maintenance window matters. Record only that revocation completed, without row
+dumps, token hashes or user identifiers. Never roll back only the API or only Pages.
 
 If a migration itself is unsafe, stop the release before candidate traffic. Recovery then follows a
 reviewed migration-specific forward fix or restore plan, not the application traffic command above.

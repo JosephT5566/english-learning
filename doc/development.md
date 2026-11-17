@@ -170,6 +170,68 @@ Set `GENERATION_LOCATION` if the model uses a separate endpoint such as `global`
 passes configured generation values to the revision. Without a generation location override,
 the API uses `VERTEX_LOCATION`, which also controls embedding requests.
 
+### App-session release smoke (issue #45)
+
+**Smoke API candidate** uses two WIF identities: the existing deploy SA resolves the zero-traffic
+candidate; a dedicated `el-release-smoke@<project>.iam.gserviceaccount.com` mints the smoke ID
+token. The maintainer sets `RELEASE_SMOKE_AUDIENCE` (`https://<api-host>/release-smoke`),
+`RELEASE_SMOKE_SUBJECT` (the SA's numeric unique ID), and `RELEASE_SMOKE_EMAIL` (that SA email)
+in the protected `production` environment. All three must be configured together; the audience
+must differ from `GOOGLE_OAUTH_CLIENT_ID` and `GUEST_EXPORT_AUDIENCE`. Only placeholders belong
+in documentation. The deploy workflow passes these settings to the candidate.
+
+Grant only `roles/iam.workloadIdentityUser` impersonation on this smoke SA to the exact trusted
+WIF principal. Restrict mappings/conditions and the binding to the numeric repository/owner IDs,
+`ref=refs/heads/main`, `.github/workflows/smoke-api-candidate.yml@refs/heads/main`, and the
+`production` environment subject. An environment subject alone does not prove main. Reuse the
+existing `GCP_WORKLOAD_IDENTITY_PROVIDER` only if it supports these restrictions without
+broadening deployment trust. The smoke SA has no database, Secret Manager, deployment or
+project-wide role. Do not use a key, a human token, the export SA or the deployment SA for smoke.
+The maintainer performs any IAM changes; repository checks do not provision resources.
+
+The workflow has no token input. It masks its freshly minted ID token, exchanges it for app
+tokens, checks owned reads, creates/reviews/replays/archives its own synthetic card, checks
+refresh rotation/reuse and logout, and proves direct Google bearer rejection. The fixed
+`Release smoke (synthetic)` deck and its review events persist; each run's card is archived.
+No GenAI consent is granted and no Vertex request runs. Do not paste an operator token or rely
+on a naturally due human card. Script output contains only safe statuses, booleans and counts.
+A failed run must be investigated before promotion, including failed best-effort archival.
+
+Optional `AUTH_ACCESS_TTL_SECONDS`, `AUTH_REFRESH_IDLE_TTL_SECONDS`,
+`AUTH_REFRESH_ABSOLUTE_TTL_SECONDS` and `AUTH_REFRESH_REUSE_GRACE_SECONDS` production variables
+are appended to the deploy environment string only when nonempty. Otherwise the app defaults
+apply: 900, 604800, 2592000 and 10 seconds respectively. Removing a variable omits that setting
+from the next candidate; no empty numeric value is sent. API settings validation remains the
+bounds check.
+
+Release when no review is in progress and no old pending answer remains: publish the image,
+run the additive migration first, deploy the zero-traffic candidate, run machine smoke, promote
+API, immediately deploy Pages for the same commit, then manually verify real GIS sign-in,
+reload/refresh, assistant reply, one review, sign-out and account change if available. This is a
+strict cutover: old Pages gets 401 until the matching new Pages build is live/reloaded; there is
+no dual-bearer flag. Machine smoke does not replace the interactive Google check. Release is
+complete only after both have passed on the actual release.
+
+Rollback moves API traffic to the recorded compatible revision and redeploys Pages from the
+previous commit together. The old API ignores auth tables; retained refresh sessions can be
+revoked before rolling forward again. The maintainer-only transaction is:
+
+```sql
+BEGIN;
+UPDATE auth_sessions
+SET revoked_at = CURRENT_TIMESTAMP, revoked_reason = 'operator'
+WHERE revoked_at IS NULL;
+DELETE FROM auth_access_tokens;
+COMMIT;
+```
+
+Run it with the maintenance database role in a quiet window; it does not cancel in-flight
+requests. Never roll back one side alone or automatically downgrade the tables. The full
+[release runbook](training/issues/issue-26/runbook.md#machine-identity-candidate-verification)
+distinguishes machine smoke from the interactive check. Record release identifiers, timestamps
+and safe results only, never tokens, emails, card text/IDs or bodies. Local stub/unit results do
+not establish deployed WIF, production smoke or rollback success.
+
 ## Validation Expectations
 
 Use the change-to-check table in [`AGENTS.md`](../AGENTS.md#verification) for required local checks.
