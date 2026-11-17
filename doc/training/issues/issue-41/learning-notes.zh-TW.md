@@ -156,6 +156,11 @@ active English card。直到這個 preflight 通過後，我們才執行 v2 qual
 
 ### `run_deployed_evaluation.py`
 
+Historical pre-#45 tool: live mode still expects the retired Google-bearer contract. Do not enter
+or export a human token for it. Migrate its adapter to app sessions in a separately approved
+follow-up before live use; the local dry-run remains request-free. The descriptions below record
+its original behavior, not current authentication guidance.
+
 這是 deployed semantic-search workload runner，會呼叫：
 
 ```text
@@ -166,7 +171,7 @@ POST /v1/cards/semantic-search
 
 - 從 frozen JSON fixture 載入 10 個 queries；
 - 驗證 fixture 結構並記錄 SHA-256；
-- 從隱藏提示或 `GOOGLE_ID_TOKEN` 環境變數取得 Google ID token；
+- The original hidden-prompt/environment Google-token path is retired by issue #45; do not use it;
 - 不接受 CLI token，避免 token 留在 shell history；
 - 可傳入 stable API base URL、owned deck ID、repetitions 與 report path；
 - 收集 HTTP status、request ID、coverage 與 end-to-end latency；

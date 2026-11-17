@@ -1,16 +1,11 @@
-"""Run the explicit Issue #41 deployed semantic-search workload.
+"""Historical Issue #41 deployed semantic-search runner.
 
-The runner prints response content only to the local terminal for human grading. Its JSON report
-contains query IDs, relevance grades, safe response metadata, and latency observations, but never
-the Google ID token, query text, card IDs, terms, meanings, or scores.
+Live mode still uses the pre-#45 Google-bearer contract. Do not supply a human credential or run
+live mode against the current API. Migrating its auth adapter to app sessions is a separate
+follow-up; the README documents the request-free --dry-run path.
 
-Example from the repository root:
-    python3 doc/training/issues/issue-41/run_deployed_evaluation.py \
-        --base-url https://YOUR-STABLE-API-HOST \
-        --report /tmp/issue-41-deployed-report.json
-
-Supply GOOGLE_ID_TOKEN in the environment or enter it at the hidden prompt. Never pass it as a
-command-line argument. Each query makes one provider-backed request per repetition.
+The historical runner prints content locally for human grading. Reports exclude credentials,
+query text, card IDs, terms, meanings and scores. No live evaluation is authorized by this guide.
 """
 
 from __future__ import annotations

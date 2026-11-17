@@ -1,5 +1,10 @@
 # Issue #10 - Backend authentication and owner authorization
 
+Historical issue evidence: the Google-ID-token bearer and subject-keyed browser state described
+below predate issue #45. Current product requests use app access tokens after GIS exchange;
+pending privacy/recovery uses the internal user id. Do not use these old auth steps as setup
+instructions. See the [current API sessions](../../../../apps/api/README.md#application-sessions).
+
 ## Implemented boundary
 
 Every `/v1` product route requires `Authorization: Bearer <Google ID token>`. The backend passes the
@@ -20,20 +25,20 @@ failure returns retryable `503 identity_provider_unavailable`.
 
 ## Authorization matrix
 
-| Route | Authentication | Authorized scope | Cross-owner result | Test evidence |
-| --- | --- | --- | --- | --- |
-| `GET /v1/me` | Valid Google ID token | Resolved internal user only | Not applicable | Stable `sub` mapping and email refresh |
-| `GET /v1/decks`, `GET /v1/decks/{id}` | Required | Deck owner | Empty list / `404 deck_not_found` | Cross-user read test |
-| `POST /v1/decks` | Required | Owner derived from auth | Client identity fields rejected `422` | Create ownership test |
-| `PATCH /v1/decks/{id}` | Required | Deck owner and matching version | `404 deck_not_found` | Cross-user mutation test |
-| `DELETE /v1/decks/{id}` | Required | Deck owner | `404 deck_not_found` | Cross-user mutation test |
-| `GET /v1/cards`, `GET /v1/cards/{id}` | Required | Card owner | Empty list / `404 card_not_found` | Cross-user read test |
-| `POST /v1/cards` | Required | Authenticated owner and owned active deck | `404 deck_not_found` | Foreign-parent create test |
-| `PATCH /v1/cards/{id}` | Required | Card owner and matching version | `404 card_not_found` | Cross-user mutation test |
-| `DELETE /v1/cards/{id}` | Required | Card owner | `404 card_not_found` | Cross-user mutation test |
-| `GET /v1/reviews/due` | Required | Owned state joined to owned card and deck | Empty result or `404 deck_not_found` for a selected foreign deck | Cross-user due-read test |
-| `POST /v1/reviews` | Required | Every card belongs to authenticated owner | `404 card_not_found`; no batch/event/state effect | Cross-user review transaction test |
-| `GET /health/live`, `GET /health/ready` | Not required | Service health only | Not applicable | Existing health tests |
+| Route                                   | Authentication        | Authorized scope                          | Cross-owner result                                               | Test evidence                          |
+| --------------------------------------- | --------------------- | ----------------------------------------- | ---------------------------------------------------------------- | -------------------------------------- |
+| `GET /v1/me`                            | Valid Google ID token | Resolved internal user only               | Not applicable                                                   | Stable `sub` mapping and email refresh |
+| `GET /v1/decks`, `GET /v1/decks/{id}`   | Required              | Deck owner                                | Empty list / `404 deck_not_found`                                | Cross-user read test                   |
+| `POST /v1/decks`                        | Required              | Owner derived from auth                   | Client identity fields rejected `422`                            | Create ownership test                  |
+| `PATCH /v1/decks/{id}`                  | Required              | Deck owner and matching version           | `404 deck_not_found`                                             | Cross-user mutation test               |
+| `DELETE /v1/decks/{id}`                 | Required              | Deck owner                                | `404 deck_not_found`                                             | Cross-user mutation test               |
+| `GET /v1/cards`, `GET /v1/cards/{id}`   | Required              | Card owner                                | Empty list / `404 card_not_found`                                | Cross-user read test                   |
+| `POST /v1/cards`                        | Required              | Authenticated owner and owned active deck | `404 deck_not_found`                                             | Foreign-parent create test             |
+| `PATCH /v1/cards/{id}`                  | Required              | Card owner and matching version           | `404 card_not_found`                                             | Cross-user mutation test               |
+| `DELETE /v1/cards/{id}`                 | Required              | Card owner                                | `404 card_not_found`                                             | Cross-user mutation test               |
+| `GET /v1/reviews/due`                   | Required              | Owned state joined to owned card and deck | Empty result or `404 deck_not_found` for a selected foreign deck | Cross-user due-read test               |
+| `POST /v1/reviews`                      | Required              | Every card belongs to authenticated owner | `404 card_not_found`; no batch/event/state effect                | Cross-user review transaction test     |
+| `GET /health/live`, `GET /health/ready` | Not required          | Service health only                       | Not applicable                                                   | Existing health tests                  |
 
 Detail and mutation endpoints intentionally use the same `404` for missing and cross-owner IDs. This
 prevents resource enumeration while preserving a simple client contract. `PATCH` requires the last

@@ -18,10 +18,9 @@ if needed. This document proposes the machine authentication and publication det
 
 ## Approaches
 
-- Existing user-authenticated APIs can export cards with a fresh Google user ID token. The
-  list endpoint lacks full study content, so export also needs card-detail reads. This works
-  manually but requires a fresh browser token for subsequent runs instead of a dedicated
-  short-lived machine identity.
+- Historical alternative at the proposal date: user-authenticated APIs accepted a Google ID
+  bearer. Issue #45 retired that path; do not obtain a browser token for exports. Current product
+  APIs use app access, while published guest snapshots use the dedicated machine exporter below.
 - A scoped machine-authenticated export endpoint can reuse the existing public projection and
   bounded read-only query. GitHub obtains a short-lived Google service-account ID token through
   WIF. This is the proposed approach for the requested Action.

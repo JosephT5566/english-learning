@@ -98,15 +98,16 @@ if that command fails.
 
 ## Environment Variables
 
-The app reads these public SvelteKit env vars:
+Public SvelteKit/deployment configuration uses these variables:
 
 - `PUBLIC_API_BASE_URL`: FastAPI origin/base URL used by review and deck/card management. It is
   independent of the static frontend's `paths.base`; omit the trailing slash (a trailing slash is
   normalized).
 - `PUBLIC_GOOGLE_AUTH_CLIENT_ID`: Google Identity Services OAuth client ID.
-- `PUBLIC_EMAIL_WHITE_LIST`: comma-separated allowed Google account emails.
-- The production API also receives this list as `GOOGLE_ALLOWED_EMAILS` and rejects verified Google
-  accounts outside it before creating an internal user. The browser-side check is only a UX precheck.
+- `PUBLIC_EMAIL_WHITE_LIST`: comma-separated allowlist configuration passed to the production API
+  as `GOOGLE_ALLOWED_EMAILS`. The current browser relies on server rejection rather than a local
+  allowlist precheck. The backend enforces it at human exchange, refresh and every access request;
+  public configuration cannot authorize a caller.
 
 Because these are `PUBLIC_` vars, they are bundled into browser code. Do not store secrets in them.
 Copy `.env.example` to an ignored `.env` for local frontend development and replace its placeholders.
@@ -304,7 +305,8 @@ API-backed agent run merely to validate YAML or shell syntax.
 - Google Identity Services must be loaded in `src/app.html` for `window.google.accounts.id` to exist.
 - The legacy Sheet wrapper still documents the Apps Script `{ ok, result/error }` shape, but it has
   no ambient endpoint configuration and is not part of normal review or management navigation.
-- Auth state is currently initialized from local token helpers only where components call them; verify sign-in persistence when changing auth flow.
+- Root layout initializes app sessions before routing; startup refresh restores access from the rotating refresh key. See the [auth sequence](architecture.md#app-session-authentication-and-threat-model-45-2026-11-17).
+- CSP is deferred under issue #45 Q6 because the JSON editor compiles Ajv at runtime. Do not add unsafe script sources; see the [CSP follow-up](issues/issue-45-csp-followup.md).
 
 ## Guest review development and release gate
 

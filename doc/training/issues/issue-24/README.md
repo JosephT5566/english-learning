@@ -1,5 +1,10 @@
 # Issue #24 - Review API cutover
 
+Historical issue evidence: the Google-ID-token bearer and subject-keyed browser state described
+below predate issue #45. Current product requests use app access tokens after GIS exchange;
+pending privacy/recovery uses the internal user id. Do not use these old auth steps as setup
+instructions. See the [current API sessions](../../../../apps/api/README.md#application-sessions).
+
 Status: implemented and verified locally, including one live authenticated review; remote CI and
 production deployment remain.
 
@@ -43,16 +48,16 @@ dual write.
 
 ## Error-state matrix
 
-| Condition | User-visible state | Pending command | Recovery |
-| --- | --- | --- | --- |
-| Due request pending | Loading | None | Wait |
-| Due list empty | Empty | None | End normally |
-| Local expiry or API `401` | Sign in required; not confirmed | Retain for same subject | Sign in, return, retry exact command |
-| Network / retryable `503` / provider failure | Review not confirmed | Retain exact body and key | Manual retry |
-| Invalid success/error response or unexpected `5xx` | Review not confirmed | Retain exact body and key | Manual retry; use request ID when present |
-| `409` stale/inactive/key conflict | Review not saved | Retire | Refetch and begin a new review |
-| `400` / `404` / `422` | Review rejected/unavailable | Retire | Refetch; do not expose ownership distinctions |
-| Valid `200 ReviewResult` | Completed | Remove | Return home |
+| Condition                                          | User-visible state              | Pending command           | Recovery                                      |
+| -------------------------------------------------- | ------------------------------- | ------------------------- | --------------------------------------------- |
+| Due request pending                                | Loading                         | None                      | Wait                                          |
+| Due list empty                                     | Empty                           | None                      | End normally                                  |
+| Local expiry or API `401`                          | Sign in required; not confirmed | Retain for same subject   | Sign in, return, retry exact command          |
+| Network / retryable `503` / provider failure       | Review not confirmed            | Retain exact body and key | Manual retry                                  |
+| Invalid success/error response or unexpected `5xx` | Review not confirmed            | Retain exact body and key | Manual retry; use request ID when present     |
+| `409` stale/inactive/key conflict                  | Review not saved                | Retire                    | Refetch and begin a new review                |
+| `400` / `404` / `422`                              | Review rejected/unavailable     | Retire                    | Refetch; do not expose ownership distinctions |
+| Valid `200 ReviewResult`                           | Completed                       | Remove                    | Return home                                   |
 
 ## Cutover and rollback
 

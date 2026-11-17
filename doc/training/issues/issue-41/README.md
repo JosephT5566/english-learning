@@ -182,20 +182,15 @@ python3 doc/training/issues/issue-41/run_deployed_evaluation.py \
   --dry-run
 ```
 
-The 30-request latency workload is already complete. Run each v2 query once for quality and keep the
-content-safe report outside the repository:
+The recorded 30-request latency workload is historical evidence. Its live runner still uses the
+pre-#45 Google-bearer contract and is not compatible with current product authentication. Do not
+supply a human token through environment or prompt, or run live mode against the current API.
+Migrate its auth adapter to app sessions in a separately approved follow-up before any new live
+evaluation. The local dry-run above remains available; it makes no request. Normal release smoke
+uses the [dedicated WIF machine workflow](../issue-26/runbook.md#machine-identity-candidate-verification),
+not this human-token diagnostic. No new live evaluation is authorized by this documentation update.
 
-```bash
-python3 doc/training/issues/issue-41/run_deployed_evaluation.py \
-  --base-url https://YOUR-STABLE-API-HOST \
-  --repetitions 1 \
-  --report /tmp/issue-41-deployed-v2-report.json
-```
-
-Optionally pass `--deck-id OWNED_DECK_UUID`. Supply `GOOGLE_ID_TOKEN` in the environment or enter
-it at the hidden prompt; there is intentionally no token CLI argument. The runner shows query and
-Top-5 content only in the local terminal for first-run grading, asks for `2` strong, `1` related, or
-`0` irrelevant. It asks for an explicit `yes` before the 10 provider-backed requests.
+The following report/scoring notes describe the historical runner:
 
 The JSON report stores only query labels/types, numeric grades, strong-hit/rank judgments, safe
 status/request-ID/coverage fields, latency observations, fixture hash, and aggregate p50/p95 and
@@ -239,16 +234,16 @@ paths through deterministic tests or safe provider-call instrumentation.
 
 Record an observed or deterministic result for each row before closeout:
 
-| Case | Expected boundary |
-| --- | --- |
-| Empty eligible corpus | 200, empty items, `empty`, zero eligible/indexed |
-| Eligible cards with no current embeddings | 200, empty items, `empty`, indexed zero |
-| Partial embeddings | Only current ready vectors rank; `partial` reports honest counts |
-| Semantic content edit | Old hash/vector excluded until the new embedding is ready |
-| Card or deck archive | Excluded immediately at query time without re-embedding |
-| Model/version mismatch | Inactive model row is never used silently |
-| Provider outage/timeout | Safe 503; retryability matches the error class; never empty 200 |
-| Cross-owner card/deck | No result leakage; foreign deck is masked as not found |
+| Case                                      | Expected boundary                                                |
+| ----------------------------------------- | ---------------------------------------------------------------- |
+| Empty eligible corpus                     | 200, empty items, `empty`, zero eligible/indexed                 |
+| Eligible cards with no current embeddings | 200, empty items, `empty`, indexed zero                          |
+| Partial embeddings                        | Only current ready vectors rank; `partial` reports honest counts |
+| Semantic content edit                     | Old hash/vector excluded until the new embedding is ready        |
+| Card or deck archive                      | Excluded immediately at query time without re-embedding          |
+| Model/version mismatch                    | Inactive model row is never used silently                        |
+| Provider outage/timeout                   | Safe 503; retryability matches the error class; never empty 200  |
+| Cross-owner card/deck                     | No result leakage; foreign deck is masked as not found           |
 
 ## SQL versus vector boundary
 
@@ -458,16 +453,16 @@ subtracted to assign a precise latency share.
 Focused real-PostgreSQL/pgvector tests passed `11` cases across the embedding lifecycle and search
 boundary, with the existing FastAPI TestClient deprecation warning:
 
-| Case | Verified outcome |
-| --- | --- |
-| Empty eligible corpus | 200, empty items, `empty`, 0/0 coverage |
-| Eligible but fully unindexed | 200, empty items, `empty`, 0/1 indexed/eligible |
-| Partial embeddings | Only current ready vectors ranked; `partial` reported 2/4 |
-| Semantic content edit | Stale result could not overwrite new content; old hash was excluded |
-| Card/deck archive | Archived card excluded; archived owned deck returned empty before provider |
-| Model mismatch | Inactive-model vector was excluded from results and coverage |
-| Provider timeout | Safe retryable 503, never an empty success |
-| Cross-owner card/deck | Foreign card excluded; foreign deck masked as 404 before provider |
+| Case                         | Verified outcome                                                           |
+| ---------------------------- | -------------------------------------------------------------------------- |
+| Empty eligible corpus        | 200, empty items, `empty`, 0/0 coverage                                    |
+| Eligible but fully unindexed | 200, empty items, `empty`, 0/1 indexed/eligible                            |
+| Partial embeddings           | Only current ready vectors ranked; `partial` reported 2/4                  |
+| Semantic content edit        | Stale result could not overwrite new content; old hash was excluded        |
+| Card/deck archive            | Archived card excluded; archived owned deck returned empty before provider |
+| Model mismatch               | Inactive-model vector was excluded from results and coverage               |
+| Provider timeout             | Safe retryable 503, never an empty success                                 |
+| Cross-owner card/deck        | Foreign card excluded; foreign deck masked as 404 before provider          |
 
 Observed provider-call behavior was one query embedding for each valid normal, empty-corpus, or
 fully-unindexed search. Invalid authentication/body, foreign deck, and archived deck stopped before
