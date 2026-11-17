@@ -7,6 +7,8 @@ from uuid import UUID
 from sqlalchemy import Connection, Engine, event, text
 from sqlalchemy.orm import Session, sessionmaker
 
+AUTH_TABLES = ("auth_sessions", "auth_refresh_tokens", "auth_access_tokens")
+
 RLS_TABLES = (
     "learning_decks",
     "learning_cards",
