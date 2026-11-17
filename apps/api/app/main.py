@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from app.assistant.routes import router as assistant_router
-from app.auth import GoogleTokenVerifier
+from app.auth import GoogleSmokeTokenVerifier, GoogleTokenVerifier
 from app.auth import router as auth_router
 from app.config import load_settings
 from app.cors import ConfiguredCORSMiddleware
@@ -56,6 +56,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         app.state.database_engine = database_engine
         app.state.database_session_factory = database_session_factory
         app.state.token_verifier = GoogleTokenVerifier(settings.google_oauth_client_id)
+        app.state.smoke_token_verifier = GoogleSmokeTokenVerifier(settings)
         yield
     finally:
         try:

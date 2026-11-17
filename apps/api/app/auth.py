@@ -4,7 +4,7 @@ import secrets
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
-from typing import Annotated, Any, Protocol
+from typing import Annotated, Any, Literal, Protocol
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, Request, Response
@@ -16,6 +16,7 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, SecretStr
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from app.config import Settings
 from app.database import bind_owner, database_session
 from app.errors import ApiError
 
@@ -30,6 +31,7 @@ class VerifiedGoogleIdentity:
     email: str
     name: str | None = None
     picture: str | None = None
+    principal_kind: Literal["human", "smoke"] = "human"
 
 
 @dataclass(frozen=True)
@@ -54,21 +56,7 @@ class GoogleTokenVerifier:
         self._audience = audience
 
     def verify(self, token: str) -> VerifiedGoogleIdentity:
-        try:
-            claims: dict[str, Any] = google_id_token.verify_oauth2_token(
-                token,
-                GoogleAuthRequest(),
-                self._audience,
-            )
-        except ValueError:
-            raise _invalid_credentials() from None
-        except GoogleAuthError:
-            raise ApiError(
-                status_code=503,
-                code="identity_provider_unavailable",
-                message="Authentication is temporarily unavailable.",
-                retryable=True,
-            ) from None
+        claims = self._claims(token)
 
         subject = claims.get("sub")
         email = claims.get("email")
@@ -90,6 +78,52 @@ class GoogleTokenVerifier:
             picture=claims.get("picture")
             if isinstance(claims.get("picture"), str)
             else None,
+        )
+
+    def _claims(self, token: str) -> dict[str, Any]:
+        try:
+            return google_id_token.verify_oauth2_token(
+                token,
+                GoogleAuthRequest(),
+                self._audience,
+            )
+        except ValueError:
+            raise _invalid_credentials() from None
+        except GoogleAuthError:
+            raise ApiError(
+                status_code=503,
+                code="identity_provider_unavailable",
+                message="Authentication is temporarily unavailable.",
+                retryable=True,
+            ) from None
+
+
+class GoogleSmokeTokenVerifier(GoogleTokenVerifier):
+    """Verify only the dedicated release principal, independently of human auth."""
+
+    def __init__(self, settings: Settings) -> None:
+        self._audience = settings.release_smoke_audience
+        self._subject = settings.release_smoke_subject
+        self._email = settings.release_smoke_email
+
+    def verify(self, token: str) -> VerifiedGoogleIdentity:
+        if not self._audience or not self._subject or not self._email:
+            raise _invalid_credentials()
+        claims = self._claims(token)
+        if (
+            claims.get("iss")
+            not in {"accounts.google.com", "https://accounts.google.com"}
+            or claims.get("aud") != self._audience
+            or claims.get("sub") != self._subject
+            or claims.get("email") != self._email
+            or claims.get("email_verified") is not True
+        ):
+            raise _invalid_credentials()
+
+        return VerifiedGoogleIdentity(
+            subject=f"service-account:{self._subject}",
+            email=self._email,
+            principal_kind="smoke",
         )
 
 
@@ -242,7 +276,32 @@ def _revoke(session: Session, session_id, reason: str, now: datetime) -> None:
     )
 
 
-def _check_allowlist(request: Request, session: Session, row, now: datetime) -> None:
+def _smoke_matches(settings: Settings, subject: str, email: str) -> bool:
+    return bool(
+        settings.release_smoke_audience
+        and settings.release_smoke_subject
+        and settings.release_smoke_email
+        and subject == f"service-account:{settings.release_smoke_subject}"
+        and email == settings.release_smoke_email
+    )
+
+
+def _check_principal(
+    request: Request,
+    session: Session,
+    row,
+    now: datetime,
+    *,
+    invalid_code: str = "invalid_authentication",
+) -> None:
+    if row.principal_kind == "smoke":
+        if not _smoke_matches(
+            request.app.state.settings, row.google_subject, row.normalized_email
+        ):
+            _revoke(session, row.id, "operator", now)
+            session.commit()
+            raise _auth_error(invalid_code)
+        return
     if row.principal_kind != "human":
         raise _invalid_credentials()
     if row.revoked_reason == "allowlist" or not _allowed(request, row.normalized_email):
@@ -272,7 +331,7 @@ def current_user(
     now = auth_clock()
     if row is None or row.revoked_at is not None:
         raise _invalid_credentials()
-    _check_allowlist(request, session, row, now)
+    _check_principal(request, session, row, now)
     if row.idle_expires_at <= now or row.absolute_expires_at <= now:
         raise _invalid_credentials()
     if row.expires_at <= now:
@@ -324,10 +383,29 @@ class SessionTokens(BaseModel):
 def _verified_identity(
     request: Request, payload: SessionCredential
 ) -> VerifiedGoogleIdentity:
-    identity = request.app.state.token_verifier.verify(
-        payload.credential.get_secret_value()
-    )
-    if not _allowed(request, identity.email):
+    token = payload.credential.get_secret_value()
+    try:
+        identity = request.app.state.token_verifier.verify(token)
+    except ApiError as error:
+        # Only invalid human credentials may try the independently verified smoke audience.
+        if (
+            error.status_code != 401
+            or not request.app.state.settings.release_smoke_audience
+        ):
+            raise
+        identity = request.app.state.smoke_token_verifier.verify(token)
+        if identity.principal_kind != "smoke" or not _smoke_matches(
+            request.app.state.settings,
+            identity.subject,
+            identity.email,
+        ):
+            raise _invalid_credentials()
+        return identity
+    if (
+        identity.principal_kind != "human"
+        or identity.email.endswith(".iam.gserviceaccount.com")
+        or not _allowed(request, identity.email)
+    ):
         raise _account_not_allowed()
     return identity
 
@@ -407,12 +485,13 @@ def exchange_session(
             text("""
         INSERT INTO auth_sessions (id, user_id, principal_kind, created_at,
             last_refreshed_at, idle_expires_at, absolute_expires_at)
-        VALUES (:id, :user, 'human', :now, :now, :idle, :absolute)
+        VALUES (:id, :user, :kind, :now, :now, :idle, :absolute)
         RETURNING *
     """),
             {
                 "id": uuid4(),
                 "user": user.id,
+                "kind": identity.principal_kind,
                 "now": now,
                 "idle": idle,
                 "absolute": absolute,
@@ -472,7 +551,7 @@ def refresh_session(
     now = auth_clock()
     if row is None:
         raise _auth_error("refresh_invalid")
-    _check_allowlist(request, session, row, now)
+    _check_principal(request, session, row, now, invalid_code="refresh_invalid")
     if row.revoked_at is not None:
         raise _auth_error("refresh_invalid")
     if row.idle_expires_at <= now or row.absolute_expires_at <= now:

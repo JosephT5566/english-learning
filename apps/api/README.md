@@ -48,22 +48,41 @@ before new application instances receive traffic.
 Local development works with safe disposable defaults. To override them, create an optional `.env`
 file beside `pyproject.toml`; use `.env.example` as the field reference.
 
-| Variable                           | Default                         | Constraint                                                                                                      |
-| ---------------------------------- | ------------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| `APP_ENV`                          | `local`                         | `local`, `test`, or `production`                                                                                |
-| `LOG_LEVEL`                        | `INFO`                          | `DEBUG`, `INFO`, `WARNING`, `ERROR`, or `CRITICAL`                                                              |
-| `DATABASE_URL`                     | Local disposable PostgreSQL URL | Must use the `postgresql+psycopg` driver; production also requires verified TLS or required TLS channel binding |
-| `DATABASE_CONNECT_TIMEOUT_SECONDS` | `2`                             | Integer from 1 through 10                                                                                       |
-| `GOOGLE_OAUTH_CLIENT_ID`           | Local placeholder               | Google web OAuth client ID used as the accepted token audience                                                  |
-| `GOOGLE_ALLOWED_EMAILS`            | Empty locally                   | Comma-separated verified Google email allowlist; required in production                                         |
-| `VERTEX_PROJECT_ID`                | Unset                           | Google Cloud project that enables provider-backed embeddings and semantic search when configured                |
-| `VERTEX_LOCATION`                  | `us-central1`                   | Vertex AI region used for embedding requests                                                                    |
-| `CORS_ALLOWED_ORIGINS`             | Local Vite origins              | JSON array of exact browser origins allowed to call the API                                                     |
+| Variable                           | Default                         | Constraint                                                                                                                     |
+| ---------------------------------- | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `APP_ENV`                          | `local`                         | `local`, `test`, or `production`                                                                                               |
+| `LOG_LEVEL`                        | `INFO`                          | `DEBUG`, `INFO`, `WARNING`, `ERROR`, or `CRITICAL`                                                                             |
+| `DATABASE_URL`                     | Local disposable PostgreSQL URL | Must use the `postgresql+psycopg` driver; production also requires verified TLS or required TLS channel binding                |
+| `DATABASE_CONNECT_TIMEOUT_SECONDS` | `2`                             | Integer from 1 through 10                                                                                                      |
+| `GOOGLE_OAUTH_CLIENT_ID`           | Local placeholder               | Google web OAuth client ID used as the accepted token audience                                                                 |
+| `GOOGLE_ALLOWED_EMAILS`            | Empty locally                   | Comma-separated verified Google email allowlist; required in production                                                        |
+| `RELEASE_SMOKE_AUDIENCE`           | Unset                           | HTTPS audience distinct from `GOOGLE_OAUTH_CLIENT_ID` and `GUEST_EXPORT_AUDIENCE`; configure all three smoke settings together |
+| `RELEASE_SMOKE_SUBJECT`            | Unset                           | Exact numeric Google service-account subject; 1-255 digits                                                                     |
+| `RELEASE_SMOKE_EMAIL`              | Unset                           | Exact `.iam.gserviceaccount.com` email of the dedicated smoke account                                                          |
+| `VERTEX_PROJECT_ID`                | Unset                           | Google Cloud project that enables provider-backed embeddings and semantic search when configured                               |
+| `VERTEX_LOCATION`                  | `us-central1`                   | Vertex AI region used for embedding requests                                                                                   |
+| `CORS_ALLOWED_ORIGINS`             | Local Vite origins              | JSON array of exact browser origins allowed to call the API                                                                    |
 
 Production must explicitly override `DATABASE_URL`, `GOOGLE_OAUTH_CLIENT_ID`, and
 `GOOGLE_ALLOWED_EMAILS`; their local defaults
 are rejected.
 Database URLs are treated as secrets and must not be printed or logged.
+
+Release smoke uses `POST /v1/auth/session` and the same app access/rotating refresh tokens
+as humans. Exchange tries the human audience first; only invalid human credentials try
+the separate `app.state.smoke_token_verifier`. Verified service-account emails are rejected
+on the human path even if allowlisted. Smoke requires the exact signed issuer, dedicated
+audience, subject, email and verified-email claim. It never uses the human allowlist or
+accepts a Google ID token directly as a product bearer. The synthetic user is named
+`service-account:<numeric sub>` and starts without GenAI consent.
+
+Every smoke access request and refresh re-checks that all three settings remain present
+and the stored synthetic subject/email still match. Removal or identity changes revoke
+the session with reason `operator` and delete its access tokens. Audience validation
+applies at exchange; active sessions retain their stored subject/email identity. All
+three settings unset disables new smoke exchanges. Full release setup is deferred to
+the Issue #45 runbook phase.
+
 `VERTEX_PROJECT_ID` is intentionally optional: when it is absent, semantic search returns the safe
 `semantic_search_not_configured` response and card writes skip provider-backed embedding work.
 Local provider calls use Application Default Credentials; the effective identity must be allowed to
