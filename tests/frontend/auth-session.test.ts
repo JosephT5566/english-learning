@@ -2,10 +2,11 @@ import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 import { get } from "svelte/store";
 
 vi.mock("$app/environment", () => ({ browser: true }));
-vi.mock("$env/static/public", () => ({
+const publicConfig = vi.hoisted(() => ({
   PUBLIC_GOOGLE_AUTH_CLIENT_ID: "test-client",
   PUBLIC_EMAIL_WHITE_LIST: "learner@example.test",
 }));
+vi.mock("$env/static/public", () => publicConfig);
 vi.mock("$env/dynamic/public", () => ({
   env: { PUBLIC_API_BASE_URL: "https://api.example.test" },
 }));
@@ -28,6 +29,28 @@ function seed() {
   localStorage.setItem("el_auth_refresh_v1", "elr_seed");
   localStorage.setItem("el_auth_profile_v1", JSON.stringify(profile));
 }
+function googleSignIn() {
+  let callback: (value: {
+    credential: string;
+  }) => Promise<void> = async () => {};
+  Object.defineProperty(window, "google", {
+    configurable: true,
+    value: {
+      accounts: {
+        id: {
+          initialize: vi.fn((options) => {
+            callback = options.callback;
+          }),
+        },
+      },
+    },
+  });
+  auth.initGsiOnce();
+  return (email: string) =>
+    callback({
+      credential: `e30.${btoa(JSON.stringify({ email }))}.synthetic`,
+    });
+}
 const payload = {
   items: [
     {
@@ -40,6 +63,7 @@ const payload = {
 
 beforeEach(async () => {
   vi.resetModules();
+  publicConfig.PUBLIC_EMAIL_WHITE_LIST = profile.email;
   localStorage.clear();
   sessionStorage.clear();
   stores = await import("$lib/stores/auth");
@@ -54,6 +78,86 @@ afterEach(() => {
 });
 
 describe("app-issued browser session", () => {
+  it("browser allowlist rejection shows the email without exchange or changing an existing app session", async () => {
+    seed();
+    await auth.initializeSession();
+    const command = pending.createPendingSubmission(7, payload);
+    pending.savePendingSubmission(command);
+    const raw = localStorage.getItem(pending.PENDING_REVIEW_STORAGE_KEY);
+    vi.mocked(fetch).mockClear();
+    const error = vi.fn();
+    const stop = auth.onSignInError(error);
+    await googleSignIn()("rejected@example.test");
+    expect(fetch).not.toHaveBeenCalled();
+    expect(get(stores.authNotice)).toEqual({
+      kind: "error",
+      email: "rejected@example.test",
+    });
+    expect(error).toHaveBeenCalledOnce();
+    expect(auth.getTokenIfValid()).toBe("ela_one");
+    expect(localStorage.getItem("el_auth_refresh_v1")).toBe("elr_one");
+    expect(localStorage.getItem(pending.PENDING_REVIEW_STORAGE_KEY)).toBe(raw);
+    expect(auth.enterGuestSession()).toEqual({ ok: true });
+    expect(get(stores.authSession).kind).toBe("guest");
+    expect(auth.getTokenIfValid()).toBeNull();
+    expect(localStorage.getItem(pending.PENDING_REVIEW_STORAGE_KEY)).toBe(raw);
+    expect(fetch).not.toHaveBeenCalled();
+    stop();
+  });
+  it.each([
+    ["learner@example.test", "learner@example.test"],
+    ["learner@example.test", "LEARNER@EXAMPLE.TEST"],
+    ["other@example.test,learner@example.test", "learner@example.test"],
+  ])(
+    "browser allowlist %j permits %j before authoritative exchange",
+    async (allowlist, email) => {
+      publicConfig.PUBLIC_EMAIL_WHITE_LIST = allowlist;
+      await googleSignIn()(email);
+      expect(fetch).toHaveBeenCalledOnce();
+      expect(fetch).toHaveBeenCalledWith(
+        "https://api.example.test/v1/auth/session",
+        expect.anything(),
+      );
+      expect(auth.getTokenIfValid()).toBe("ela_one");
+      expect(get(stores.authSession)).toEqual({
+        kind: "authenticated",
+        profile,
+      });
+    },
+  );
+  it.each([
+    ["", "learner@example.test"],
+    [",", "learner@example.test"],
+    ["LEARNER@EXAMPLE.TEST", "learner@example.test"],
+    [" learner@example.test ", "learner@example.test"],
+    ["learner@example.test", " learner@example.test "],
+  ])(
+    "browser allowlist %j rejects %j without normalizing configuration or trimming emails",
+    async (allowlist, email) => {
+      publicConfig.PUBLIC_EMAIL_WHITE_LIST = allowlist;
+      await auth.initializeSession();
+      await googleSignIn()(email);
+      expect(fetch).not.toHaveBeenCalled();
+      expect(get(stores.authSession).kind).toBe("signed-out");
+      expect(get(stores.authNotice)).toEqual({ kind: "error", email });
+      expect(auth.getTokenIfValid()).toBeNull();
+    },
+  );
+  it("server rejection remains authoritative after the browser allowlist permits sign-in", async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      response({ error: { code: "account_not_allowed" } }, 403),
+    );
+    await googleSignIn()(profile.email);
+    expect(fetch).toHaveBeenCalledOnce();
+    expect(get(stores.authNotice)).toEqual({
+      kind: "error",
+      email: profile.email,
+    });
+    expect(auth.getTokenIfValid()).toBeNull();
+    expect(localStorage.getItem("el_auth_refresh_v1")).toBeNull();
+    expect(auth.enterGuestSession()).toEqual({ ok: true });
+    expect(get(stores.authSession).kind).toBe("guest");
+  });
   it("exchanges GIS credentials once and stores only refresh and display profile", async () => {
     let callback: (value: {
       credential: string;
@@ -253,7 +357,11 @@ describe("app-issued browser session", () => {
   it("other-tab sign-out preserves the page identity and pending work", async () => {
     seed();
     await auth.initializeSession();
+    const command = pending.createPendingSubmission(7, payload);
+    pending.savePendingSubmission(command);
+    const raw = localStorage.getItem(pending.PENDING_REVIEW_STORAGE_KEY);
     const stop = auth.watchSession();
+    vi.mocked(fetch).mockClear();
     localStorage.removeItem("el_auth_refresh_v1");
     window.dispatchEvent(
       new StorageEvent("storage", {
@@ -263,6 +371,10 @@ describe("app-issued browser session", () => {
     );
     expect(get(stores.authSession).kind).toBe("expired");
     expect(get(stores.authNotice)).toEqual({ kind: "other-tab" });
+    expect(auth.getProfile()).toEqual(profile);
+    expect(localStorage.getItem(pending.PENDING_REVIEW_STORAGE_KEY)).toBe(raw);
+    expect(fetch).not.toHaveBeenCalled();
+    expect(get(pending.pendingReviewReplay)).toBeNull();
     stop();
   });
   it("same-user sign-in sends the saved exact command and publishes its validated result", async () => {

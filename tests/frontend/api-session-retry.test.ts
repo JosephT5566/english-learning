@@ -1,6 +1,11 @@
 import { authSession } from "$lib/stores/auth";
 import { beforeEach, afterEach, expect, it, vi } from "vitest";
-import { createDeck, getDecks, streamAssistantReply } from "$lib/api/client";
+import {
+  createDeck,
+  getDecks,
+  submitReviews,
+  streamAssistantReply,
+} from "$lib/api/client";
 
 const auth = vi.hoisted(() => ({
   getTokenIfValid: vi.fn(),
@@ -9,6 +14,7 @@ const auth = vi.hoisted(() => ({
   expireSession: vi.fn(),
   isCurrentToken: vi.fn(),
   getProfile: vi.fn(),
+  getSessionGeneration: vi.fn(() => 0),
 }));
 vi.mock("$lib/auth", () => auth);
 vi.mock("$env/dynamic/public", () => ({
@@ -38,7 +44,10 @@ const deck = {
 };
 beforeEach(() => {
   vi.resetAllMocks();
-  authSession.set({ kind: "initializing" });
+  authSession.set({
+    kind: "authenticated",
+    profile: { id: 7, email: "learner@example.test" },
+  });
   auth.getTokenIfValid.mockReturnValue("ela_old");
   auth.ensureAccessToken.mockResolvedValue("ela_old");
   auth.refreshSession.mockResolvedValue("ela_new");
@@ -131,3 +140,94 @@ it("preserves the session and exact write when another-tab refresh remains super
   expect(fetch).toHaveBeenCalledTimes(1);
   expect(auth.expireSession).not.toHaveBeenCalled();
 });
+
+it.each(["read", "review", "stream"])(
+  "a late same-owner expired 401 retries the %s with newer access and no second refresh",
+  async (operation) => {
+    let current = "ela_old";
+    auth.getProfile.mockReturnValue({ id: 7, email: "learner@example.test" });
+    auth.getTokenIfValid.mockImplementation(() => current);
+    auth.isCurrentToken.mockImplementation((token) => token === current);
+    auth.refreshSession.mockImplementation(async () => (current = "ela_new"));
+    const replies: Array<(value: Response) => void> = [];
+    const page = { items: [], next_cursor: null };
+    const review = {
+      batch_id: "batch",
+      reviewed_at: "2026-11-17T00:00:00Z",
+      algorithm_version: "srs-v1",
+      items: [],
+    };
+    const fetch = vi.fn((url: string, init: RequestInit) => {
+      if (new Headers(init.headers).get("Authorization") === "Bearer ela_new") {
+        if (url.endsWith("/stream"))
+          return Promise.resolve(
+            new Response(
+              'event: done\ndata: {"tool_calls":[],"stop_reason":"completed","usage":null}\n\n',
+              { headers: { "Content-Type": "text/event-stream" } },
+            ),
+          );
+        return Promise.resolve(
+          new Response(
+            JSON.stringify(url.endsWith("/reviews") ? review : page),
+          ),
+        );
+      }
+      return new Promise<Response>((resolve) => replies.push(resolve));
+    });
+    vi.stubGlobal("fetch", fetch);
+    const first = getDecks("en");
+    const signal = new AbortController().signal;
+    const payload = {
+      items: [{ card_id: deck.id, decision: "yes", expected_version: 1 }],
+    } as const;
+    const second =
+      operation === "read"
+        ? getDecks("en")
+        : operation === "review"
+          ? submitReviews(
+              { ...payload, items: [...payload.items] },
+              "review-retry-key",
+            )
+          : streamAssistantReply(
+              [{ role: "user", content: "Hello" }],
+              () => {},
+              signal,
+              { capabilities: ["parts.v1"] },
+            );
+    // Attach rejection before releasing either response to avoid unhandled failures.
+    const result = second.then(
+      (value) => ({ value }),
+      (error) => ({ error }),
+    );
+    await vi.waitFor(() => expect(replies).toHaveLength(2));
+    replies[0](expired());
+    await expect(first).resolves.toEqual(page);
+    replies[1](expired());
+    expect(await result).toEqual({
+      value:
+        operation === "read"
+          ? page
+          : operation === "review"
+            ? review
+            : { stop: "completed", tools: [] },
+    });
+    expect(auth.refreshSession).toHaveBeenCalledTimes(1);
+    expect(auth.expireSession).not.toHaveBeenCalled();
+    expect(fetch).toHaveBeenCalledTimes(4);
+    const initial = fetch.mock.calls[1][1];
+    const retry = fetch.mock.calls[3][1];
+    expect(retry.body).toBe(initial.body);
+    expect(retry.signal).toBe(initial.signal);
+    expect(new Headers(retry.headers).get("Idempotency-Key")).toBe(
+      new Headers(initial.headers).get("Idempotency-Key"),
+    );
+    if (operation === "review")
+      expect(new Headers(retry.headers).get("Idempotency-Key")).toBe(
+        "review-retry-key",
+      );
+    if (operation === "stream") expect(retry.signal).toBe(signal);
+    expect(new Headers(retry.headers).get("Authorization")).toBe(
+      "Bearer ela_new",
+    );
+  },
+);

@@ -33,7 +33,11 @@ function issueTokens(session) {
     Date.now() + 604_800_000,
   );
   accessTokens.set(access_token, { session, expiresAt });
-  refreshTokens.set(refresh_token, { session, rotatedAt: null });
+  refreshTokens.set(refresh_token, {
+    session,
+    rotatedAt: null,
+    generation: session.refreshRotations,
+  });
   session.currentRefresh = refresh_token;
   return {
     access_token,
@@ -116,6 +120,11 @@ function handleAuth(request, response) {
         picture: claims.picture ?? null,
         mode: requestMode,
         revoked: false,
+        refreshRotations: 0,
+        refreshRequests: [],
+        refreshBarrier: null,
+        accessExpired: 0,
+        accountDenied: 0,
         absoluteExpiresAt: Date.now() + 2_592_000_000,
       };
       sessions.set(randomUUID(), session);
@@ -153,7 +162,14 @@ function handleAuth(request, response) {
         else blockedEmails.add(session.email);
       } else if (pathname.endsWith("reuse-outside-grace"))
         record.rotatedAt = Date.now() - reuseGraceMs - 1;
-      else if (!pathname.endsWith("session")) {
+      else if (pathname.endsWith("refresh-barrier"))
+        session.refreshBarrier = [];
+      else if (pathname.endsWith("release-refresh")) {
+        const waiting =
+          session.refreshBarrier?.splice(0, body.count ?? 1) ?? [];
+        for (const release of waiting) release();
+        if (body.finish) session.refreshBarrier = null;
+      } else if (!pathname.endsWith("session")) {
         error(response, 404, "endpoint_not_found", "Unknown test hook.");
         return;
       }
@@ -161,6 +177,11 @@ function handleAuth(request, response) {
         id: session.id,
         revoked: session.revoked,
         allowed: session.allowed !== false,
+        refresh_rotations: session.refreshRotations,
+        refresh_requests: session.refreshRequests,
+        waiting_refreshes: session.refreshBarrier?.length ?? 0,
+        access_expired: session.accessExpired,
+        account_denied: session.accountDenied,
       });
       return;
     }
@@ -168,36 +189,51 @@ function handleAuth(request, response) {
       error(response, 404, "endpoint_not_found", "Unknown auth endpoint.");
       return;
     }
-    if (
-      !record ||
-      record.session.revoked ||
-      record.session.idleExpiresAt <= Date.now() ||
-      record.session.absoluteExpiresAt <= Date.now()
-    ) {
-      invalidAuth(response, "refresh_invalid");
-      return;
-    }
-    if (
-      record.session.allowed === false ||
-      blockedEmails.has(record.session.email)
-    ) {
-      revokeSession(record.session);
-      invalidAuth(response, "account_not_allowed", 403);
-      return;
-    }
-    if (record.rotatedAt !== null) {
-      if (Date.now() - record.rotatedAt <= reuseGraceMs)
-        invalidAuth(response, "refresh_superseded", 409);
-      else {
-        revokeSession(record.session);
-        invalidAuth(response, "refresh_reused");
+    const attempt = record
+      ? { generation: record.generation, status: null }
+      : null;
+    if (attempt) record.session.refreshRequests.push(attempt);
+    const respond = () => {
+      if (
+        !record ||
+        record.session.revoked ||
+        record.session.idleExpiresAt <= Date.now() ||
+        record.session.absoluteExpiresAt <= Date.now()
+      ) {
+        if (attempt) attempt.status = 401;
+        invalidAuth(response, "refresh_invalid");
+        return;
       }
-      return;
-    }
-    record.rotatedAt = Date.now();
-    const tokens = issueTokens(record.session);
-    tokens.profile = { name: null, picture: null };
-    json(response, 200, tokens);
+      if (
+        record.session.allowed === false ||
+        blockedEmails.has(record.session.email)
+      ) {
+        attempt.status = 403;
+        revokeSession(record.session);
+        invalidAuth(response, "account_not_allowed", 403);
+        return;
+      }
+      if (record.rotatedAt !== null) {
+        if (Date.now() - record.rotatedAt <= reuseGraceMs) {
+          attempt.status = 409;
+          invalidAuth(response, "refresh_superseded", 409);
+        } else {
+          attempt.status = 401;
+          revokeSession(record.session);
+          invalidAuth(response, "refresh_reused");
+        }
+        return;
+      }
+      record.rotatedAt = Date.now();
+      record.session.refreshRotations++;
+      attempt.status = 200;
+      const tokens = issueTokens(record.session);
+      tokens.profile = { name: null, picture: null };
+      json(response, 200, tokens);
+    };
+    if (record?.session.refreshBarrier)
+      record.session.refreshBarrier.push(respond);
+    else respond();
   });
   return true;
 }
@@ -350,11 +386,13 @@ const server = http.createServer((request, response) => {
     access.session.allowed === false ||
     blockedEmails.has(access.session.email)
   ) {
+    access.session.accountDenied++;
     revokeSession(access.session);
     invalidAuth(response, "account_not_allowed", 403);
     return;
   }
   if (access.expiresAt <= Date.now()) {
+    access.session.accessExpired++;
     invalidAuth(response, "access_token_expired");
     return;
   }
@@ -397,6 +435,26 @@ const server = http.createServer((request, response) => {
   }
 
   const parsedUrl = new URL(request.url ?? "/", `http://127.0.0.1:${port}`);
+  if (
+    request.method === "GET" &&
+    parsedUrl.pathname === "/v1/me/genai-consent"
+  ) {
+    json(response, 200, { genai_consent_at: "2026-11-08T00:00:00Z" });
+    return;
+  }
+  if (
+    request.method === "POST" &&
+    parsedUrl.pathname === "/v1/assistant/messages/stream"
+  ) {
+    readJson(request, () => {
+      response.writeHead(200, headers({ "Content-Type": "text/event-stream" }));
+      response.end(
+        `event: delta\ndata: ${JSON.stringify({ text: "Recovered assistant reply." })}\n\n` +
+          `event: done\ndata: ${JSON.stringify({ tool_calls: [], stop_reason: "completed", usage: null })}\n\n`,
+      );
+    });
+    return;
+  }
   if (
     requestMode === "management-write-forbidden" &&
     ["POST", "PATCH", "DELETE"].includes(request.method ?? "")

@@ -1,4 +1,7 @@
-import { PUBLIC_GOOGLE_AUTH_CLIENT_ID } from "$env/static/public";
+import {
+  PUBLIC_GOOGLE_AUTH_CLIENT_ID,
+  PUBLIC_EMAIL_WHITE_LIST,
+} from "$env/static/public";
 import { env } from "$env/dynamic/public";
 import { browser } from "$app/environment";
 import { get } from "svelte/store";
@@ -108,6 +111,9 @@ export function getTokenIfValid(): string | null {
 }
 export function isCurrentToken(token: string): boolean {
   return accessToken === token;
+}
+export function getSessionGeneration(): number {
+  return generation;
 }
 function dropAccess() {
   accessToken = null;
@@ -481,12 +487,22 @@ export function initGsiOnce() {
   if (!browser || gsiInitialized) return;
   const gis = window.google?.accounts?.id;
   if (!gis) throw new Error("Google Identity Services 未載入");
+  const emailWhiteList = PUBLIC_EMAIL_WHITE_LIST.split(",");
   gis.initialize({
     client_id: PUBLIC_GOOGLE_AUTH_CLIENT_ID,
     cancel_on_tap_outside: false,
     use_fedcm_for_prompt: true,
     callback: async (res: { credential?: string }) => {
-      await exchangeCredential(res?.credential ?? "");
+      const credential = res?.credential ?? "";
+      const email = credentialEmail(credential);
+      // UX precheck only; the exchange verifies identity and server authorization.
+      if (!email || !emailWhiteList.includes(email.toLowerCase())) {
+        authNotice.set({ kind: "error", ...(email ? { email } : {}) });
+        const error = new Error("Google login failed: Email not in whitelist");
+        for (const listener of signInErrorListeners) listener(error);
+        return;
+      }
+      await exchangeCredential(credential);
     },
   });
   gsiInitialized = true;

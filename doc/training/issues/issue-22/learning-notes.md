@@ -1,5 +1,9 @@
 # Issue #22 學習筆記：唯讀 CSV 匯入驗證
 
+> 2026-11-17 retirement warning (#45): The Google ID-token bearer and clipboard/shell
+> walkthrough below is historical and must not be followed against the current API. Use the
+> [current app-session contract](../../../../apps/api/README.md#application-sessions) instead.
+
 ## 1. Ticket 目標
 
 這個 ticket 為 legacy Google Sheet CSV 到共用多語系 PostgreSQL model 的一次性遷移，建立安全的驗證邊界。
@@ -284,19 +288,78 @@ uv run uvicorn app.main:create_app --factory
 
 啟動 local API。`--factory` 告訴 Uvicorn 呼叫 `create_app()`，而不是把它當成已經建立完成的 application object。
 
-### Authentication update (issue #45, 2026-11-17)
+### 取得 Google ID token
 
-The earlier clipboard/hidden-prompt Google-token instructions are retired. Google ID tokens are
-not stored in the browser and are rejected as direct product bearers. Do not extract, paste or
-export one to follow this historical import exercise.
+先透過 frontend 登入，再於 browser developer console 執行：
 
-Use the product's GIS sign-in and deck-management UI. Its credential is exchanged once at
-`POST /v1/auth/session`; `/v1/me` uses the in-memory app access token and returns the internal
-numeric owner. Create the target English deck through that authenticated UI. `OWNER_ID` is a
-server/database identity and `DECK_UUID` must belong to it; neither is an authorization shortcut.
-See the [current API session contract](../../../../apps/api/README.md#application-sessions).
-Legacy CSV maintenance tools remain separate from normal product navigation; use their current
-RLS/maintenance prerequisites rather than the removed human-token shell examples.
+```javascript
+copy(localStorage.getItem("gid_id_token"));
+```
+
+這會複製目前 frontend 的 ID token，但不把 token 顯示出來。
+
+在 macOS 上，可將 clipboard 內容存入暫時的 shell variable：
+
+```bash
+GOOGLE_ID_TOKEN="$(pbpaste)"
+```
+
+在不顯示 token 的情況下檢查格式：
+
+```bash
+printf 'Token length: %d characters\n' "${#GOOGLE_ID_TOKEN}"
+[[ "$GOOGLE_ID_TOKEN" == eyJ*.*.* ]] && echo "JWT format detected"
+```
+
+下面的 command 也能在不顯示輸入內容的情況下讀取 token，但它會等待使用者貼上資料並按下 Enter：
+
+```bash
+read -s "GOOGLE_ID_TOKEN?Paste Google ID token: "
+echo
+```
+
+不要在空白 shell prompt 直接貼上 token，否則 zsh 會嘗試把它當成 command 執行。
+
+### 取得真正的 owner
+
+```bash
+curl -s http://127.0.0.1:8000/v1/me \
+  -H "Authorization: Bearer $GOOGLE_ID_TOKEN" |
+  jq
+```
+
+`curl` 會發出 HTTP request。Authorization header 會提供 ID token。`/v1/me` 驗證 token、建立或重用 internal user，然後回傳 database `OWNER_ID`。
+
+`OWNER_ID` 只在特定 database 裡有效。它不是 Google subject、email、OAuth client ID 或 ID token。
+
+### 建立 target deck
+
+```bash
+curl -s -X POST http://127.0.0.1:8000/v1/decks \
+  -H "Authorization: Bearer $GOOGLE_ID_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "title": "English",
+    "target_language": "en",
+    "explanation_language": "zh-TW"
+  }' |
+  tee /tmp/english-deck.json |
+  jq
+```
+
+- `-X POST`：選擇 HTTP method；
+- `-H`：加入 HTTP header；
+- `-d`：傳送 JSON request body；
+- `tee`：保存 response，同時繼續傳給下一個 command；
+- `jq`：格式化及查詢 JSON。
+
+取得自動產生的 deck UUID：
+
+```bash
+jq -r '.id' /tmp/english-deck.json
+```
+
+`DECK_UUID` 用來識別 destination deck，而且必須屬於指定 owner。
 
 ### 執行 dry run
 
@@ -367,11 +430,14 @@ uv lock --check
 - `ruff format --check`：只驗證 formatting，不修改檔案；
 - `uv lock --check`：驗證 dependency declarations 與 lockfile 是否一致。
 
-### Credential handling
+### 清除敏感的 shell state
 
-No token should be collected for this guide. The old clipboard and shell-variable workflow is
-retired; keep private CSV/database material outside the repository and use authorized maintenance
-roles for the historical import steps.
+```bash
+unset GOOGLE_ID_TOKEN
+pbcopy </dev/null
+```
+
+`unset` 會移除暫時的 shell variable；`pbcopy </dev/null` 會清空 macOS clipboard。
 
 ## 9. 我們學到什麼
 

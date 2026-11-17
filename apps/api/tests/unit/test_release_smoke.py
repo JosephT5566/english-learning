@@ -2,8 +2,10 @@
 
 import json
 import os
+import re
 import subprocess
 import sys
+import textwrap
 from pathlib import Path
 
 import pytest
@@ -171,7 +173,7 @@ def test_machine_smoke_failure_is_content_safe_and_cleans_up(tmp_path, options):
         assert state["archived"]
 
 
-def test_smoke_workflow_uses_machine_identity_and_optional_ttls():
+def test_smoke_workflow_uses_machine_identity_and_optional_ttls(tmp_path):
     workflow = (ROOT / ".github/workflows/smoke-api-candidate.yml").read_text()
     assert "google_id_token" not in workflow
     assert workflow.count("uses: google-github-actions/auth@v3") == 2
@@ -191,11 +193,77 @@ def test_smoke_workflow_uses_machine_identity_and_optional_ttls():
         "::add-mask::",
     ):
         assert field in workflow
-    deploy = (ROOT / ".github/workflows/deploy-api-candidate.yml").read_text()
-    for name in (
-        "AUTH_ACCESS_TTL_SECONDS",
-        "AUTH_REFRESH_IDLE_TTL_SECONDS",
-        "AUTH_REFRESH_ABSOLUTE_TTL_SECONDS",
-        "AUTH_REFRESH_REUSE_GRACE_SECONDS",
-    ):
-        assert f"if [[ -n '${{{{ vars.{name} }}}}' ]]" in deploy
+
+    environment = candidate_environment(tmp_path, {})
+    for name in SMOKE_SETTINGS + TTL_SETTINGS:
+        assert f"|{name}=" not in environment
+    for name in TTL_SETTINGS:
+        environment = candidate_environment(tmp_path, {name: "123"})
+        assert f"|{name}=123" in environment
+        for other in set(TTL_SETTINGS) - {name}:
+            assert f"|{other}=" not in environment
+    environment = candidate_environment(tmp_path, {SMOKE_SETTINGS[0]: "synthetic"})
+    assert "|RELEASE_SMOKE_AUDIENCE=synthetic" in environment
+    assert "|RELEASE_SMOKE_SUBJECT=|RELEASE_SMOKE_EMAIL=" in environment
+
+
+SMOKE_SETTINGS = (
+    "RELEASE_SMOKE_AUDIENCE",
+    "RELEASE_SMOKE_SUBJECT",
+    "RELEASE_SMOKE_EMAIL",
+)
+TTL_SETTINGS = (
+    "AUTH_ACCESS_TTL_SECONDS",
+    "AUTH_REFRESH_IDLE_TTL_SECONDS",
+    "AUTH_REFRESH_ABSOLUTE_TTL_SECONDS",
+    "AUTH_REFRESH_REUSE_GRACE_SECONDS",
+)
+
+
+def candidate_environment(tmp_path: Path, values: dict[str, str]) -> str:
+    workflow = (ROOT / ".github/workflows/deploy-api-candidate.yml").read_text()
+    step = workflow.split("- name: Deploy zero-traffic candidate\n", 1)[1]
+    step = step.split("\n      - name:", 1)[0]
+    program = textwrap.dedent(step.split("run: |\n", 1)[1])
+    fragment, separator, _ = program.partition("\ngcloud run deploy ")
+    assert separator
+    # Model Actions substitution, then execute only environment assembly, never gcloud.
+    fragment = re.sub(
+        r"\$\{\{ vars\.(\w+) \}\}",
+        lambda match: values.get(match[1], ""),
+        fragment,
+    )
+    bindings = re.findall(
+        r"^      (\w+): \$\{\{ vars\.(\w+) \}\}$", workflow, re.MULTILINE
+    )
+    marker = tmp_path / "command-executed"
+    result = subprocess.run(
+        ["bash", "-c", fragment + '\nprintf "%s" "${environment_variables}"'],
+        env={
+            **{name: values.get(source, "") for name, source in bindings},
+            "PATH": os.defpath,
+            "PROBE": str(marker),
+        },
+        capture_output=True,
+        text=True,
+        timeout=5,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    assert not marker.exists(), "Configuration executed a shell command"
+    return result.stdout
+
+
+@pytest.mark.parametrize("name", SMOKE_SETTINGS + TTL_SETTINGS)
+@pytest.mark.parametrize(
+    "payload",
+    [
+        '$(printf executed > "${PROBE}")',
+        'synthetic \' " ; & * ? `printf executed > "${PROBE}"` \\\nline',
+    ],
+)
+def test_candidate_configuration_is_literal(tmp_path, name, payload):
+    values = {setting: "synthetic" for setting in SMOKE_SETTINGS}
+    values[name] = payload
+    environment = candidate_environment(tmp_path, values)
+    assert f"|{name}={payload}" in environment

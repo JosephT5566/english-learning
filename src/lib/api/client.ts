@@ -7,6 +7,7 @@ import {
   refreshSession,
   expireSession,
   getProfile,
+  getSessionGeneration,
 } from "$lib/auth";
 import { get } from "svelte/store";
 import { authNotice, authSession } from "$lib/stores/auth";
@@ -91,6 +92,10 @@ async function authenticatedResponse(
   init: RequestInit = {},
 ): Promise<Response> {
   const ownerId = getProfile()?.id;
+  const sessionGeneration = getSessionGeneration();
+  const sameSession = () =>
+    getSessionGeneration() === sessionGeneration &&
+    getProfile()?.id === ownerId;
   const previousToken = getTokenIfValid();
   const token = await ensureAccessToken(path.endsWith("/stream") ? 30 : 0);
   if (!token && get(authSession).kind === "authenticated") {
@@ -102,7 +107,7 @@ async function authenticatedResponse(
       "refresh_superseded",
     );
   }
-  if (!token || (ownerId !== undefined && getProfile()?.id !== ownerId)) {
+  if (!token || !sameSession()) {
     throw new ApiClientError(
       "Please sign in again.",
       "authentication",
@@ -140,17 +145,35 @@ async function authenticatedResponse(
           retryable: response.status >= 500,
           request_id: response.headers.get("X-Request-ID") ?? "",
         };
-    if (response.status === 401 && isCurrentToken(accessToken)) {
+    if (response.status === 401 && sameSession()) {
+      // A concurrent request may already have rotated access for this session.
+      // Reuse it once; never rotate again or cross a sign-out/account transition.
+      const newer = getTokenIfValid();
+      if (
+        !refreshed &&
+        (error.code === "access_token_expired" || path.endsWith("/stream")) &&
+        !init.signal?.aborted &&
+        get(authSession).kind === "authenticated" &&
+        newer &&
+        newer !== accessToken
+      )
+        return send(newer, true);
+      if (!isCurrentToken(accessToken))
+        throw new ApiClientError(
+          error.message,
+          "authentication",
+          false,
+          response.status,
+          error.code,
+          error.request_id,
+          error.details,
+        );
       if (
         !refreshed &&
         (error.code === "access_token_expired" || path.endsWith("/stream"))
       ) {
         const renewed = await refreshSession();
-        if (
-          renewed &&
-          !init.signal?.aborted &&
-          (ownerId === undefined || getProfile()?.id === ownerId)
-        )
+        if (renewed && !init.signal?.aborted && sameSession())
           return send(renewed, true);
         if (
           !renewed &&
@@ -166,11 +189,12 @@ async function authenticatedResponse(
           );
         }
       }
-      expireSession(accessToken);
+      if (sameSession()) expireSession(accessToken);
     } else if (
       response.status === 403 &&
       error.code === "account_not_allowed" &&
-      isCurrentToken(accessToken)
+      isCurrentToken(accessToken) &&
+      sameSession()
     ) {
       const email = getProfile()?.email;
       expireSession(accessToken);
@@ -178,7 +202,10 @@ async function authenticatedResponse(
     }
     throw new ApiClientError(
       error.message,
-      response.status === 401 ? "authentication" : "api",
+      response.status === 401 ||
+      (response.status === 403 && error.code === "account_not_allowed")
+        ? "authentication"
+        : "api",
       error.retryable || response.status >= 500,
       response.status,
       error.code,

@@ -78,3 +78,54 @@ describe("401 belongs to its requesting app session", () => {
     },
   );
 });
+
+it.each([
+  "new-account",
+  "signed-out",
+  "explicit-guest",
+  "same-owner-new-login",
+])("a delayed expired 401 does not retry across %s", async (transition) => {
+  await login(7);
+  let finish!: (response: Response) => void;
+  const fetch = vi.fn((url) =>
+    String(url).endsWith("/auth/logout")
+      ? Promise.resolve(new Response(null, { status: 204 }))
+      : new Promise<Response>((resolve) => {
+          finish = resolve;
+        }),
+  );
+  vi.stubGlobal("fetch", fetch);
+  const request = client.getDecks("en");
+  const result = request.then(
+    (value) => ({ value }),
+    (error) => ({ error }),
+  );
+  await vi.waitFor(() => expect(finish).toBeTypeOf("function"));
+  if (transition !== "new-account") await auth.signOut();
+  if (transition === "new-account") await login(8);
+  if (transition === "same-owner-new-login") await login(7);
+  if (transition === "explicit-guest") auth.enterGuestSession();
+  const before = get(stores.authSession);
+  const stored = localStorage.getItem("el_auth_refresh_v1");
+  finish(
+    new Response(
+      JSON.stringify({
+        error: {
+          code: "access_token_expired",
+          message: "Expired",
+          retryable: false,
+          request_id: "test",
+        },
+      }),
+      { status: 401 },
+    ),
+  );
+  expect(await result).toMatchObject({
+    error: { status: 401, code: "access_token_expired" },
+  });
+  expect(
+    fetch.mock.calls.filter(([url]) => String(url).includes("/v1/decks")),
+  ).toHaveLength(1);
+  expect(get(stores.authSession)).toEqual(before);
+  expect(localStorage.getItem("el_auth_refresh_v1")).toBe(stored);
+});

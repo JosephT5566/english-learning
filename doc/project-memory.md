@@ -24,7 +24,8 @@ returns a no-change 409, outside-grace reuse revokes the family and deletes acce
 
 Startup refresh restores sign-in. Per-tab single-flight plus Web Locks and storage reread coordinate
 tabs, with a guarded fallback and one 409 retry. API access-expiry retry is bounded and preserves
-body/Idempotency-Key. SSE refreshes before opening; mid-stream expiry does not interrupt it.
+body/Idempotency-Key. A late same-session expired 401 reuses newer valid access once without
+another refresh; logout/account/guest transitions block that retry. SSE refreshes before opening; mid-stream expiry does not interrupt it.
 Stale old-account results cannot overwrite or sign out a new account.
 
 Option C has no healthy/silent-refresh bar. Expiry keeps pages/drafts viewable, disables writes,
@@ -384,8 +385,8 @@ and sanitized snapshot remain as evidence, but the wrapper requires deliberate e
 - API requests use app access from `getTokenIfValid()`/`ensureAccessToken()` in the bearer header;
   refresh/retry is bounded and preserves the exact body and Idempotency-Key.
 - Human production API access requires the verified Google email to be on the backend-configured
-  allowlist at exchange, refresh and every access request. The current browser relies on server
-  rejection; the public list is not a browser precheck or authorization source.
+  allowlist at exchange, refresh and every access request. The existing browser
+  `PUBLIC_EMAIL_WHITE_LIST` UX precheck rejects locally without granting backend access.
 - Browser API access is restricted to exact backend-configured origins; bearer and idempotency
   headers are allowed while credentialed cookies remain disabled.
 - `SwipeCards` emits decisions and observed state versions; review stages, ease, and dates are now

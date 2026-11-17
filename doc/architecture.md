@@ -525,8 +525,9 @@ sequenceDiagram
 ### Identity, persistence and expiry
 
 - Human exchange verifies signature, issuer, browser audience, expiry, nonblank subject/email and
-  `email_verified`, then enforces the server allowlist. The current browser relies on server
-  rejection; it does not authorize or precheck against the public list. Google subject maps to a
+  `email_verified`, then enforces the server allowlist. The browser preserves the
+  `PUBLIC_EMAIL_WHITE_LIST` sign-in UX precheck; it cannot authorize a request. Backend exchange,
+  refresh and access remain authoritative. Google subject maps to a
   stable internal numeric user id; email is mutable data.
 - Exchange tries the human verifier first. Only invalid human credentials may try the separately
   configured smoke verifier. A service-account email cannot pass as a human even if allowlisted.

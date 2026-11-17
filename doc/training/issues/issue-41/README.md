@@ -182,15 +182,25 @@ python3 doc/training/issues/issue-41/run_deployed_evaluation.py \
   --dry-run
 ```
 
-The recorded 30-request latency workload is historical evidence. Its live runner still uses the
-pre-#45 Google-bearer contract and is not compatible with current product authentication. Do not
-supply a human token through environment or prompt, or run live mode against the current API.
-Migrate its auth adapter to app sessions in a separately approved follow-up before any new live
-evaluation. The local dry-run above remains available; it makes no request. Normal release smoke
-uses the [dedicated WIF machine workflow](../issue-26/runbook.md#machine-identity-candidate-verification),
-not this human-token diagnostic. No new live evaluation is authorized by this documentation update.
+> 2026-11-17 retirement warning (#45): The live command and token-supply instructions below
+> are archived evidence, not a current procedure. Live mode is incompatible with app sessions;
+> use only the request-free dry-run until a separately approved auth-adapter update. Current
+> release verification uses the [machine smoke runbook](../issue-26/runbook.md#machine-identity-candidate-verification).
 
-The following report/scoring notes describe the historical runner:
+The 30-request latency workload is already complete. Run each v2 query once for quality and keep the
+content-safe report outside the repository:
+
+```bash
+python3 doc/training/issues/issue-41/run_deployed_evaluation.py \
+  --base-url https://YOUR-STABLE-API-HOST \
+  --repetitions 1 \
+  --report /tmp/issue-41-deployed-v2-report.json
+```
+
+Optionally pass `--deck-id OWNED_DECK_UUID`. Supply `GOOGLE_ID_TOKEN` in the environment or enter
+it at the hidden prompt; there is intentionally no token CLI argument. The runner shows query and
+Top-5 content only in the local terminal for first-run grading, asks for `2` strong, `1` related, or
+`0` irrelevant. It asks for an explicit `yes` before the 10 provider-backed requests.
 
 The JSON report stores only query labels/types, numeric grades, strong-hit/rank judgments, safe
 status/request-ID/coverage fields, latency observations, fixture hash, and aggregate p50/p95 and

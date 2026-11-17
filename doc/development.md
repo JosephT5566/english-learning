@@ -104,10 +104,10 @@ Public SvelteKit/deployment configuration uses these variables:
   independent of the static frontend's `paths.base`; omit the trailing slash (a trailing slash is
   normalized).
 - `PUBLIC_GOOGLE_AUTH_CLIENT_ID`: Google Identity Services OAuth client ID.
-- `PUBLIC_EMAIL_WHITE_LIST`: comma-separated allowlist configuration passed to the production API
-  as `GOOGLE_ALLOWED_EMAILS`. The current browser relies on server rejection rather than a local
-  allowlist precheck. The backend enforces it at human exchange, refresh and every access request;
-  public configuration cannot authorize a caller.
+- `PUBLIC_EMAIL_WHITE_LIST`: comma-separated allowlist used by the existing browser sign-in UX
+  precheck and passed to the production API as `GOOGLE_ALLOWED_EMAILS`. The precheck can reject
+  a sign-in locally; it cannot authorize a caller. The backend independently enforces its allowlist
+  at human exchange, refresh and every access request.
 
 Because these are `PUBLIC_` vars, they are bundled into browser code. Do not store secrets in them.
 Copy `.env.example` to an ignored `.env` for local frontend development and replace its placeholders.

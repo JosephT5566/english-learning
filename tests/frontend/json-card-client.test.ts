@@ -11,6 +11,7 @@ vi.mock("$lib/auth", () => ({
   expireSession: vi.fn(),
   isCurrentToken: () => true,
   getProfile: () => null,
+  getSessionGeneration: () => 0,
 }));
 const fields = { term: "learn", meaning: "study", synonyms: [], antonyms: [] };
 afterEach(() => vi.unstubAllGlobals());

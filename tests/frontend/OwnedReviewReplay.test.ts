@@ -5,6 +5,8 @@ import OwnedReview from "$lib/components/OwnedReview.svelte";
 import { exchangeCredential, expireSession, signOut } from "$lib/auth";
 import { authNotice } from "$lib/stores/auth";
 import {
+  createPendingSubmission,
+  savePendingSubmission,
   PENDING_REVIEW_STORAGE_KEY,
   setPendingGuestMode,
 } from "$lib/review/pending";
@@ -165,3 +167,47 @@ it.each(["success", "ambiguous failure"] as const)(
     expect(writes).toHaveLength(outcome === "success" ? 1 : 2);
   },
 );
+
+it("allowlist removal during submission retains exact pending bytes and disables retry", async () => {
+  const command = createPendingSubmission(1, {
+    items: [
+      {
+        card_id: card.id,
+        decision: "yes",
+        expected_version: card.review_state.version,
+      },
+    ],
+  });
+  savePendingSubmission(command);
+  const raw = localStorage.getItem(PENDING_REVIEW_STORAGE_KEY);
+  render(OwnedReview, { ownerId: 1 });
+  await fireEvent.click(
+    await screen.findByRole("button", { name: "Retry submission" }),
+  );
+  await waitFor(() => expect(writes).toHaveLength(1));
+  finish(
+    new Response(
+      JSON.stringify({
+        error: {
+          code: "account_not_allowed",
+          message: "Account is not allowed.",
+          retryable: false,
+          request_id: "test",
+        },
+      }),
+      { status: 403 },
+    ),
+  );
+  await screen.findByRole("heading", {
+    name: /Review not confirmed|Review unavailable/,
+  });
+  expect(localStorage.getItem(PENDING_REVIEW_STORAGE_KEY)).toBe(raw);
+  expect(get(authNotice)).toEqual({
+    kind: "error",
+    email: "learner@example.test",
+  });
+  expect(
+    await screen.findByRole("button", { name: "Retry submission" }),
+  ).toBeDisabled();
+  expect(writes).toHaveLength(1);
+});

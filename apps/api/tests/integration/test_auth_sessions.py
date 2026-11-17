@@ -261,6 +261,60 @@ def test_logout_is_idempotent_and_invalidates_session(session_client, method):
     assert client.post("/v1/auth/logout").status_code == 204
 
 
+@pytest.mark.parametrize("elapsed", [timedelta(seconds=5), timedelta(seconds=11)])
+@pytest.mark.parametrize("revocation", ["logout", "operator"])
+def test_rotated_refresh_after_revocation_is_invalid_even_inside_grace(
+    session_client, elapsed, revocation
+):
+    client, clock, engine = session_client
+    first = exchange(client)
+    rotated = refresh(client, first["refresh_token"])
+    assert rotated.status_code == 200
+    second = rotated.json()
+    if revocation == "logout":
+        assert (
+            client.post(
+                "/v1/auth/logout", json={"refresh_token": second["refresh_token"]}
+            ).status_code
+            == 204
+        )
+        reason = "logout"
+    else:
+        # Same transaction as the maintainer's revoke-all runbook, scoped to this fixture.
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    "UPDATE auth_sessions SET revoked_at = :now, revoked_reason = 'operator'"
+                ),
+                {"now": clock[0]},
+            )
+            connection.execute(text("DELETE FROM auth_access_tokens"))
+        reason = "operator"
+    before = snapshot(engine)
+    clock[0] += elapsed
+    for tokens in (first, second):
+        denied = refresh(client, tokens["refresh_token"])
+        assert denied.status_code == 401
+        assert denied.json()["error"]["code"] == "refresh_invalid"
+        assert "access_token" not in denied.json()
+        assert "refresh_token" not in denied.json()
+        assert client.get("/v1/me", headers=bearer(tokens)).status_code == 401
+    assert snapshot(engine) == before
+    with engine.connect() as connection:
+        assert (
+            connection.execute(
+                text("SELECT revoked_reason FROM auth_sessions")
+            ).scalar_one()
+            == reason
+        )
+        assert (
+            connection.execute(
+                text("SELECT count(*) FROM auth_access_tokens")
+            ).scalar_one()
+            == 0
+        )
+
+
 @pytest.mark.parametrize("first_request", ["access", "refresh"])
 def test_allowlist_removal_revokes_and_is_authoritative(session_client, first_request):
     client, _, engine = session_client

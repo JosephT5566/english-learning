@@ -342,6 +342,11 @@ The workflow masks its minted ID token before passing it as `RELEASE_SMOKE_ID_TO
 6. Rotate refresh, then reuse the old token: 409 `refresh_superseded` within grace, or 401
    `refresh_reused` outside grace. Logout and require the resulting access token to return 401.
 
+The `confirm_review_write` and `confirm_semantic_search` workflow toggles were retired with
+`google_id_token`: the controlled synthetic write is now mandatory, and the smoke principal has
+no GenAI consent. Semantic-search smoke remains a manual human check. This toggle retirement
+is flagged for maintainer approval.
+
 The synthetic principal has no GenAI consent by default. This smoke makes no assistant,
 semantic-search or other Vertex request and never relies on a naturally due human card.
 Temporary token/header/body files are private and removed on exit. Failure after card creation
