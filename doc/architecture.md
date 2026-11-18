@@ -953,3 +953,48 @@ Deploy API before Pages: an old API rejects user `clarification_answer` with 422
 which the client does not retry. This compatibility statement is inferred from
 strict models. Real-backend browser SSE, device keyboard and Vertex behavior
 remain unverified; see e2e-todo items 19, 21 and 22.
+
+## PWA v1 shell and offline session flow (#120, Part 1)
+
+`static/manifest.webmanifest` declares English Learning / English, standalone display,
+`#cad8e4` theme/background, relative identity/start/scope and 192/512 px icons (including a
+512 px maskable icon). `src/app.html` links the manifest, favicon and 180 px apple-touch icon
+with base-aware asset URLs and supplies iOS metadata.
+
+`src/service-worker.ts` uses `$service-worker` build/files/prerendered/version data and
+`src/lib/pwa/policy.ts`. `english-learning-shell-${version}` precaches the shell, explicitly
+including `404.html` and `_app/env.js`. Navigations fetch the original request first; only OK
+responses for known precache paths update the shell cache. Network rejection falls back to the
+known page or cached `404.html`; HTTP error responses pass through. Known non-navigation assets
+are cache-first. Navigations have no worker timeout.
+
+`guest/cards.json` is separate: `english-learning-guest-v1`, network-first with a 3000 ms
+fallback deadline and best-effort install warm-up. Only non-redirected 200 JSON responses of at
+most 512 KiB with `schema_version === 1` and an `items` array replace the saved copy, including
+empty snapshots. Invalid HTTP/content responses pass through without replacing the good copy;
+network failure/timeout uses that copy. The page's `src/lib/api/public-review.ts` has a 15000 ms
+fetch deadline and strict `readGuestSnapshot` validation; validation rejection best-effort evicts
+the guest entry. Shell activation preserves the current guest cache and deletes obsolete owned
+cache names. These prefixes are origin-wide, not isolated by deployment base path.
+
+Non-GET, cross-origin, outside-base and `/v1/*` requests bypass the worker. Google GIS/fonts,
+API responses, dotfiles (including `.nojekyll`), `robots.txt`, `_app/version.json` and the worker
+script are never cached by it. Unlisted non-navigation assets also pass through.
+
+`+layout.svelte` mounts `registerPwa(base, dev)` from `src/lib/pwa/register.ts`; automatic
+registration is off in `svelte.config.js`. Registration uses `${base}/service-worker.js` with
+scope `${base}/` and checks for updates when the document becomes visible. A waiting worker on
+an already controlled page sets `pwaUpdate`; `reloadForUpdate()` sends `SKIP_WAITING` and reloads
+once on `controllerchange`. There is no install-time skip or client claim. Part 1 has no UI
+consumer; closing all windows permits normal waiting-worker activation. Disabled `PWA_ENABLED`
+removes only owned caches and unregisters on activation, without intercepting fetches.
+
+`src/lib/auth.ts` distinguishes refresh fetch rejection from HTTP/validation failure. Rejection
+keeps `el_auth_refresh_v1` and cached profile, clears memory access, leaves `authSession` initializing
+and sets the boolean `authOffline` store. Online/focus and the existing 1000 ms watcher retry
+through single-flight refresh; auth fetch has no timeout. Success and normal auth-clear transitions
+reset the flag. Layout load skips initialization when already offline; layout/review effects send
+protected routes and `/review` to home once per offline episode. Guest entry defaults
+`keepRefreshToken` to `authOffline`, clears the flag and preserves pending owner work; guest
+exit/expiry calls `initializeSession()` if a valid stored refresh remains. Owner APIs and owner
+review still require the network. Part 2's offline card and update cue are not yet implemented.

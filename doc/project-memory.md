@@ -1,12 +1,26 @@
 # Project Memory
 
-Last updated: 2026-11-17
+Last updated: 2026-11-18
 
 This file is the current product-state index. Training milestones, evidence limits, and the next
 training action belong in [`training/project-memory.md`](training/project-memory.md); detailed
 verification records belong in the linked issue artifacts. Implementation and test results take
 precedence over stale documentation. Deployment statements below summarize recorded evidence, not
 a fresh inspection of the live services.
+
+## PWA v1 Part 1 (#120, 2026-11-18)
+
+Implemented on `issue-120-pwa-shell`, not yet deployed: relative manifest/icons, manually registered
+production worker, network-first shell navigations and a separate network-first saved public guest
+snapshot. No API cache or offline owner review. Offline refresh rejection retains refresh/profile;
+`authOffline` redirects owner routes and `/review` home, guest entry keeps the token by default
+while offline, and guest exit/expiry reinitializes it. This qualifies the normal guest token-drop
+behavior described below. Part 2's avatar dot/menu item, home offline card and guest caption remain
+pending. Prior phase handoffs record targeted Vitest/check and root/subpath build passes; browser
+specs and real-origin install/GIS/offline checks remain unrun. See
+[architecture](architecture.md#pwa-v1-shell-and-offline-session-flow-120-part-1),
+[development/release](development.md#pwa-v1-development-and-release-120) and
+[e2e follow-ups](e2e-todo.md). Roll forward with `PWA_ENABLED=false` rather than a worker-less rollback.
 
 ## App-issued header sessions and explicit guest recovery (#45, 2026-11-17)
 
