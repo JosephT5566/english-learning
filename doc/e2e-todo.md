@@ -43,6 +43,9 @@
 | 34 | Android/iOS launcher icon appearance: maskable crop and 180 px apple-touch icon | Generated PNGs and manifest metadata only | #120 Part 1 | `static/icons/icon-512-maskable.png`; `static/icons/apple-touch-icon.png` |
 | 35 | Favicon legibility at 16 px in a real browser | Committed SVG artwork only | #120 Part 1 | `static/favicon.svg` |
 | 36 | Optional kill-switch rehearsal on a throwaway deployment: owned-cache cleanup and unregister | Disabled-worker Vitest; browser kill-switch spec written, unrun | #120 Part 1 | `src/service-worker.ts` PWA_ENABLED; development kill-switch steps |
+| 37 | Installed app after a second deployment: blue avatar dot, first "Reload to update" item, one reload and cue cleared; amber expiry priority | Component tests; alternate-worker browser spec written, unrun | #120 Part 2 | `tests/frontend/PwaUi.test.ts`; `tests/browser/pwa-ui.spec.ts`; real installed-window check pending |
+| 38 | Real offline launch on iOS and Android: home offline card, pending count, no GIS, public practice keeps session; silent reconnection | Component tests; offline-launch browser spec written, unrun | #120 Part 2 | `src/routes/+page.svelte`; `tests/browser/pwa-ui.spec.ts`; both devices pending |
+| 39 | Real offline guest practice: saved snapshot date under card, caption absent online and changes on connectivity events | Component tests; saved-snapshot browser spec written, unrun | #120 Part 2 | `src/lib/components/GuestReview.svelte`; `tests/browser/pwa-ui.spec.ts`; device check pending |
 
 ## 已完成
 

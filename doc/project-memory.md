@@ -8,15 +8,19 @@ verification records belong in the linked issue artifacts. Implementation and te
 precedence over stale documentation. Deployment statements below summarize recorded evidence, not
 a fresh inspection of the live services.
 
-## PWA v1 Part 1 (#120, 2026-11-18)
+## PWA v1 (#120, 2026-11-18)
 
 Implemented on `issue-120-pwa-shell`, not yet deployed: relative manifest/icons, manually registered
 production worker, network-first shell navigations and a separate network-first saved public guest
 snapshot. No API cache or offline owner review. Offline refresh rejection retains refresh/profile;
 `authOffline` redirects owner routes and `/review` home, guest entry keeps the token by default
 while offline, and guest exit/expiry reinitializes it. This qualifies the normal guest token-drop
-behavior described below. Part 2's avatar dot/menu item, home offline card and guest caption remain
-pending. Prior phase handoffs record targeted Vitest/check and root/subpath build passes; browser
+behavior described below. Part 2 adds option B: a blue avatar update dot (amber expiry wins),
+"Reload to update" first in all account menus, a home offline card with pending answer count and
+explicit token-preserving public practice, and a dated guest caption only offline. Updates stay
+passive during review; reconnection silently removes the offline card. Targeted component tests
+cover these cues; browser specs are written for operator execution. Prior phase handoffs record
+targeted Vitest/check and root/subpath build passes; browser
 specs and real-origin install/GIS/offline checks remain unrun. See
 [architecture](architecture.md#pwa-v1-shell-and-offline-session-flow-120-part-1),
 [development/release](development.md#pwa-v1-development-and-release-120) and

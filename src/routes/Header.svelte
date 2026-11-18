@@ -6,6 +6,7 @@
   import { pendingReviewInfo } from "$lib/review/pending";
   import { onMount } from "svelte";
   import { authSession, authNotice, signInOpen } from "$lib/stores/auth";
+  import { pwaUpdate } from "$lib/pwa/register";
   import AccountMenu from "$lib/components/AccountMenu.svelte";
   import GoogleSignIn from "$lib/components/GoogleSignIn.svelte";
   import { Dialog } from "bits-ui";
@@ -138,6 +139,7 @@
       guest={$authSession.kind === "guest"}
       timeRemaining={guestRemaining}
       expired={$authSession.kind === "expired"}
+      updateReady={$pwaUpdate}
       signingIn={$authNotice?.kind === "signing-in"}
       onLeaveGuest={() => void leaveGuest()}
     />
