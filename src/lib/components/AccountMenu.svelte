@@ -1,5 +1,6 @@
 <script lang="ts">
   import { DropdownMenu } from "bits-ui";
+  import { reloadForUpdate } from "$lib/pwa/register";
   import UserRound from "@lucide/svelte/icons/user-round";
   import type { getProfile } from "$lib/auth";
 
@@ -16,6 +17,7 @@
     guest = false,
     timeRemaining = 0,
     expired = false,
+    updateReady = false,
     signingIn = false,
     onLeaveGuest = () => {},
   }: {
@@ -26,6 +28,7 @@
     guest?: boolean;
     timeRemaining?: number;
     expired?: boolean;
+    updateReady?: boolean;
     signingIn?: boolean;
     onLeaveGuest?: () => void;
   } = $props();
@@ -55,11 +58,13 @@
 <DropdownMenu.Root bind:open>
   <DropdownMenu.Trigger
     bind:ref={trigger}
-    aria-label={profile
-      ? `Account menu for ${displayName}`
-      : "Guest account menu"}
-    title={profile ? displayName : "Guest"}
-    class="account-avatar {expired ? 'session-expired' : ''} {signingIn
+    aria-label={`${profile ? `Account menu for ${displayName}` : "Guest account menu"}${updateReady ? ", update available" : ""}`}
+    title={`${profile ? displayName : "Guest"}${updateReady ? ", update available" : ""}`}
+    class="account-avatar {expired
+      ? 'session-expired'
+      : updateReady
+        ? 'update-ready'
+        : ''} {signingIn
       ? 'signing-in'
       : ''} relative flex size-11 shrink-0 items-center justify-center rounded-full border border-[#4075a6]/20 bg-white/80 text-sm font-semibold text-[#405c73] shadow-sm hover:bg-[#4075a6]/10 focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-[#4075a6]/40"
     onkeydown={stopKeyboardPropagation}
@@ -109,6 +114,12 @@
           </p>
         {/if}
         <DropdownMenu.Separator class="my-1 h-px bg-[#4075a6]/15" />
+        {#if updateReady}
+          <DropdownMenu.Item
+            class="flex min-h-11 cursor-pointer items-center rounded-xl px-3 outline-none data-highlighted:bg-[#4075a6]/10"
+            onSelect={reloadForUpdate}>Reload to update</DropdownMenu.Item
+          >
+        {/if}
         <DropdownMenu.Item
           class="flex min-h-11 cursor-pointer items-center rounded-xl px-3 outline-none data-highlighted:bg-[#4075a6]/10"
           onkeydown={(event) => {
@@ -131,6 +142,7 @@
 </DropdownMenu.Root>
 
 <style>
+  :global(.account-avatar.update-ready::before),
   :global(.account-avatar.session-expired::before) {
     content: "";
     position: absolute;
@@ -139,8 +151,11 @@
     width: 12px;
     height: 12px;
     border-radius: 999px;
-    background: #b46b39;
+    background: #4075a6;
     border: 2px solid white;
+  }
+  :global(.account-avatar.session-expired::before) {
+    background: #b46b39;
   }
   :global(.account-avatar.signing-in::after) {
     content: "";

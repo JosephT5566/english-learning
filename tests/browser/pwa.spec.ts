@@ -208,7 +208,7 @@ for (const path of ["/", "/review", "/decks", "/decks/pwa-deep-link"]) {
     expect(response?.fromServiceWorker()).toBe(true);
     await expect(page).toHaveURL(home);
     await expect(
-      page.getByRole("button", { name: "Continue as guest", exact: true }),
+      page.getByRole("button", { name: "Practice public cards", exact: true }),
     ).toBeVisible();
     await expect(page.getByText("Session ended", { exact: true })).toHaveCount(
       0,
@@ -446,7 +446,7 @@ test("offline public round uses saved snapshot and retains a signed-in session",
   await context.setOffline(true);
   await page.reload();
   await page
-    .getByRole("button", { name: "Continue as guest", exact: true })
+    .getByRole("button", { name: "Practice public cards", exact: true })
     .click();
   for (let index = 0; index < fixture.items.length; index++) {
     const active = page.locator('.swipe--card[aria-hidden="false"]');

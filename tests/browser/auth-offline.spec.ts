@@ -56,7 +56,9 @@ test("offline home guest entry retains refresh and Leave guest practice restores
   page,
 }) => {
   const session = await launchWithFailedRefresh(page);
-  await page.getByRole("button", { name: /Continue as guest/ }).click();
+  await page
+    .getByRole("button", { name: "Practice public cards", exact: true })
+    .click();
   await expect(
     page.getByRole("button", { name: /Guest account menu/i }),
   ).toBeVisible();

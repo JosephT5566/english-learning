@@ -14,6 +14,8 @@
     | { kind: "ready"; cards: StudyCard[]; batch: number; complete: boolean };
   let session: Session = $state({ kind: "loading" });
   let pool: import("$lib/api/contracts").PublicReviewCard[] | undefined;
+  let offline = $state(false);
+  let snapshotDate = $state("");
   let batch = 0;
   let request: AbortController | undefined;
 
@@ -30,6 +32,12 @@
       const data = await getPublicReviewCards(controller.signal);
       if (controller.signal.aborted) return;
       pool = data.items;
+      snapshotDate = new Date(data.generated_at).toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+        timeZone: "UTC",
+      });
       startRound();
     } catch (error) {
       if (controller.signal.aborted) return;
@@ -58,8 +66,16 @@
   }
 
   onMount(() => {
+    const updateConnectivity = () => {
+      offline = navigator.onLine === false;
+    };
+    updateConnectivity();
+    window.addEventListener("online", updateConnectivity);
+    window.addEventListener("offline", updateConnectivity);
     void loadBatch();
     return () => {
+      window.removeEventListener("online", updateConnectivity);
+      window.removeEventListener("offline", updateConnectivity);
       request?.abort();
       pool = undefined;
     };
@@ -93,6 +109,11 @@
         }}
       />
     {/key}
+    {#if offline}
+      <p class="mt-3 text-center text-sm text-[#60788c]">
+        Offline · saved copy from {snapshotDate}
+      </p>
+    {/if}
     {#if session.complete}
       <button
         class="mx-auto min-h-11 rounded-lg bg-slate-800 px-5 text-white"

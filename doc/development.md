@@ -439,8 +439,8 @@ Operator browser commands from the repository root (the Playwright fixture build
 its static/mock servers):
 
 ```bash
-npm run test:browser -- tests/browser/pwa.spec.ts
-BASE_PATH=/english-learning npm run test:browser -- tests/browser/pwa.spec.ts
+npm run test:browser -- tests/browser/pwa.spec.ts tests/browser/pwa-ui.spec.ts
+BASE_PATH=/english-learning npm run test:browser -- tests/browser/pwa.spec.ts tests/browser/pwa-ui.spec.ts
 npm run test:browser -- tests/browser/auth-offline.spec.ts tests/browser/auth-session.spec.ts tests/browser/auth-recovery.spec.ts tests/browser/account-menu.spec.ts tests/browser/guest-review-flow.spec.ts
 ```
 
@@ -450,7 +450,12 @@ replacement/fallback/last-good restoration after strict rejection. Strict page v
 last-good copy (including empty withdrawals); rejection restores it, or removes only a rejected 200
 when no good copy exists. `auth-offline.spec.ts` covers startup retention, online/focus
 recovery and guest exit restoration independently of the worker. The subpath variant is a local
-operator check, not added to CI. Prior phase handoffs report targeted Vitest and `npm run check`
+operator check, not added to CI. Part 2's `pwa-ui.spec.ts` independently covers the blue avatar
+dot, first menu action and one reload into the alternate worker, passive review focus/pending
+storage, real offline launch, silent online recovery and token-preserving saved guest practice.
+The offline home card replaces GIS and the signed-out invitation; the guest caption includes the
+snapshot date only offline. Installed-app and real-device checks remain in `e2e-todo.md`.
+Prior phase handoffs report targeted Vitest and `npm run check`
 passes, and root/subpath builds; browser specs remain unrun in those handoffs. Final recorded
 precache reports (after explicitly adding `_app/env.js`): root **85 entries / 1,137,143 bytes**;
 `/english-learning` **85 entries / 1,137,641 bytes**. These are build-specific, not a size budget.
@@ -470,7 +475,7 @@ Release/rollback (maintainer operations; not performed by this documentation cha
    installability, second-load control, offline `/review`, real sign-in, one review, sign-out and
    guest using the [runbook](training/issues/issue-26/runbook.md#manual-interactive-google-sign-in-check).
    Record pass/fail and commit only. Part 1 online reloads fetch current HTML; a waiting worker
-   normally activates after all windows close. `reloadForUpdate()` has no UI until Part 2.
+   normally activates after all windows close. Part 2 adds "Reload to update" in every account menu.
 3. For the kill switch, set `PWA_ENABLED = false` in `src/service-worker.ts`, build and redeploy
    Pages with the worker still present. On its next update check the browser installs that worker;
    activation clears only `english-learning-shell-` / `english-learning-guest-` caches and

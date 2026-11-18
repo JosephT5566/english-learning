@@ -1,6 +1,6 @@
 # Architecture Memory
 
-Last updated: 2026-11-17
+Last updated: 2026-11-18
 
 ## Stack
 
@@ -988,8 +988,8 @@ script are never cached by it. Unlisted non-navigation assets also pass through.
 registration is off in `svelte.config.js`. Registration uses `${base}/service-worker.js` with
 scope `${base}/` and checks for updates when the document becomes visible. A waiting worker on
 an already controlled page sets `pwaUpdate`; `reloadForUpdate()` sends `SKIP_WAITING` and reloads
-once on `controllerchange`. There is no install-time skip or client claim. Part 1 has no UI
-consumer; closing all windows permits normal waiting-worker activation. Disabled `PWA_ENABLED`
+once on `controllerchange`. There is no install-time skip or client claim. Closing all windows
+permits normal waiting-worker activation. Disabled `PWA_ENABLED`
 removes only owned caches and unregisters on activation, without intercepting fetches.
 
 `src/lib/auth.ts` distinguishes refresh fetch rejection from HTTP/validation failure. Rejection
@@ -1000,4 +1000,14 @@ reset the flag. Layout load skips initialization when already offline; layout/re
 protected routes and `/review` to home once per offline episode. Guest entry defaults
 `keepRefreshToken` to `authOffline`, clears the flag and preserves pending owner work; guest
 exit/expiry calls `initializeSession()` if a valid stored refresh remains. Owner APIs and owner
-review still require the network. Part 2's offline card and update cue are not yet implemented.
+review still require the network.
+
+Part 2 uses option B: `Header.svelte` passes `pwaUpdate` to `AccountMenu.svelte`. A Study Blue
+avatar dot and accessible name/title announce "update available"; the amber expired dot takes
+priority. "Reload to update" is the first action in every account menu and calls
+`reloadForUpdate()`. The cue is passive during review and does not change focus or saved answers.
+Home replaces its invitation with an ordinary offline card when `authOffline` is true, reads
+`pendingReviewInfo` for the answer count and enters guest practice with `keepRefreshToken: true`.
+Recovery silently removes the card. `GuestReview.svelte` listens locally for online/offline events
+and shows the validated snapshot's `generated_at` date below the card only while offline. The
+caption formats the date in English and UTC, including the year to identify old saved copies.

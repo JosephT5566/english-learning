@@ -3,8 +3,10 @@
   import { resolve } from "$app/paths";
   import { enterGuestSession } from "$lib/auth";
   import { goto } from "$app/navigation";
+  import WifiOff from "@lucide/svelte/icons/wifi-off";
+  import { pendingReviewInfo } from "$lib/review/pending";
   import GoogleSignIn from "$lib/components/GoogleSignIn.svelte";
-  import { authSession, isSignedIn } from "$lib/stores/auth";
+  import { authSession, authOffline, isSignedIn } from "$lib/stores/auth";
   import { hasPracticedToday, localReviewDate } from "$lib/review/activity";
 
   let today = $state<Date | null>(null);
@@ -22,7 +24,9 @@
   );
   let guestError = $state("");
   async function continueAsGuest() {
-    const result = enterGuestSession();
+    const result = $authOffline
+      ? enterGuestSession({ keepRefreshToken: true })
+      : enterGuestSession();
     if (result.ok) await goto(resolve("/review"));
     else guestError = result.error;
   }
@@ -65,51 +69,76 @@
   </div>
 
   <div class="review-invitation">
-    <div
-      class="review-status"
-      class:complete={practicedToday}
-      aria-hidden="true"
-    >
-      <span></span>
-    </div>
-    <div class="invitation-copy">
-      <h2>
-        {practicedToday
-          ? "You've practiced today"
-          : "Make a little progress today"}
-      </h2>
-      <p>
-        {practicedToday
-          ? "Your answers were saved. More cards may still be due; review again whenever you're ready."
-          : "Open your due cards, reveal each answer, and mark how well you remembered it."}
-      </p>
-    </div>
-
-    {#if $isSignedIn}
-      <a class="primary-action" href={resolve("/review")}
-        >{practicedToday ? "Review again" : "Start today’s review"}<span
-          aria-hidden="true">→</span
-        ></a
-      >
-      <nav class="supporting-links" aria-label="Other learning actions">
-        <a href={`${resolve("/decks")}?language=en`}>Browse decks</a>
-        <a href={resolve("/search")}>Search cards</a>
-      </nav>
-    {:else}
+    {#if $authOffline}
+      <WifiOff size={24} class="offline-icon" aria-hidden="true" />
+      <div class="invitation-copy">
+        <h2>You're offline</h2>
+        <p>
+          Your session is kept on this device. Reconnect to open your decks and
+          send answers.
+        </p>
+      </div>
+      {#if $pendingReviewInfo.count > 0}
+        <p>
+          {$pendingReviewInfo.count}
+          {$pendingReviewInfo.count === 1 ? "answer is" : "answers are"} saved here
+          and will be sent when you're back.
+        </p>
+      {/if}
       <button class="primary-action" onclick={continueAsGuest}
-        >Continue as guest<span aria-hidden="true">→</span></button
+        >Practice public cards</button
       >
       {#if guestError}<p class="sign-in-error" role="alert">
           {guestError}
         </p>{/if}
-      <p>
-        Practice public cards. Progress is not saved. Guest access lasts 30
-        minutes or until you close this tab.
-      </p>
-      <div class="sign-in-block">
-        <p>Sign in to load your private decks and review history.</p>
-        <GoogleSignIn />
+      <p class="offline-reconnect">We'll reconnect automatically.</p>
+    {:else}
+      <div
+        class="review-status"
+        class:complete={practicedToday}
+        aria-hidden="true"
+      >
+        <span></span>
       </div>
+      <div class="invitation-copy">
+        <h2>
+          {practicedToday
+            ? "You've practiced today"
+            : "Make a little progress today"}
+        </h2>
+        <p>
+          {practicedToday
+            ? "Your answers were saved. More cards may still be due; review again whenever you're ready."
+            : "Open your due cards, reveal each answer, and mark how well you remembered it."}
+        </p>
+      </div>
+
+      {#if $isSignedIn}
+        <a class="primary-action" href={resolve("/review")}
+          >{practicedToday ? "Review again" : "Start today’s review"}<span
+            aria-hidden="true">→</span
+          ></a
+        >
+        <nav class="supporting-links" aria-label="Other learning actions">
+          <a href={`${resolve("/decks")}?language=en`}>Browse decks</a>
+          <a href={resolve("/search")}>Search cards</a>
+        </nav>
+      {:else}
+        <button class="primary-action" onclick={continueAsGuest}
+          >Continue as guest<span aria-hidden="true">→</span></button
+        >
+        {#if guestError}<p class="sign-in-error" role="alert">
+            {guestError}
+          </p>{/if}
+        <p>
+          Practice public cards. Progress is not saved. Guest access lasts 30
+          minutes or until you close this tab.
+        </p>
+        <div class="sign-in-block">
+          <p>Sign in to load your private decks and review history.</p>
+          <GoogleSignIn />
+        </div>
+      {/if}
     {/if}
   </div>
 </section>
@@ -169,6 +198,16 @@
     border: 1px solid rgba(64, 117, 166, 0.22);
     border-radius: 0.9rem;
     background: rgba(255, 255, 255, 0.7);
+  }
+
+  :global(.offline-icon) {
+    margin-bottom: 1rem;
+    color: #4075a6;
+  }
+
+  .offline-reconnect {
+    color: #60788c;
+    font-size: 0.88rem;
   }
 
   .review-status {
