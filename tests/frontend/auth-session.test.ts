@@ -739,3 +739,275 @@ describe("app-issued browser session", () => {
     stop();
   });
 });
+
+describe("offline session recovery", () => {
+  it("keeps authOffline true across consecutive network-failed refreshes", async () => {
+    seed();
+    vi.mocked(fetch).mockRejectedValue(new TypeError("offline"));
+    await auth.refreshSession();
+    const offlineStates: boolean[] = [];
+    const stop = stores.authOffline.subscribe((value) =>
+      offlineStates.push(value),
+    );
+    try {
+      await auth.refreshSession();
+      expect(fetch).toHaveBeenCalledTimes(2);
+      expect(offlineStates).toEqual([true]);
+    } finally {
+      stop();
+    }
+  });
+  it("makes exactly one refresh request for each offline retry trigger", async () => {
+    vi.useFakeTimers();
+    seed();
+    vi.mocked(fetch).mockRejectedValue(new TypeError("offline"));
+    const stop = auth.watchSession();
+    try {
+      await vi.advanceTimersByTimeAsync(0);
+      expect(fetch).toHaveBeenCalledTimes(1);
+      for (const [index, event] of ["online", "focus"].entries()) {
+        window.dispatchEvent(new Event(event));
+        await vi.advanceTimersByTimeAsync(0);
+        expect(fetch).toHaveBeenCalledTimes(index + 2);
+        expect(vi.mocked(fetch).mock.calls.at(-1)?.[0]).toBe(
+          "https://api.example.test/v1/auth/refresh",
+        );
+      }
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(fetch).toHaveBeenCalledTimes(4);
+      await vi.advanceTimersByTimeAsync(999);
+      expect(fetch).toHaveBeenCalledTimes(4);
+    } finally {
+      stop();
+    }
+  });
+  it.each([
+    new TypeError("Failed to fetch"),
+    new DOMException("Aborted", "AbortError"),
+  ])("retains refresh and profile after fetch rejects: %s", async (error) => {
+    seed();
+    vi.mocked(fetch).mockRejectedValue(error);
+    await auth.initializeSession();
+    expect(localStorage.getItem("el_auth_refresh_v1")).toBe("elr_seed");
+    expect(localStorage.getItem("el_auth_profile_v1")).toBe(
+      JSON.stringify(profile),
+    );
+    expect(get(stores.authSession).kind).toBe("initializing");
+    expect(get(stores.authNotice)).toBeNull();
+    expect(get(stores.authOffline)).toBe(true);
+  });
+  it.each([401, 403, 500])(
+    "HTTP %s still expires and clears offline state",
+    async (status) => {
+      seed();
+      stores.authOffline.set(true);
+      vi.mocked(fetch).mockResolvedValue(
+        response({ error: { code: "refresh_invalid" } }, status),
+      );
+      await auth.initializeSession();
+      expect(get(stores.authSession).kind).toBe("expired");
+      expect(localStorage.getItem("el_auth_refresh_v1")).toBeNull();
+      expect(get(stores.authOffline)).toBe(false);
+    },
+  );
+  it("a non-JSON HTTP failure is not classified as offline", async () => {
+    seed();
+    vi.mocked(fetch).mockResolvedValue(
+      new Response("unavailable", { status: 503 }),
+    );
+    await auth.initializeSession();
+    expect(get(stores.authSession).kind).toBe("expired");
+    expect(get(stores.authOffline)).toBe(false);
+  });
+  it.each([
+    "refresh",
+    "sign-in",
+    "sign-out",
+    "expiry",
+    "guest",
+    "reset",
+    "initialize",
+  ])("clears offline state on %s", async (action) => {
+    seed();
+    stores.authOffline.set(true);
+    if (action === "refresh") await auth.refreshSession();
+    if (action === "sign-in") await auth.exchangeCredential("synthetic");
+    if (action === "sign-out") await auth.signOut();
+    if (action === "expiry") auth.expireSession();
+    if (action === "guest") auth.enterGuestSession();
+    if (action === "reset") stores.setSignOut();
+    if (action === "initialize") {
+      localStorage.removeItem("el_auth_refresh_v1");
+      await auth.initializeSession();
+    }
+    expect(get(stores.authOffline)).toBe(false);
+  });
+  it.each(["online", "focus"])(
+    "retries on %s with single-flight and cleans up listeners",
+    async (event) => {
+      seed();
+      vi.mocked(fetch).mockRejectedValue(new TypeError("offline"));
+      const stop = auth.watchSession();
+      try {
+        await vi.waitFor(() => expect(get(stores.authOffline)).toBe(true));
+        let finish!: (value: Response) => void;
+        vi.mocked(fetch)
+          .mockClear()
+          .mockImplementation(
+            () =>
+              new Promise((resolve) => {
+                finish = resolve;
+              }),
+          );
+        window.dispatchEvent(new Event(event));
+        window.dispatchEvent(new Event(event));
+        await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+        finish(response(tokens()));
+        await vi.waitFor(() =>
+          expect(get(stores.authSession).kind).toBe("authenticated"),
+        );
+        expect(get(stores.authOffline)).toBe(false);
+      } finally {
+        stop();
+      }
+      auth.expireSession();
+      stores.authSession.set({ kind: "initializing" });
+      localStorage.setItem("el_auth_refresh_v1", "elr_after_cleanup");
+      vi.mocked(fetch).mockClear();
+      window.dispatchEvent(new Event(event));
+      expect(fetch).not.toHaveBeenCalled();
+    },
+  );
+  it.each([true, false])(
+    "explicit guest keepRefreshToken=%s is respected",
+    async (keepRefreshToken) => {
+      seed();
+      expect(auth.enterGuestSession({ keepRefreshToken })).toEqual({
+        ok: true,
+      });
+      expect(localStorage.getItem("el_auth_refresh_v1")).toBe(
+        keepRefreshToken ? "elr_seed" : null,
+      );
+      // Re-enter the existing deadline branch too.
+      localStorage.setItem("el_auth_refresh_v1", "elr_seed");
+      auth.enterGuestSession({ keepRefreshToken });
+      expect(localStorage.getItem("el_auth_refresh_v1")).toBe(
+        keepRefreshToken ? "elr_seed" : null,
+      );
+    },
+  );
+  it.each([true, false])(
+    "guest default follows authOffline=%s",
+    async (offline) => {
+      seed();
+      stores.authOffline.set(offline);
+      auth.enterGuestSession();
+      expect(localStorage.getItem("el_auth_refresh_v1")).toBe(
+        offline ? "elr_seed" : null,
+      );
+      expect(get(stores.authOffline)).toBe(false);
+    },
+  );
+  it.each([true, false])(
+    "guest exit restores only with a retained token=%s",
+    async (retained) => {
+      seed();
+      auth.enterGuestSession({ keepRefreshToken: retained });
+      const kinds: string[] = [];
+      const stop = stores.authSession.subscribe((s) => kinds.push(s.kind));
+      auth.leaveGuestSession();
+      if (retained) {
+        await vi.waitFor(() =>
+          expect(get(stores.authSession).kind).toBe("authenticated"),
+        );
+        expect(fetch).toHaveBeenCalledTimes(1);
+        expect(kinds).not.toContain("signed-out");
+      } else {
+        expect(fetch).not.toHaveBeenCalled();
+        expect(kinds).toEqual(["guest", "signed-out"]);
+      }
+      stop();
+    },
+  );
+  it("guest expiry restores the retained session", async () => {
+    vi.useFakeTimers();
+    seed();
+    auth.enterGuestSession({ keepRefreshToken: true });
+    const stop = auth.watchSession();
+    try {
+      vi.setSystemTime(Date.now() + 30 * 60_000);
+      vi.mocked(fetch).mockImplementation(async () => response(tokens()));
+      window.dispatchEvent(new Event("focus"));
+      await vi.waitFor(() =>
+        expect(get(stores.authSession).kind).toBe("authenticated"),
+      );
+      expect(sessionStorage.getItem("learning_guest_session")).toBeNull();
+    } finally {
+      stop();
+    }
+  });
+});
+
+it("network failure after another tab rotates refresh retains the newer token", async () => {
+  seed();
+  vi.mocked(fetch).mockImplementation(async () => {
+    localStorage.setItem("el_auth_refresh_v1", "elr_other_tab");
+    throw new TypeError("offline");
+  });
+  await auth.initializeSession();
+  expect(localStorage.getItem("el_auth_refresh_v1")).toBe("elr_other_tab");
+  expect(get(stores.authOffline)).toBe(true);
+  expect(get(stores.authSession).kind).toBe("initializing");
+});
+
+it("focus failure after access expiry returns to initializing for online recovery", async () => {
+  vi.useFakeTimers();
+  seed();
+  await auth.initializeSession();
+  const stop = auth.watchSession();
+  try {
+    vi.setSystemTime(Date.now() + 900_001);
+    vi.mocked(fetch).mockRejectedValue(new TypeError("offline"));
+    window.dispatchEvent(new Event("focus"));
+    await vi.waitFor(() => expect(get(stores.authOffline)).toBe(true));
+    expect(get(stores.authSession).kind).toBe("initializing");
+    expect(localStorage.getItem("el_auth_refresh_v1")).toBe("elr_one");
+    vi.mocked(fetch).mockImplementation(async () =>
+      response(tokens("recovered")),
+    );
+    window.dispatchEvent(new Event("online"));
+    await vi.waitFor(() =>
+      expect(auth.getTokenIfValid()).toBe("ela_recovered"),
+    );
+    expect(get(stores.authOffline)).toBe(false);
+  } finally {
+    stop();
+  }
+});
+
+it("offline guest exit retries on reconnect without losing pending answers", async () => {
+  seed();
+  const command = pending.createPendingSubmission(7, payload);
+  pending.savePendingSubmission(command);
+  vi.mocked(fetch).mockRejectedValue(new TypeError("offline"));
+  await auth.initializeSession();
+  auth.enterGuestSession();
+  const stop = auth.watchSession();
+  try {
+    auth.leaveGuestSession();
+    await vi.waitFor(() => expect(get(stores.authOffline)).toBe(true));
+    expect(localStorage.getItem(pending.PENDING_REVIEW_STORAGE_KEY)).toBe(
+      JSON.stringify(command),
+    );
+    vi.mocked(fetch).mockImplementation(async () => response(tokens()));
+    window.dispatchEvent(new Event("online"));
+    await vi.waitFor(() =>
+      expect(get(stores.authSession).kind).toBe("authenticated"),
+    );
+    expect(localStorage.getItem(pending.PENDING_REVIEW_STORAGE_KEY)).toBe(
+      JSON.stringify(command),
+    );
+  } finally {
+    stop();
+  }
+});

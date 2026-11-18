@@ -24,6 +24,7 @@ export type AuthNotice =
   | { kind: "pending-expired" };
 
 export const authSession = writable<AuthSession>({ kind: "initializing" });
+export const authOffline = writable<boolean>(false);
 export const authNotice = writable<AuthNotice>(null);
 export const signInOpen = writable(false);
 export const isSignedIn = derived(
@@ -33,6 +34,7 @@ export const isSignedIn = derived(
 export const canWrite = isSignedIn;
 
 export function setSignIn(profile: SessionProfile) {
+  authOffline.set(false);
   const current = get(authSession);
   if (
     current.kind !== "authenticated" ||
@@ -41,6 +43,7 @@ export function setSignIn(profile: SessionProfile) {
     authSession.set({ kind: "authenticated", profile });
 }
 export function setSignOut() {
+  authOffline.set(false);
   if (get(authSession).kind !== "signed-out")
     authSession.set({ kind: "signed-out" });
 }

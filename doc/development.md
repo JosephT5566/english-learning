@@ -427,3 +427,56 @@ Open `http://127.0.0.1:4173/english-learning/` and choose Continue as guest. Use
 390px widths. Inspect one static download and zero `/v1/` requests through repeated rounds.
 Private fixture sign-in is `http://127.0.0.1:4173/__test__/auth/success`. Repeat with empty
 `BASE_PATH` for root hosting. Do not run simultaneous builds or share review tabs with Playwright.
+
+## PWA v1 development and release (#120)
+
+The worker is not registered in dev (`registerPwa` guards `dev`); use built artifacts for PWA
+checks. `svelte.config.js` disables SvelteKit automatic registration. Existing registrations can
+persist in a browser profile: use an isolated test profile or unregister/clear site data when
+returning to dev.
+
+Operator browser commands from the repository root (the Playwright fixture builds and starts
+its static/mock servers):
+
+```bash
+npm run test:browser -- tests/browser/pwa.spec.ts
+BASE_PATH=/english-learning npm run test:browser -- tests/browser/pwa.spec.ts
+npm run test:browser -- tests/browser/auth-offline.spec.ts tests/browser/auth-session.spec.ts tests/browser/auth-recovery.spec.ts tests/browser/account-menu.spec.ts tests/browser/guest-review-flow.spec.ts
+```
+
+`pwa.spec.ts` covers manifest/base links, registration/precache boundaries, offline redirects,
+live navigations/API bypass, waiting updates/one reload, cleanup/kill switch and guest snapshot
+replacement/fallback/last-good restoration after strict rejection. Strict page validation saves a
+last-good copy (including empty withdrawals); rejection restores it, or removes only a rejected 200
+when no good copy exists. `auth-offline.spec.ts` covers startup retention, online/focus
+recovery and guest exit restoration independently of the worker. The subpath variant is a local
+operator check, not added to CI. Prior phase handoffs report targeted Vitest and `npm run check`
+passes, and root/subpath builds; browser specs remain unrun in those handoffs. Final recorded
+precache reports (after explicitly adding `_app/env.js`): root **85 entries / 1,137,143 bytes**;
+`/english-learning` **85 entries / 1,137,641 bytes**. These are build-specific, not a size budget.
+
+To regenerate committed PNGs after editing `static/icons/icon-any.svg`, `icon-maskable.svg` or
+`icon-apple.svg`, run `node scripts/generate-pwa-icons.mjs` from the root. It needs Playwright
+Chromium (`npx playwright install chromium`) and produces 192/512 px any, 512 px maskable and
+180 px apple-touch PNGs. This is a manual asset step, not part of the build; review the generated
+icons on real launchers and the separate `static/favicon.svg` at 16 px.
+
+Release/rollback (maintainer operations; not performed by this documentation change):
+
+1. Complete the #45 API/Pages cutover before a PWA Pages build. Merge auth, shell and docs before
+   Part 2; preferably dispatch Pages once after Part 2 is ready. Merge alone does not deploy;
+   Pages uses manual `workflow_dispatch`. Part 1 may ship alone without visible update/offline cues.
+2. Dispatch Pages from trusted `main`, without an API promotion in the same deployment. Check
+   installability, second-load control, offline `/review`, real sign-in, one review, sign-out and
+   guest using the [runbook](training/issues/issue-26/runbook.md#manual-interactive-google-sign-in-check).
+   Record pass/fail and commit only. Part 1 online reloads fetch current HTML; a waiting worker
+   normally activates after all windows close. `reloadForUpdate()` has no UI until Part 2.
+3. For the kill switch, set `PWA_ENABLED = false` in `src/service-worker.ts`, build and redeploy
+   Pages with the worker still present. On its next update check the browser installs that worker;
+   activation clears only `english-learning-shell-` / `english-learning-guest-` caches and
+   unregisters. Without forced activation, close all installed windows/tabs to let it activate.
+   Verify unregister and cache cleanup. Never roll Pages back to a worker-less commit while
+   registrations may exist; roll forward with the disabled worker. Emergency user recovery is
+   DevTools Application: Unregister, Clear site data, then uninstall the app.
+4. After a paired API+Pages release, reload installed windows. No API compatibility/version signal
+   is implemented. Real-origin install/GIS/offline/launcher checks remain in [e2e-todo](e2e-todo.md).

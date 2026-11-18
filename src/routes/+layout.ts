@@ -3,12 +3,13 @@ import { browser } from "$app/environment";
 import { redirect } from "@sveltejs/kit";
 import { getIsSignedIn, initializeSession } from "$lib/auth";
 import { get } from "svelte/store";
-import { authSession } from "$lib/stores/auth";
+import { authSession, authOffline } from "$lib/stores/auth";
 import { base } from "$app/paths";
 
 export const load: LayoutLoad = async ({ url }) => {
   if (browser) {
-    await initializeSession();
+    // Navigation while offline must not start another refresh retry.
+    if (!get(authOffline)) await initializeSession();
     const publicRoute = [
       `${base}/`,
       `${base}/review`,

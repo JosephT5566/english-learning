@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import http from "node:http";
 import path from "node:path";
+import ts from "typescript";
 
 const root = path.resolve("build");
 const port = Number(process.env.STATIC_TEST_PORT ?? 4173);
@@ -10,6 +11,8 @@ const contentTypes = {
   ".html": "text/html",
   ".js": "text/javascript",
   ".json": "application/json",
+  ".webmanifest": "application/manifest+json",
+  ".png": "image/png",
   ".svg": "image/svg+xml",
   ".woff": "font/woff",
   ".woff2": "font/woff2",
@@ -32,8 +35,38 @@ function testToken(testMode) {
   };
 }
 
+let networkSequence = 0;
+let networkDown = false;
+let workerMode = "normal";
+let fallbackStatus = 200;
+let snapshotOverride = null;
+
 http
   .createServer(async (request, response) => {
+    const testPath = new URL(request.url ?? "/", "http://127.0.0.1").pathname;
+    if (testPath === "/__test__/pwa") {
+      let body = "";
+      for await (const chunk of request) body += chunk;
+      const settings = body ? JSON.parse(body) : {};
+      if (settings.reset) {
+        networkDown = false;
+        workerMode = "normal";
+        fallbackStatus = 200;
+        snapshotOverride = null;
+      }
+      if (typeof settings.networkDown === "boolean")
+        networkDown = settings.networkDown;
+      if (settings.worker) workerMode = settings.worker;
+      if (settings.fallbackStatus) fallbackStatus = settings.fallbackStatus;
+      if ("snapshot" in settings) snapshotOverride = settings.snapshot;
+      response.writeHead(200, { "Content-Type": "application/json" });
+      response.end(JSON.stringify({ networkDown, workerMode, fallbackStatus }));
+      return;
+    }
+    if (networkDown && !testPath.startsWith("/__test__/")) {
+      request.socket.destroy();
+      return;
+    }
     const authMatch = request.url?.match(
       /^\/__test__\/auth\/(success|retryable|conflict|empty|unauthorized|submit-unauthorized|validation|not-found|server-error|invalid-response|slow)$/,
     );
@@ -69,6 +102,55 @@ http
       base && pathname.startsWith(`${base}/`)
         ? pathname.slice(base.length)
         : pathname;
+    if (urlPath === "/service-worker.js") {
+      let script = await fs.readFile(
+        path.join(root, "service-worker.js"),
+        "utf8",
+      );
+      if (workerMode === "update") {
+        const { version } = JSON.parse(
+          await fs.readFile(path.join(root, "_app/version.json"), "utf8"),
+        );
+        script = script.replaceAll(
+          JSON.stringify(version),
+          JSON.stringify(`${version}-test-update`),
+        );
+      } else if (workerMode === "kill") {
+        // Compile the real disabled worker source; production minification removes
+        // the disabled branches from the enabled build.
+        const policy = (
+          await fs.readFile("src/lib/pwa/policy.ts", "utf8")
+        ).replace(/\bexport /g, "");
+        const worker = (await fs.readFile("src/service-worker.ts", "utf8"))
+          .replace(/^import[\s\S]*?from ["'][^"']+["'];/gm, "")
+          .replace("const PWA_ENABLED = true", "const PWA_ENABLED = false");
+        script = ts.transpileModule(
+          `const base = ${JSON.stringify(base)}; const build = [], files = [], prerendered = []; const version = "kill-test";\n${policy}\n${worker}`,
+          {
+            compilerOptions: {
+              target: ts.ScriptTarget.ES2022,
+              module: ts.ModuleKind.ESNext,
+            },
+          },
+        ).outputText;
+      }
+      response.writeHead(200, {
+        "Content-Type": "text/javascript",
+        "Cache-Control": "no-store",
+      });
+      response.end(script);
+      return;
+    }
+    if (urlPath === "/guest/cards.json" && snapshotOverride) {
+      response.writeHead(snapshotOverride.status ?? 200, {
+        "Content-Type": "application/json",
+        ...(snapshotOverride.location
+          ? { Location: `${base}${snapshotOverride.location}` }
+          : {}),
+      });
+      response.end(snapshotOverride.body);
+      return;
+    }
     const relative =
       urlPath === "/"
         ? "index.html"
@@ -87,6 +169,7 @@ http
     try {
       const body = await fs.readFile(filePath);
       response.writeHead(200, {
+        "X-Pwa-Test-Network": String(++networkSequence),
         "Content-Type":
           contentTypes[path.extname(filePath)] ?? "application/octet-stream",
       });
@@ -94,7 +177,7 @@ http
     } catch {
       try {
         const fallback = await fs.readFile(path.resolve(root, "404.html"));
-        response.writeHead(200, { "Content-Type": "text/html" });
+        response.writeHead(fallbackStatus, { "Content-Type": "text/html" });
         response.end(fallback);
       } catch {
         response.writeHead(404);

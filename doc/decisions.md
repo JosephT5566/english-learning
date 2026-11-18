@@ -1096,3 +1096,34 @@ Same internal id signing in explicitly sends the exact retained command; a diffe
 and reports count. The guest header has a visible Sign in pill, menu-only time remaining and Leave
 guest practice. Leaving retains pending and returns to signed-out home. Static cards, memory-only
 guest answers, no persistence and base-aware navigation retain the existing guest contract.
+
+## 2026-11-18: PWA v1 shell and offline-safe sessions (#120, Part 1)
+
+PWA v1 adds an installable app shell and a separate public guest snapshot cache, with no API
+cache or offline owner review. Navigations are network-first so online launches receive current
+HTML; known shell assets are cache-first. The implementation is on `issue-120-pwa-shell`, not
+recorded as deployed. Part 2's update/offline visuals remain pending.
+
+SvelteKit automatic registration is disabled with `serviceWorker: { register: false }` in
+`svelte.config.js`; `src/lib/pwa/register.ts` registers manually outside dev. There is no install-time
+`skipWaiting()` or `clients.claim()`: existing windows keep their controller until they close or
+explicitly call `reloadForUpdate()`, which sends `SKIP_WAITING` and reloads once on controller change.
+This avoids interrupting an active review. `PWA_ENABLED` in `src/service-worker.ts` is the kill
+switch: publish a disabled worker to clear owned caches and unregister, rather than reverting to
+a worker-less commit.
+
+Cache Storage is shared by origin. Only the `english-learning-shell-` and `english-learning-guest-`
+prefixes are owned; unrelated caches survive cleanup. Names are not base-path-qualified, so other
+apps on the same origin must not reuse these prefixes. The current shell is versioned; the
+`english-learning-guest-v1` cache survives normal worker updates.
+
+Refresh fetch rejection retains refresh/profile storage, clears memory access and sets
+`authOffline` while the session stays `initializing`; HTTP/validation errors retain expiry behavior.
+There is no auth-fetch timeout. Online/focus and the existing single-flight 1-second watcher retry.
+Guest entry defaults `keepRefreshToken` to `authOffline`; leaving or expiring guest practice
+reinitializes a retained session. Offline redirects do not initiate extra refresh attempts.
+
+There is no API version/compatibility signal in v1; that and update-cue escalation remain follow-up
+work. Reload installed windows after paired API/Pages releases. See the
+[development steps](development.md#pwa-v1-development-and-release-120) and
+[release runbook](training/issues/issue-26/runbook.md).

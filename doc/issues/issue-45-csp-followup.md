@@ -35,7 +35,8 @@ not a reason to weaken the approved script policy in #45.
 4. Restrict default resources to self; allow GIS script `https://accounts.google.com/gsi/client`
    and its `/gsi/` parent for frame/connect/style, Google Fonts style/font hosts, the profile-image
    host and data images only if required, plus the build-time origin of `PUBLIC_API_BASE_URL` in
-   connect-src. Include object-src none and base-uri self. Do not rely on frame-ancestors in meta.
+   connect-src. Include `worker-src 'self'` and `manifest-src 'self'` for PWA v1,
+   object-src none and base-uri self. Do not rely on frame-ancestors in meta.
    Follow the [GIS CSP documentation](https://developers.google.com/identity/gsi/web/guides/get-google-api-clientid#content_security_policy).
 5. Add Playwright policy coverage on home, guest review and a signed-in page, plus JSON editor
    loading. Register `securitypolicyviolation` and CSP-console-error capture before navigation;

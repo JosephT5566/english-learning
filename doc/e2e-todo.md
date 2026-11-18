@@ -34,6 +34,16 @@
 | 26  | Strict CSP with real GIS on GitHub Pages: home, guest review, signed-in/JSON editor pages and no violations                                                                              | CSP deferred under Q6: runtime Ajv requires Function; no policy or CSP browser pass claimed | #45 Q6                        | [CSP prerequisites and browser/artifact checks](issues/issue-45-csp-followup.md); `src/lib/management/json-card-validation.ts:23`                                                      |
 | 27  | Existing signed-in user across real API/Pages cutover: legacy gid keys removed, Session ended once, explicit guest choice and paired rollback                                            | Mock legacy-storage Playwright; release order documented, deployment not run                | #45 Q2/Q3/UI                  | `tests/browser/auth-session.spec.ts` legacy case; `doc/training/issues/issue-26/runbook.md` cutover/rollback                                                                           |
 
+| 28 | DevTools Application installability on published Pages (use Application panel, not a Lighthouse PWA score) | Built manifest/icon checks only | #120 Part 1 | `tests/browser/pwa.spec.ts`; real installability unverified |
+| 29 | Android Chrome install and standalone launch on the real Pages origin | Desktop browser specs written, unrun in phase handoffs | #120 Part 1 | `static/manifest.webmanifest`; real Android unverified |
+| 30 | iOS Add to Home Screen and standalone launch on the real Pages origin | Manifest/apple metadata and generated 180 px icon only | #120 Part 1 | `src/app.html`; `static/icons/apple-touch-icon.png` |
+| 31 | Real Pages deep-link offline launch after a real HTTP 404 response | Static fixture simulates 404/offline; browser spec remains operator work | #120 Part 1 | `tests/browser/pwa.spec.ts`; real Pages behavior unverified |
+| 32 | Real GIS sign-in from the installed app against deployed API | Mock GIS/API session specs only | #120 Part 1 | `tests/browser/auth-offline.spec.ts`; installed GIS unverified |
+| 33 | Offline guest practice from saved snapshot on real origin, including after a second deployment | Worker/validation Vitest; browser snapshot suite written, unrun | #120 Part 1 | `tests/browser/pwa.spec.ts`; `english-learning-guest-v1` persistence |
+| 34 | Android/iOS launcher icon appearance: maskable crop and 180 px apple-touch icon | Generated PNGs and manifest metadata only | #120 Part 1 | `static/icons/icon-512-maskable.png`; `static/icons/apple-touch-icon.png` |
+| 35 | Favicon legibility at 16 px in a real browser | Committed SVG artwork only | #120 Part 1 | `static/favicon.svg` |
+| 36 | Optional kill-switch rehearsal on a throwaway deployment: owned-cache cleanup and unregister | Disabled-worker Vitest; browser kill-switch spec written, unrun | #120 Part 1 | `src/service-worker.ts` PWA_ENABLED; development kill-switch steps |
+
 ## 已完成
 
 （尚無）

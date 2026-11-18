@@ -405,6 +405,13 @@ Check that session expiry preserves the page and disables writes, and that guest
 an explicit choice. This verifies browser/GIS behavior that the machine identity cannot prove.
 Record only pass/fail and release identifiers, without private conversation or learning content.
 
+PWA check after Pages publish: verify install/installability, first-load registration and second-load
+worker control, offline reload of `/review` (home redirect with retained session), real sign-in,
+one review, sign-out and guest practice. Record only pass/fail and the Pages commit. Part 2's
+visible update/offline cues require separate checks once shipped.
+
+After a paired API+Pages release, reload installed windows so they use the matching frontend.
+
 ## Application rollback
 
 Rollback is allowed only while the previous application revision remains compatible with the
@@ -416,6 +423,14 @@ gcloud run services update-traffic "$API_SERVICE" \
   --region "$GCP_REGION" \
   --to-revisions PREVIOUS_COMPATIBLE_REVISION=100
 ```
+
+PWA safety rule (#120): never roll Pages back to a commit without the worker while registrations
+may exist; roll forward with `PWA_ENABLED=false` in `src/service-worker.ts` instead. Keep a
+worker-bearing frontend compatible with the selected API revision; if the recorded rollback target
+has no worker, prepare a compatible forward build rather than dispatching it. See the
+[PWA kill-switch steps](../../../development.md#pwa-v1-development-and-release-120).
+
+The paired rollback instructions below apply only to a compatible target that contains the worker.
 
 Immediately redeploy Pages from the recorded previous commit as well. API and Pages must
 always roll back together; neither old/new pairing is compatible. Re-run health and the
