@@ -15,6 +15,8 @@ import { pendingReviewInfo } from "$lib/review/pending";
 import { pwaUpdate, reloadForUpdate } from "$lib/pwa/register";
 import { enterGuestSession, renderGoogleButton } from "$lib/auth";
 import { goto } from "$app/navigation";
+import type { GuestSnapshot } from "$lib/api/contracts";
+import { getPublicReviewCards } from "$lib/api/public-review";
 import fixture from "../browser/fixtures/guest-cards.json";
 
 vi.mock("$app/state", () => ({
@@ -54,7 +56,10 @@ beforeEach(() => {
     expiresAt: null,
   });
 });
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.useRealTimers();
+});
 
 const sessions: AuthSession[] = [
   { kind: "authenticated", profile: { id: 1, email: "a@example.test" } },
@@ -174,25 +179,37 @@ it("removes the offline card silently when the session recovers", async () => {
   expect(screen.queryByText(/back online/i)).not.toBeInTheDocument();
   expect(screen.getByRole("link", { name: /Start today/ })).toBeVisible();
 });
-it("shows the snapshot date only offline and responds to connectivity events", async () => {
-  const online = vi.spyOn(navigator, "onLine", "get").mockReturnValue(false);
-  const { unmount } = render(GuestReview);
-  expect(
-    await screen.findByText("Offline · saved copy from Oct 23, 2026"),
-  ).toBeVisible();
-  online.mockReturnValue(true);
-  window.dispatchEvent(new Event("online"));
-  await tick();
-  expect(screen.queryByText(/Offline ·/)).not.toBeInTheDocument();
-  online.mockReturnValue(false);
-  window.dispatchEvent(new Event("offline"));
-  await tick();
-  expect(screen.getByText(/Offline · saved copy/)).toBeVisible();
-  const remove = vi.spyOn(window, "removeEventListener");
-  unmount();
-  expect(remove).toHaveBeenCalledWith("online", expect.any(Function));
-  expect(remove).toHaveBeenCalledWith("offline", expect.any(Function));
-});
+it.each([
+  ["2026-12-31T23:30:00Z", "Dec 31, 2026"],
+  ["2027-01-01T00:30:00Z", "Jan 1, 2027"],
+])(
+  "shows snapshot date %s only offline and responds to connectivity events",
+  async (generated_at, caption) => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2028-06-15T12:00:00Z"));
+    vi.mocked(getPublicReviewCards).mockResolvedValueOnce({
+      ...(fixture as GuestSnapshot),
+      generated_at,
+    });
+    const online = vi.spyOn(navigator, "onLine", "get").mockReturnValue(false);
+    const { unmount } = render(GuestReview);
+    expect(
+      await screen.findByText(`Offline · saved copy from ${caption}`),
+    ).toBeVisible();
+    online.mockReturnValue(true);
+    window.dispatchEvent(new Event("online"));
+    await tick();
+    expect(screen.queryByText(/Offline ·/)).not.toBeInTheDocument();
+    online.mockReturnValue(false);
+    window.dispatchEvent(new Event("offline"));
+    await tick();
+    expect(screen.getByText(/Offline · saved copy/)).toBeVisible();
+    const remove = vi.spyOn(window, "removeEventListener");
+    unmount();
+    expect(remove).toHaveBeenCalledWith("online", expect.any(Function));
+    expect(remove).toHaveBeenCalledWith("offline", expect.any(Function));
+  },
+);
 it("omits the guest caption online", async () => {
   vi.spyOn(navigator, "onLine", "get").mockReturnValue(true);
   render(GuestReview);

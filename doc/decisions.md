@@ -1102,7 +1102,9 @@ guest answers, no persistence and base-aware navigation retain the existing gues
 PWA v1 adds an installable app shell and a separate public guest snapshot cache, with no API
 cache or offline owner review. Navigations are network-first so online launches receive current
 HTML; known shell assets are cache-first. The implementation is on `issue-120-pwa-shell`, not
-recorded as deployed. Part 2's update/offline visuals remain pending.
+recorded as deployed. Commit 4 implements Part 2's option B cues: the blue avatar update dot,
+first-menu reload action, offline home card and dated guest caption. Browser/device verification
+on a deployed site remains unperformed.
 
 SvelteKit automatic registration is disabled with `serviceWorker: { register: false }` in
 `svelte.config.js`; `src/lib/pwa/register.ts` registers manually outside dev. There is no install-time
