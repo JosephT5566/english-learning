@@ -7,6 +7,7 @@ import { browser } from "$app/environment";
 import { get } from "svelte/store";
 import {
   authSession,
+  authOffline,
   authNotice,
   setSignIn,
   setSignOut,
@@ -115,9 +116,13 @@ export function isCurrentToken(token: string): boolean {
 export function getSessionGeneration(): number {
   return generation;
 }
-function dropAccess() {
+function clearAccess() {
   accessToken = null;
   accessExpiresAt = 0;
+}
+function dropAccess() {
+  authOffline.set(false);
+  clearAccess();
 }
 export function expireSession(token?: string) {
   if (token !== undefined && !isCurrentToken(token)) return;
@@ -137,6 +142,7 @@ class AuthFailure extends Error {
     super("Sign-in did not finish. Please try again.");
   }
 }
+class AuthNetworkFailure extends Error {}
 async function authRequest(
   path: string,
   body: object,
@@ -154,6 +160,10 @@ async function authRequest(
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
     body: JSON.stringify(body),
+  }).catch((cause: unknown) => {
+    throw new AuthNetworkFailure("Authentication network request failed", {
+      cause,
+    });
   });
   if (response.status === 204) return null;
   let data: unknown;
@@ -308,6 +318,12 @@ export function refreshSession(): Promise<string | null> {
       )
         return null;
       if (attempt === generation && get(authSession).kind !== "guest") {
+        if (error instanceof AuthNetworkFailure) {
+          clearAccess();
+          authSession.set({ kind: "initializing" });
+          authOffline.set(refreshToken() !== null);
+          return null;
+        }
         const email = getProfile()?.email ?? getCachedProfile()?.email;
         expireSession();
         if (
@@ -558,13 +574,15 @@ export function getGuestTimeRemaining(): number {
     return 0;
   }
 }
-export function enterGuestSession():
+export function enterGuestSession({
+  keepRefreshToken = get(authOffline),
+}: { keepRefreshToken?: boolean } = {}):
   | { ok: true }
   | { ok: false; error: string } {
   if (getGuestTimeRemaining() > 0) {
     generation++;
     dropAccess();
-    remove(AUTH_REFRESH_STORAGE_KEY);
+    if (!keepRefreshToken) remove(AUTH_REFRESH_STORAGE_KEY);
     setPendingGuestMode(true);
     authSession.set({ kind: "guest" });
     authNotice.set(null);
@@ -582,7 +600,7 @@ export function enterGuestSession():
   }
   generation++;
   dropAccess();
-  remove(AUTH_REFRESH_STORAGE_KEY);
+  if (!keepRefreshToken) remove(AUTH_REFRESH_STORAGE_KEY);
   try {
     const deadline = String(Date.now() + GUEST_DURATION_MS);
     sessionStorage.setItem(GUEST_SESSION, deadline);
@@ -611,8 +629,13 @@ export function leaveGuestSession() {
   dropAccess();
   clearGuestSelection();
   setPendingGuestMode(false);
-  setSignOut();
   authNotice.set(null);
+  if (refreshToken()) {
+    authSession.set({ kind: "initializing" });
+    void initializeSession().catch(() => {
+      /* Retain the session for a later startup/focus retry. */
+    });
+  } else setSignOut();
 }
 export async function initializeSession(): Promise<void> {
   if (!browser) return;
@@ -624,6 +647,7 @@ export async function initializeSession(): Promise<void> {
     getGuestTimeRemaining() > 0 &&
     get(authSession).kind !== "authenticated"
   ) {
+    authOffline.set(false);
     setPendingGuestMode(true);
     authSession.set({ kind: "guest" });
     try {
@@ -649,6 +673,7 @@ export async function initializeSession(): Promise<void> {
     await refreshSession();
     return;
   }
+  authOffline.set(false);
   if (legacy) {
     authSession.set({ kind: "expired", profile: cachedProfile });
     authNotice.set({ kind: "expired" });
@@ -700,10 +725,12 @@ export function watchSession(): () => void {
   };
   window.addEventListener("storage", storage);
   window.addEventListener("focus", refresh);
+  window.addEventListener("online", refresh);
   const timer = window.setInterval(refresh, 1000);
   return () => {
     window.removeEventListener("storage", storage);
     window.removeEventListener("focus", refresh);
+    window.removeEventListener("online", refresh);
     window.clearInterval(timer);
   };
 }
