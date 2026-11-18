@@ -1,3 +1,4 @@
+import { GUEST_CACHE } from "$lib/pwa/policy";
 import { base } from "$app/paths";
 import { readGuestSnapshot } from "./guest-snapshot.mjs";
 import type { PublicReviewCard, GuestSnapshot } from "./contracts";
@@ -15,8 +16,20 @@ export async function getPublicReviewCards(
       redirect: "error",
       signal: requestSignal,
     });
-    const { snapshot } = await readGuestSnapshot(response);
-    return snapshot;
+    try {
+      const { snapshot } = await readGuestSnapshot(response);
+      return snapshot;
+    } catch (error) {
+      try {
+        if (typeof caches !== "undefined") {
+          const cache = await caches.open(GUEST_CACHE);
+          await cache.delete(`${base}/guest/cards.json`);
+        }
+      } catch {
+        /* Cache eviction must not replace the validation error. */
+      }
+      throw error;
+    }
   } catch (error) {
     if (signal?.aborted) throw error;
     throw new Error(

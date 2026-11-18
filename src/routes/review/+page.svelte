@@ -1,7 +1,8 @@
 <script lang="ts">
+  import { page, navigating } from "$app/state";
   import { goto } from "$app/navigation";
   import { resolve } from "$app/paths";
-  import { authSession } from "$lib/stores/auth";
+  import { authSession, authOffline } from "$lib/stores/auth";
   import GuestReview from "$lib/components/GuestReview.svelte";
   import OwnedReview from "$lib/components/OwnedReview.svelte";
 
@@ -11,7 +12,20 @@
     | { kind: "owned"; ownerId: number };
   let session: ReviewSession = $state({ kind: "waiting" });
 
+  let offlineRedirected = false;
   $effect(() => {
+    if ($authOffline) {
+      if (
+        !offlineRedirected &&
+        !navigating.to &&
+        page.url.pathname !== resolve("/")
+      ) {
+        offlineRedirected = true;
+        void goto(resolve("/"), { replaceState: true });
+      }
+      return;
+    }
+    offlineRedirected = false;
     const auth = $authSession;
     if (auth.kind === "initializing") return;
     if (auth.kind === "authenticated" && auth.profile.id) {

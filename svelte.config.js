@@ -8,6 +8,7 @@ const config = {
 	preprocess: vitePreprocess(),
 
 	kit: {
+		serviceWorker: { register: false },
 		adapter: adapter({
 			// SPA 模式需要 fallback
 			pages: 'build',

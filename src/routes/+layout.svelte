@@ -4,9 +4,33 @@
   import { onMount } from "svelte";
   import { watchSession } from "$lib/auth";
   import "../app.css";
+  import { dev } from "$app/environment";
+  import { base, resolve } from "$app/paths";
+  import { page, navigating } from "$app/state";
+  import { goto } from "$app/navigation";
+  import { authOffline } from "$lib/stores/auth";
+  import { registerPwa } from "$lib/pwa/register";
 
   let { children } = $props();
   onMount(watchSession);
+  onMount(() => registerPwa(base, dev));
+  let offlineRedirected = false;
+  $effect(() => {
+    if (!$authOffline) {
+      offlineRedirected = false;
+      return;
+    }
+    if (
+      !offlineRedirected &&
+      !navigating.to &&
+      ![resolve("/"), resolve("/review"), resolve("/review/guest")].includes(
+        page.url.pathname,
+      )
+    ) {
+      offlineRedirected = true;
+      void goto(resolve("/"), { replaceState: true });
+    }
+  });
 </script>
 
 <div class="app">

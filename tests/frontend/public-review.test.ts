@@ -81,3 +81,20 @@ describe("static guest cards", () => {
     expect(fetcher).toHaveBeenCalledTimes(1);
   });
 });
+
+it("evicts a strict-validation failure from the guest cache, best effort", async () => {
+  const remove = vi.fn().mockResolvedValue(true);
+  const open = vi.fn().mockResolvedValue({ delete: remove });
+  vi.stubGlobal("caches", { open });
+  vi.stubGlobal(
+    "fetch",
+    vi
+      .fn()
+      .mockResolvedValue(new Response('{"schema_version":1,"items":[{}]}')),
+  );
+  await expect(getPublicReviewCards()).rejects.toThrow("invalid");
+  expect(open).toHaveBeenCalledWith("english-learning-guest-v1");
+  expect(remove).toHaveBeenCalledWith("/english-learning/guest/cards.json");
+  open.mockRejectedValue(new Error("cache unavailable"));
+  await expect(getPublicReviewCards()).rejects.toThrow("invalid");
+});
