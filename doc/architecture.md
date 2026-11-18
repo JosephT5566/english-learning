@@ -973,8 +973,11 @@ fallback deadline and best-effort install warm-up. Only non-redirected 200 JSON 
 most 512 KiB with `schema_version === 1` and an `items` array replace the saved copy, including
 empty snapshots. Invalid HTTP/content responses pass through without replacing the good copy;
 network failure/timeout uses that copy. The page's `src/lib/api/public-review.ts` has a 15000 ms
-fetch deadline and strict `readGuestSnapshot` validation; validation rejection best-effort evicts
-the guest entry. Shell activation preserves the current guest cache and deletes obsolete owned
+fetch deadline and strict `readGuestSnapshot` validation. As decided on 2026-11-18, successful
+validation best-effort saves a last-good response at `<base>/guest/cards.json?last-good` in the same
+guest cache, including empty withdrawals. Rejection best-effort restores that copy to the main key;
+without a last-good copy, only a rejected 200 deletes the main entry. Cache failures do not change
+the page result. Shell activation preserves the current guest cache and deletes obsolete owned
 cache names. These prefixes are origin-wide, not isolated by deployment base path.
 
 Non-GET, cross-origin, outside-base and `/v1/*` requests bypass the worker. Google GIS/fonts,

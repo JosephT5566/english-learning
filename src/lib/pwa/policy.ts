@@ -1,6 +1,9 @@
 export const SHELL_PREFIX = "english-learning-shell-";
 export const GUEST_PREFIX = "english-learning-guest-";
 export const GUEST_CACHE = `${GUEST_PREFIX}v1`;
+export function guestLastGoodKey(base: string): string {
+  return `${base}/guest/cards.json?last-good`;
+}
 export const GUEST_TIMEOUT_MS = 3000;
 export const MAX_SNAPSHOT_BYTES = 512 * 1024;
 

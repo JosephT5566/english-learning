@@ -6,6 +6,7 @@ import {
   type Page,
   type APIRequestContext,
 } from "@playwright/test";
+import { guestLastGoodKey } from "../../src/lib/pwa/policy";
 import {
   apiOrigin,
   profileKey,
@@ -474,13 +475,39 @@ test("offline public round uses saved snapshot and retains a signed-in session",
   ).toBeVisible();
 });
 
-test("page strict validation evicts a shallow-valid but invalid saved snapshot", async ({
+test("page strict rejection restores the last good snapshot for offline practice", async ({
   page,
   request,
+  context,
 }) => {
+  await settings(request, { snapshot: { body: JSON.stringify(fixture) } });
   await controlled(page);
+  await page
+    .getByRole("button", { name: "Continue as guest", exact: true })
+    .click();
+  await expect(page.locator('.swipe--card[aria-hidden="false"]')).toBeVisible();
+  const good = await savedGuest(page);
+  expect(good).toEqual(fixture);
+  expect(
+    await page.evaluate(
+      async ({ guestCache, key }) => {
+        const response = await (await caches.open(guestCache)).match(key);
+        return response ? response.json() : null;
+      },
+      { guestCache, key: guestLastGoodKey(base) },
+    ),
+  ).toEqual(good);
+  await page.getByRole("button", { name: /Guest account menu/i }).click();
+  await page
+    .getByRole("menuitem", { name: "Leave guest practice", exact: true })
+    .click();
   await settings(request, {
-    snapshot: { body: '{"schema_version":1,"items":[{}]}' },
+    snapshot: {
+      body: JSON.stringify({
+        ...fixture,
+        items: [fixture.items[0], fixture.items[0]],
+      }),
+    },
   });
   await page
     .getByRole("button", { name: "Continue as guest", exact: true })
@@ -490,5 +517,29 @@ test("page strict validation evicts a shallow-valid but invalid saved snapshot",
       "The card snapshot was unavailable or invalid. Please try again.",
     ),
   ).toBeVisible();
-  await expect.poll(() => savedGuest(page)).toBeNull();
+  await expect.poll(() => savedGuest(page)).toEqual(good);
+  await page.getByRole("button", { name: /Guest account menu/i }).click();
+  await page
+    .getByRole("menuitem", { name: "Leave guest practice", exact: true })
+    .click();
+  await settings(request, { networkDown: true });
+  await context.setOffline(true);
+  await page.reload();
+  await page
+    .getByRole("button", { name: "Continue as guest", exact: true })
+    .click();
+  for (let index = 0; index < fixture.items.length; index++) {
+    const active = page.locator('.swipe--card[aria-hidden="false"]');
+    await expect(async () => {
+      await active.press("Enter");
+      await expect(active).toHaveAttribute("aria-expanded", "true", {
+        timeout: 100,
+      });
+    }).toPass({ intervals: [200], timeout: 15000 });
+    await page.getByRole("button", { name: "Knew it", exact: true }).click();
+  }
+  await expect(
+    page.getByRole("button", { name: "Practice again" }),
+  ).toBeVisible();
+  expect(await savedGuest(page)).toEqual(good);
 });

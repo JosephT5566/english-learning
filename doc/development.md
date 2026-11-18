@@ -446,7 +446,9 @@ npm run test:browser -- tests/browser/auth-offline.spec.ts tests/browser/auth-se
 
 `pwa.spec.ts` covers manifest/base links, registration/precache boundaries, offline redirects,
 live navigations/API bypass, waiting updates/one reload, cleanup/kill switch and guest snapshot
-replacement/fallback/strict eviction. `auth-offline.spec.ts` covers startup retention, online/focus
+replacement/fallback/last-good restoration after strict rejection. Strict page validation saves a
+last-good copy (including empty withdrawals); rejection restores it, or removes only a rejected 200
+when no good copy exists. `auth-offline.spec.ts` covers startup retention, online/focus
 recovery and guest exit restoration independently of the worker. The subpath variant is a local
 operator check, not added to CI. Prior phase handoffs report targeted Vitest and `npm run check`
 passes, and root/subpath builds; browser specs remain unrun in those handoffs. Final recorded
