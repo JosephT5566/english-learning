@@ -280,6 +280,16 @@ test("navigation is live online, non-OK fallback is not cached and API requests 
     );
     expect((await responsePromise).fromServiceWorker()).toBe(false);
   }
+  const postResponse = page.waitForResponse(
+    (response) =>
+      response.url() === `${origin}${guestPath}` &&
+      response.request().method() === "POST",
+  );
+  await page.evaluate(
+    (path) => fetch(path, { method: "POST" }).then(() => undefined),
+    guestPath,
+  );
+  expect((await postResponse).fromServiceWorker()).toBe(false);
   await context.setOffline(true);
   expect(
     await page.evaluate(
@@ -390,8 +400,18 @@ test("guest snapshot is live, empty withdrawal replaces it, failures keep the la
   await settings(request, { snapshot: { body: JSON.stringify(changed) } });
   expect(JSON.parse((await readGuest(page)).text)).toEqual(changed);
   expect(await savedGuest(page)).toEqual(changed);
+  for (const status of [201, 206, 404, 503]) {
+    const body = JSON.stringify({
+      ...fixture,
+      generated_at: new Date(
+        Date.UTC(2026, 10, 19, 0, 0, status % 60),
+      ).toISOString(),
+    });
+    await settings(request, { snapshot: { status, body } });
+    expect(await readGuest(page)).toEqual({ status, text: body });
+    expect(await savedGuest(page)).toEqual(changed);
+  }
   for (const snapshot of [
-    { status: 503, body: "unavailable" },
     { body: "invalid" },
     { body: "x".repeat(512 * 1024 + 1) },
     { body: '{"schema_version":2,"items":[]}' },

@@ -26,11 +26,16 @@ async function clean(current: string | null) {
 }
 
 async function guest(request: Request): Promise<Response> {
-  const cache = await caches.open(GUEST_CACHE);
   let timer: ReturnType<typeof setTimeout> | undefined;
+  let result: { response: Response; cacheable: boolean };
   try {
-    const response = await Promise.race([
-      fetch(request),
+    result = await Promise.race([
+      // Keep the original request semantics. Late work has no cache side effects;
+      // Promise.race observes its rejection even after the deadline wins.
+      (async () => {
+        const response = await fetch(request);
+        return { response, cacheable: await cacheableSnapshot(response) };
+      })(),
       new Promise<never>((_, reject) => {
         timer = setTimeout(
           () => reject(new Error("Snapshot timeout")),
@@ -38,16 +43,25 @@ async function guest(request: Request): Promise<Response> {
         );
       }),
     ]);
-    if (await cacheableSnapshot(response))
-      await cache.put(guestUrl, response.clone());
-    return response;
   } catch (error) {
-    const saved = await cache.match(guestUrl);
+    const saved = await caches
+      .open(GUEST_CACHE)
+      .then((cache) => cache.match(guestUrl))
+      .catch(() => undefined);
     if (saved) return saved;
     throw error;
   } finally {
     clearTimeout(timer);
   }
+  if (result.cacheable) {
+    try {
+      const cache = await caches.open(GUEST_CACHE);
+      await cache.put(guestUrl, result.response.clone());
+    } catch {
+      // Persistence is best effort; a live response remains authoritative.
+    }
+  }
+  return result.response;
 }
 
 function startWorker(enabled: boolean) {
@@ -92,21 +106,32 @@ function startWorker(enabled: boolean) {
     if (event.request.mode === "navigate") {
       event.respondWith(
         (async () => {
-          const cache = await caches.open(SHELL_CACHE);
+          let response: Response;
           try {
-            const response = await fetch(event.request);
-            // Only known prerendered pages belong in the shell cache.
-            if (response.ok && precache.includes(url.pathname))
-              await cache.put(url.pathname, response.clone());
-            return response;
+            response = await fetch(event.request);
           } catch (error) {
-            const saved =
-              (precache.includes(url.pathname)
-                ? await cache.match(url.pathname)
-                : undefined) ?? (await cache.match(fallback));
+            const saved = await caches
+              .open(SHELL_CACHE)
+              .then(
+                async (cache) =>
+                  (precache.includes(url.pathname)
+                    ? await cache.match(url.pathname)
+                    : undefined) ?? (await cache.match(fallback)),
+              )
+              .catch(() => undefined);
             if (saved) return saved;
             throw error;
           }
+          // Only known prerendered pages belong in the shell cache.
+          if (response.ok && precache.includes(url.pathname)) {
+            try {
+              const cache = await caches.open(SHELL_CACHE);
+              await cache.put(url.pathname, response.clone());
+            } catch {
+              // Cache failures must not replace live HTML with a stale page.
+            }
+          }
+          return response;
         })(),
       );
     } else if (precache.includes(url.pathname)) {

@@ -82,6 +82,19 @@ describe("PWA cache boundaries", () => {
     ]);
     expect(cachesToDelete(names, null)).toEqual(names.slice(0, 4));
   });
+  it.each([201, 206, 404, 503])(
+    "rejects otherwise cacheable status %i",
+    async (status) => {
+      const body = JSON.stringify({
+        schema_version: 1,
+        items: [{ id: `status-${status}` }],
+      });
+      expect(await cacheableSnapshot(new Response(body))).toBe(true);
+      expect(await cacheableSnapshot(new Response(body, { status }))).toBe(
+        false,
+      );
+    },
+  );
   it("accepts empty snapshots and rejects invalid status, redirects, size, JSON and shape", async () => {
     const response = (body: string, status = 200) =>
       new Response(body, { status });
@@ -100,8 +113,6 @@ describe("PWA cache boundaries", () => {
           padding: "x".repeat(512 * 1024),
         }),
       ),
-      response("{}", 404),
-      response("{}", 201),
     ])
       expect(await cacheableSnapshot(value)).toBe(false);
     const redirected = response('{"schema_version":1,"items":[]}');
