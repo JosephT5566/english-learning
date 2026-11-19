@@ -460,11 +460,9 @@ passes, and root/subpath builds; browser specs remain unrun in those handoffs. F
 precache reports (after explicitly adding `_app/env.js`): root **85 entries / 1,137,143 bytes**;
 `/english-learning` **85 entries / 1,137,641 bytes**. These are build-specific, not a size budget.
 
-To regenerate committed PNGs after editing `static/icons/icon-any.svg`, `icon-maskable.svg` or
-`icon-apple.svg`, run `node scripts/generate-pwa-icons.mjs` from the root. It needs Playwright
-Chromium (`npx playwright install chromium`) and produces 192/512 px any, 512 px maskable and
-180 px apple-touch PNGs. This is a manual asset step, not part of the build; review the generated
-icons on real launchers and the separate `static/favicon.svg` at 16 px.
+To update the app icons, export the IconKitchen web bundle and copy the 192/512 px standard and
+maskable PNGs and the 180 px Apple touch icon to `static/icons/`. Copy the ICO to
+`static/favicon.ico`. Review the favicon at 16 px and check the maskable artwork on a launcher.
 
 Release/rollback (maintainer operations; not performed by this documentation change):
 

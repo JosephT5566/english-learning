@@ -1,6 +1,6 @@
 # Project Memory
 
-Last updated: 2026-11-18
+Last updated: 2026-11-19
 
 This file is the current product-state index. Training milestones, evidence limits, and the next
 training action belong in [`training/project-memory.md`](training/project-memory.md); detailed
@@ -9,6 +9,9 @@ precedence over stale documentation. Deployment statements below summarize recor
 a fresh inspection of the live services.
 
 ## PWA v1 (#120, 2026-11-18)
+
+On 2026-11-19, the supplied IconKitchen web export replaced the PWA icons, Apple touch icon,
+and favicon. The manifest includes standard and maskable PNGs at 192 and 512 px.
 
 Implemented on `issue-120-pwa-shell`, not yet deployed: relative manifest/icons, manually registered
 production worker, network-first shell navigations and a separate network-first saved public guest

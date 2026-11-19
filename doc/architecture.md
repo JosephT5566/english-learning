@@ -957,8 +957,8 @@ remain unverified; see e2e-todo items 19, 21 and 22.
 ## PWA v1 shell and offline session flow (#120, Part 1)
 
 `static/manifest.webmanifest` declares English Learning / English, standalone display,
-`#cad8e4` theme/background, relative identity/start/scope and 192/512 px icons (including a
-512 px maskable icon). `src/app.html` links the manifest, favicon and 180 px apple-touch icon
+`#cad8e4` theme/background, relative identity/start/scope, and standard and maskable icons at
+192 and 512 px. `src/app.html` links the manifest, favicon and 180 px apple-touch icon
 with base-aware asset URLs and supplies iOS metadata.
 
 `src/service-worker.ts` uses `$service-worker` build/files/prerendered/version data and
